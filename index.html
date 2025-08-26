@@ -6,6 +6,24 @@
 <title>PayGo Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
+  
+  !-- NAVBAR -->
+<nav class="navbar">
+  <div class="logo">PAYME</div>
+  <div class="hamburger" id="hamburger">
+    <span class="line"></span>
+    <span class="line"></span>
+    <span class="line"></span>
+  </div>
+  <ul class="nav-links" id="nav-links">
+    <li><a href="#">Profile</a></li>
+    <li><a href="#">Wallet</a></li>
+    <li><a href="#">Settings</a></li>
+    <li><a href="#" id="logout">Logout</a></li>
+  </ul>
+</nav>
+
+<style>
 /* --- NAVBAR --- */
 .navbar {
   display: flex;
@@ -14,17 +32,56 @@
   background-color: #222;
   padding: 10px 20px;
   position: relative;
+  z-index: 1000;
+  border-bottom: 1px solid #333;
 }
 .logo { color: #fff; font-size: 20px; font-weight: bold; }
-.hamburger { display: none; flex-direction: column; cursor: pointer; gap: 5px; }
-.hamburger .line { width: 25px; height: 3px; background-color: white; }
-.nav-links { list-style: none; display: flex; gap: 15px; }
-.nav-links li a { color: #fff; text-decoration: none; }
-@media (max-width: 768px){
-  .hamburger { display: flex; }
-  .nav-links { display: none; flex-direction: column; background-color: #222; width: 100%; position: absolute; top: 60px; left: 0; padding: 10px 0; }
-  .nav-links.active { display: flex; }
+.hamburger {
+  display: none;
+  flex-direction: column;
+  cursor: pointer;
+  gap: 5px;
+  transition: all 0.3s ease;
 }
+.hamburger .line {
+  width: 25px;
+  height: 3px;
+  background-color: white;
+  transition: all 0.3s ease;
+}
+.nav-links {
+  list-style: none;
+  display: flex;
+  gap: 15px;
+  transition: max-height 0.3s ease-in-out;
+}
+.nav-links li a { color: #fff; text-decoration: none; font-weight: 500; padding: 5px 10px; }
+.nav-links li a:hover { background-color: #5b4dff; border-radius: 6px; }
+
+/* --- MOBILE --- */
+@media (max-width: 768px) {
+  .hamburger { display: flex; }
+  .nav-links {
+    flex-direction: column;
+    background-color: #222;
+    width: 100%;
+    position: absolute;
+    top: 60px;
+    left: 0;
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.3s ease-in-out;
+    border-top: 1px solid #333;
+  }
+  .nav-links.active {
+    max-height: 500px; /* enough to show all links */
+  }
+  .nav-links li {
+    padding: 10px 0;
+    text-align: center;
+  }
+  }
+
 
 /* --- BODY --- */
 body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
