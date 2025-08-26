@@ -25,7 +25,7 @@ form.addEventListener('submit', async (e) => {
   const data = await res.json();
   if(data.user){
     localStorage.setItem('user', JSON.stringify(data.user));
-    window.location.href = 'index.html';
+    window.location.href = 'paymelogin.html';
   } else {
     alert(data.message);
   }
