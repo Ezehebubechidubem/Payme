@@ -143,7 +143,7 @@ async function callBackend(route, amount = 0) {
     window.location.href = 'paymelogin.html';
     return;
   }
-  const res = await fetch(`https://payme-rsdx.onrender.com/${route}`, {
+  const res = await fetch(`https://payme-xkga.onrender.com/${route}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId: user.id, amount })
