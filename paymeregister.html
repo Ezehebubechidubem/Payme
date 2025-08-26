@@ -1,0 +1,33 @@
+<h1>Register</h1>
+<form id="registerForm">
+  <input type="text" id="username" placeholder="Username" required><br>
+  <input type="email" id="email" placeholder="Email" required><br>
+  <input type="password" id="password" placeholder="Password" required><br>
+  <button type="submit">Register</button>
+  <a href="paymelogin.html">Click to login</a>
+</form>
+
+<script>
+const form = document.getElementById('registerForm');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('username').value;
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+
+  const res = await fetch('http://localhost:3000/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, email, password })
+  });
+
+  const data = await res.json();
+  if(data.user){
+    localStorage.setItem('user', JSON.stringify(data.user));
+    window.location.href = 'index.html';
+  } else {
+    alert(data.message);
+  }
+});
+</script>
