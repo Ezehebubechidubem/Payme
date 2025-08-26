@@ -6,24 +6,6 @@
 <title>PayGo Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-  
-  !-- NAVBAR -->
-<nav class="navbar">
-  <div class="logo">PAYME</div>
-  <div class="hamburger" id="hamburger">
-    <span class="line"></span>
-    <span class="line"></span>
-    <span class="line"></span>
-  </div>
-  <ul class="nav-links" id="nav-links">
-    <li><a href="#">Profile</a></li>
-    <li><a href="#">Wallet</a></li>
-    <li><a href="#">Settings</a></li>
-    <li><a href="#" id="logout">Logout</a></li>
-  </ul>
-</nav>
-
-<style>
 /* --- NAVBAR --- */
 .navbar {
   display: flex;
@@ -32,56 +14,18 @@
   background-color: #222;
   padding: 10px 20px;
   position: relative;
-  z-index: 1000;
-  border-bottom: 1px solid #333;
 }
 .logo { color: #fff; font-size: 20px; font-weight: bold; }
-.hamburger {
-  display: none;
-  flex-direction: column;
-  cursor: pointer;
-  gap: 5px;
-  transition: all 0.3s ease;
-}
-.hamburger .line {
-  width: 25px;
-  height: 3px;
-  background-color: white;
-  transition: all 0.3s ease;
-}
-.nav-links {
-  list-style: none;
-  display: flex;
-  gap: 15px;
-  transition: max-height 0.3s ease-in-out;
-}
-.nav-links li a { color: #fff; text-decoration: none; font-weight: 500; padding: 5px 10px; }
-.nav-links li a:hover { background-color: #5b4dff; border-radius: 6px; }
-
-/* --- MOBILE --- */
-@media (max-width: 768px) {
+.hamburger { display: none; flex-direction: column; cursor: pointer; gap: 5px; }
+.hamburger .line { width: 25px; height: 3px; background-color: white; }
+.nav-links { list-style: none; display: flex; gap: 15px; }
+.nav-links li a { color: #fff; text-decoration: none; }
+.nav-links li { cursor: pointer; }
+@media (max-width: 768px){
   .hamburger { display: flex; }
-  .nav-links {
-    flex-direction: column;
-    background-color: #222;
-    width: 100%;
-    position: absolute;
-    top: 60px;
-    left: 0;
-    overflow: hidden;
-    max-height: 0;
-    transition: max-height 0.3s ease-in-out;
-    border-top: 1px solid #333;
-  }
-  .nav-links.active {
-    max-height: 500px; /* enough to show all links */
-  }
-  .nav-links li {
-    padding: 10px 0;
-    text-align: center;
-  }
-  }
-
+  .nav-links { display: none; flex-direction: column; background-color: #222; width: 100%; position: absolute; top: 60px; left: 0; padding: 10px 0; }
+  .nav-links.active { display: flex; }
+}
 
 /* --- BODY --- */
 body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
@@ -114,7 +58,21 @@ body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
 </head>
 <body>
 
-
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="logo">PAYME</div>
+  <div class="hamburger" id="hamburger">
+    <span class="line"></span>
+    <span class="line"></span>
+    <span class="line"></span>
+  </div>
+  <ul class="nav-links" id="nav-links">
+    <li id="profileLink">Profile</li>
+    <li id="walletLink">Wallet</li>
+    <li id="settingsLink">Settings</li>
+    <li id="logout">Logout</li>
+  </ul>
+</nav>
 
 <!-- Header -->
 <div class="header">
@@ -158,31 +116,11 @@ body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
   <button id="reward"><div><i class="fas fa-gift"></i>Reward</div></button>
 </div>
 
-
 <script>
 // Hamburger toggle
-// Hamburger toggle animation
 const hamburger = document.getElementById('hamburger');
 const navLinks = document.getElementById('nav-links');
-
-hamburger.addEventListener('click', () => {
-  navLinks.classList.toggle('active');
-
-  // Animate hamburger into X
-  hamburger.classList.toggle('toggle');
-});
-
-hamburger.addEventListener('click', () => {
-  const lines = document.querySelectorAll('.hamburger .line');
-  if(hamburger.classList.contains('toggle')){
-    lines[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
-    lines[1].style.opacity = '0';
-    lines[2].style.transform = 'rotate(-45deg) translate(5px, -5px)';
-  } else {
-    lines[0].style.transform = 'rotate(0) translate(0,0)';
-    lines[1].style.opacity = '1';
-    lines[2].style.transform = 'rotate(0) translate(0,0)';
-  }
+hamburger.addEventListener('click', () => { navLinks.classList.toggle('active'); });
 
 // --- Check login ---
 const user = JSON.parse(localStorage.getItem('user'));
@@ -198,6 +136,11 @@ document.getElementById('logout').addEventListener('click', () => {
   localStorage.removeItem('user');
   window.location.href = 'paymelogin.html';
 });
+
+// --- Hamburger Links ---
+document.getElementById('profileLink').addEventListener('click', () => { alert("Profile page coming soon!"); });
+document.getElementById('walletLink').addEventListener('click', () => { alert("Wallet page coming soon!"); });
+document.getElementById('settingsLink').addEventListener('click', () => { alert("Settings page coming soon!"); });
 
 // --- Helper function to call backend ---
 async function callBackend(route, amount = 0) {
@@ -225,55 +168,37 @@ document.getElementById('addMoney').addEventListener('click', async () => {
   if(!isNaN(amount)) await callBackend('update-balance', amount);
 });
 
-// --- Send / Transfer / Airtime / Quick Actions ---
+// --- Send / Transfer / Quick Actions ---
 document.getElementById('toBank').addEventListener('click', async () => {
   const amount = parseFloat(prompt("Enter amount to transfer to bank:"));
   if(!isNaN(amount)) await callBackend('transfer', amount);
 });
-
 document.getElementById('toWallet').addEventListener('click', async () => {
   const amount = parseFloat(prompt("Enter amount to send to another wallet:"));
   if(!isNaN(amount)) await callBackend('send', amount);
 });
-
-document.getElementById('atmcard').addEventListener('click', () => {
-  alert("ATM card feature coming soon!");
-});
+document.getElementById('atmcard').addEventListener('click', () => { alert("ATM card feature coming soon!"); });
 
 // --- Services ---
 document.getElementById('airtime').addEventListener('click', async () => {
   const amount = parseFloat(prompt("Enter airtime amount:"));
   if(!isNaN(amount)) await callBackend('airtime', amount);
 });
-
-document.getElementById('data').addEventListener('click', () => {
-  alert("Data purchase feature coming soon!");
-});
-document.getElementById('electric').addEventListener('click', () => {
-  alert("Electricity payment feature coming soon!");
-});
-document.getElementById('betting').addEventListener('click', () => {
-  alert("Betting feature coming soon!");
-});
-document.getElementById('tv').addEventListener('click', () => {
-  alert("TV subscription feature coming soon!");
-});
-document.getElementById('loan').addEventListener('click', () => {
-  alert("Loan feature coming soon!");
-});
-document.getElementById('business').addEventListener('click', () => {
-  alert("Business feature coming soon!");
-});
-document.getElementById('earn').addEventListener('click', () => {
-  alert("Refer & Earn feature coming soon!");
-});
+document.getElementById('data').addEventListener('click', () => { alert("Data purchase feature coming soon!"); });
+document.getElementById('electric').addEventListener('click', () => { alert("Electricity payment feature coming soon!"); });
+document.getElementById('betting').addEventListener('click', () => { alert("Betting feature coming soon!"); });
+document.getElementById('tv').addEventListener('click', () => { alert("TV subscription feature coming soon!"); });
+document.getElementById('loan').addEventListener('click', () => { alert("Loan feature coming soon!"); });
+document.getElementById('business').addEventListener('click', () => { alert("Business feature coming soon!"); });
+document.getElementById('earn').addEventListener('click', () => { alert("Refer & Earn feature coming soon!"); });
 
 // --- Bottom Nav ---
 document.getElementById('home').addEventListener('click', () => { alert("Already on Home!"); });
 document.getElementById('loanBottom').addEventListener('click', () => { alert("Loan feature coming soon!"); });
 document.getElementById('wealth').addEventListener('click', () => { alert("Wealth feature coming soon!"); });
 document.getElementById('reward').addEventListener('click', () => { alert("Reward feature coming soon!"); });
-// Example: Protect other buttons (redirect to login if no user)
+
+// Protect buttons if no user
 const buttons = ['toBank','toWallet','atmcard','airtime','data','electric','betting','tv','loan','business','earn','home','loanBottom','wealth','reward'];
 buttons.forEach(id => {
   const btn = document.getElementById(id);
@@ -284,5 +209,4 @@ buttons.forEach(id => {
 </script>
 
 </body>
-  </html>
-  
+</html>
