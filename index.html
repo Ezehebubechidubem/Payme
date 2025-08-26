@@ -118,9 +118,28 @@ body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
 
 <script>
 // Hamburger toggle
+// Hamburger toggle animation
 const hamburger = document.getElementById('hamburger');
 const navLinks = document.getElementById('nav-links');
-hamburger.addEventListener('click', () => { navLinks.classList.toggle('active'); });
+
+hamburger.addEventListener('click', () => {
+  navLinks.classList.toggle('active');
+
+  // Animate hamburger into X
+  hamburger.classList.toggle('toggle');
+});
+
+hamburger.addEventListener('click', () => {
+  const lines = document.querySelectorAll('.hamburger .line');
+  if(hamburger.classList.contains('toggle')){
+    lines[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
+    lines[1].style.opacity = '0';
+    lines[2].style.transform = 'rotate(-45deg) translate(5px, -5px)';
+  } else {
+    lines[0].style.transform = 'rotate(0) translate(0,0)';
+    lines[1].style.opacity = '1';
+    lines[2].style.transform = 'rotate(0) translate(0,0)';
+  }
 
 // --- Check login ---
 const user = JSON.parse(localStorage.getItem('user'));
