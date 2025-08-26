@@ -1,2 +1,0 @@
-# Payme
-A payment app
