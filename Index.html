@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PayGo Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+/* --- NAVBAR --- */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #222;
+  padding: 10px 20px;
+  position: relative;
+}
+.logo { color: #fff; font-size: 20px; font-weight: bold; }
+.hamburger { display: none; flex-direction: column; cursor: pointer; gap: 5px; }
+.hamburger .line { width: 25px; height: 3px; background-color: white; }
+.nav-links { list-style: none; display: flex; gap: 15px; }
+.nav-links li a { color: #fff; text-decoration: none; }
+@media (max-width: 768px){
+  .hamburger { display: flex; }
+  .nav-links { display: none; flex-direction: column; background-color: #222; width: 100%; position: absolute; top: 60px; left: 0; padding: 10px 0; }
+  .nav-links.active { display: flex; }
+}
+
+/* --- BODY --- */
+body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
+
+/* Header */
+.header { background: white; padding: 15px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ddd; }
+.header h2 { margin: 0; font-size: 16px; }
+.header small { color: gray; }
+
+/* Balance Card */
+.balance-card { background: #ecebff; margin: 15px; padding: 20px; border-radius: 12px; }
+.balance-card h3 { margin: 0; color: #333; }
+.balance-card button { background: #5b4dff; color: white; border: none; padding: 10px 15px; border-radius: 6px; margin-top: 10px; cursor: pointer; }
+
+/* Quick Actions */
+.quick-actions { display: flex; justify-content: space-around; margin: 20px 10px; }
+.quick-actions div { text-align: center; }
+.quick-actions div i { font-size: 24px; color: purple; }
+
+/* Services Grid */
+.services { background: white; padding: 20px; border-radius: 12px; margin: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+.services div { text-align: center; font-size: 14px; }
+.services i { font-size: 20px; color: purple; }
+
+/* Bottom Nav */
+.bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #ddd; }
+.bottom-nav div { text-align: center; font-size: 14px; color: gray; }
+.bottom-nav div i { display: block; font-size: 20px; margin-bottom: 5px; color: purple; }
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="logo">PAYME</div>
+  <div class="hamburger" id="hamburger">
+    <span class="line"></span>
+    <span class="line"></span>
+    <span class="line"></span>
+  </div>
+  <ul class="nav-links" id="nav-links">
+    <li><a href="#">Profile</a></li>
+    <li><a href="#">Wallet</a></li>
+    <li><a href="#">Settings</a></li>
+    <li><a href="#" id="logout">Logout</a></li>
+  </ul>
+</nav>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <h2>Hi, USER 👋</h2>
+    <small>Welcome, let’s make payments!</small>
+  </div>
+</div>
+
+<!-- Balance Card -->
+<div class="balance-card">
+  <h3>Available Balance</h3>
+  <h1>₦0.00</h1>
+  <button id="addMoney">Add Money</button>
+</div>
+
+<!-- Quick Actions -->
+<div class="quick-actions">
+  <button id="toBank"><div><i class="fas fa-university"></i><br>To Bank</div></button>
+  <button id="toWallet"><div><i class="fas fa-wallet"></i><br>To Wallet</div></button>
+  <button id="atmcard"><div><i class="fas fa-credit-card"></i><br>ATM Card</div></button>
+</div>
+
+<!-- Services -->
+<div class="services">
+  <button id="airtime"><div><i class="fas fa-phone"></i><br>Airtime</div></button>
+  <button id="data"><div><i class="fas fa-wifi"></i><br>Data</div></button>
+  <button id="electric"><div><i class="fas fa-bolt"></i><br>Electricity</div></button>
+  <button id="betting"><div><i class="fas fa-futbol"></i><br>Betting</div></button>
+  <button id="tv"><div><i class="fas fa-tv"></i><br>TV</div></button>
+  <button id="loan"><div><i class="fas fa-hand-holding-usd"></i><br>Loan</div></button>
+  <button id="business"><div><i class="fas fa-briefcase"></i><br>Business</div></button>
+  <button id="earn"><div><i class="fas fa-users"></i><br>Refer & Earn</div></button>
+</div>
+
+<!-- Bottom Nav -->
+<div class="bottom-nav">
+  <button id="home"><div><i class="fas fa-home"></i>Home</div></button>
+  <button id="loanBottom"><div><i class="fas fa-credit-card"></i>Loan</div></button>
+  <button id="wealth"><div><i class="fas fa-chart-line"></i>Wealth</div></button>
+  <button id="reward"><div><i class="fas fa-gift"></i>Reward</div></button>
+</div>
+
+
+<script>
+// Hamburger toggle
+const hamburger = document.getElementById('hamburger');
+const navLinks = document.getElementById('nav-links');
+hamburger.addEventListener('click', () => { navLinks.classList.toggle('active'); });
+
+// --- Check login ---
+const user = JSON.parse(localStorage.getItem('user'));
+if(!user){
+  window.location.href = 'paymelogin.html';
+} else {
+  document.querySelector('.header h2').innerText = `Hi, ${user.username} 👋`;
+  document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
+}
+
+// --- Logout ---
+document.getElementById('logout').addEventListener('click', () => {
+  localStorage.removeItem('user');
+  window.location.href = 'paymelogin.html';
+});
+
+// --- Helper function to call backend ---
+async function callBackend(route, amount = 0) {
+  if(!user){
+    window.location.href = 'paymelogin.html';
+    return;
+  }
+  const res = await fetch(`https://your-backend-url.onrender.com/${route}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: user.id, amount })
+  });
+  const data = await res.json();
+  if(res.ok){
+    user.balance = data.balance;
+    localStorage.setItem('user', JSON.stringify(user));
+    document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
+  }
+  alert(data.message);
+}
+
+// --- Add Money ---
+document.getElementById('addMoney').addEventListener('click', async () => {
+  const amount = parseFloat(prompt("Enter amount to add:"));
+  if(!isNaN(amount)) await callBackend('update-balance', amount);
+});
+
+// --- Send / Transfer / Airtime / Quick Actions ---
+document.getElementById('toBank').addEventListener('click', async () => {
+  const amount = parseFloat(prompt("Enter amount to transfer to bank:"));
+  if(!isNaN(amount)) await callBackend('transfer', amount);
+});
+
+document.getElementById('toWallet').addEventListener('click', async () => {
+  const amount = parseFloat(prompt("Enter amount to send to another wallet:"));
+  if(!isNaN(amount)) await callBackend('send', amount);
+});
+
+document.getElementById('atmcard').addEventListener('click', () => {
+  alert("ATM card feature coming soon!");
+});
+
+// --- Services ---
+document.getElementById('airtime').addEventListener('click', async () => {
+  const amount = parseFloat(prompt("Enter airtime amount:"));
+  if(!isNaN(amount)) await callBackend('airtime', amount);
+});
+
+document.getElementById('data').addEventListener('click', () => {
+  alert("Data purchase feature coming soon!");
+});
+document.getElementById('electric').addEventListener('click', () => {
+  alert("Electricity payment feature coming soon!");
+});
+document.getElementById('betting').addEventListener('click', () => {
+  alert("Betting feature coming soon!");
+});
+document.getElementById('tv').addEventListener('click', () => {
+  alert("TV subscription feature coming soon!");
+});
+document.getElementById('loan').addEventListener('click', () => {
+  alert("Loan feature coming soon!");
+});
+document.getElementById('business').addEventListener('click', () => {
+  alert("Business feature coming soon!");
+});
+document.getElementById('earn').addEventListener('click', () => {
+  alert("Refer & Earn feature coming soon!");
+});
+
+// --- Bottom Nav ---
+document.getElementById('home').addEventListener('click', () => { alert("Already on Home!"); });
+document.getElementById('loanBottom').addEventListener('click', () => { alert("Loan feature coming soon!"); });
+document.getElementById('wealth').addEventListener('click', () => { alert("Wealth feature coming soon!"); });
+document.getElementById('reward').addEventListener('click', () => { alert("Reward feature coming soon!"); });
+// Example: Protect other buttons (redirect to login if no user)
+const buttons = ['toBank','toWallet','atmcard','airtime','data','electric','betting','tv','loan','business','earn','home','loanBottom','wealth','reward'];
+buttons.forEach(id => {
+  const btn = document.getElementById(id);
+  btn.addEventListener('click', () => {
+    if(!user) window.location.href = 'paymelogin.html';
+  });
+});
+</script>
+
+</body>
+  </html>
+  
