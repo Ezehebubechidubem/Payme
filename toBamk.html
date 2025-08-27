@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8>
+    <title>toBank</title>
+</head>
+    <body>
+<script>
+// Show modal on To Bank click
+document.getElementById('toBank').addEventListener('click', () => {
+  document.getElementById('bankModal').style.display = 'flex';
+  document.getElementById('bankAcct').value = '';
+  document.getElementById('bankAmount').value = '';
+  document.getElementById('receiverName').innerText = '';
+});
+
+// Auto-display recipient name when account number is typed
+document.getElementById('bankAcct').addEventListener('input', () => {
+  const acct = document.getElementById('bankAcct').value;
+  const allUsers = JSON.parse(localStorage.getItem('allUsers')) || [];
+  const receiver = allUsers.find(u => u.accountNumber === acct);
+  if(receiver){
+    document.getElementById('receiverName').innerText = `Recipient: ${receiver.username}`;
+  } else {
+    document.getElementById('receiverName').innerText = '';
+  }
+});
+
+// Send money button inside modal
+document.getElementById('sendBankMoney').addEventListener('click', async () => {
+  const acct = document.getElementById('bankAcct').value;
+  const amount = parseFloat(document.getElementById('bankAmount').value);
+  if(!acct || isNaN(amount)) { alert("Please fill all fields correctly"); return; }
+
+  const allUsers = JSON.parse(localStorage.getItem('allUsers')) || [];
+  const receiver = allUsers.find(u => u.accountNumber === acct);
+  if(!receiver){ alert("❌ Account not found!"); return; }
+
+  // Call backend
+  const res = await fetch('https://payme-pvwh.onrender.com/send-to-bank', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ senderId: user.id, receiverId: receiver.id, amount })
+  });
+  const data = await res.json();
+  if(res.ok){
+    user.balance = data.balance;
+    localStorage.setItem('user', JSON.stringify(user));
+    document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
+    alert("✅ Transfer successful!");
+    document.getElementById('bankModal').style.display = 'none';
+  } else {
+    alert(data.message);
+  }
+});
+</script>
+</body>
+</html>
