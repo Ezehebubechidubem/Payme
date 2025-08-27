@@ -106,31 +106,29 @@ body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
 
 <!-- Quick Actions -->
 <div class="quick-actions">
-  <button id="toBank" onclick="window.location.href='toBank.html'">
-  <i class="fas fa-university"></i><br>To Bank
-  </button>
-  <button id="toWallet"><div><i class="fas fa-wallet"></i><br>To Wallet</div></button>
-  <button id="atmcard"><div><i class="fas fa-credit-card"></i><br>ATM Card</div></button>
+  <button id="toBank"><i class="fas fa-university"></i><br>To Bank</button>
+  <button id="toWallet"><i class="fas fa-wallet"></i><br>To Wallet</button>
+  <button id="atmcard"><i class="fas fa-credit-card"></i><br>ATM Card</button>
 </div>
 
 <!-- Services -->
 <div class="services">
-  <button id="airtime"><div><i class="fas fa-phone"></i><br>Airtime</div></button>
-  <button id="data"><div><i class="fas fa-wifi"></i><br>Data</div></button>
-  <button id="electric"><div><i class="fas fa-bolt"></i><br>Electricity</div></button>
-  <button id="betting"><div><i class="fas fa-futbol"></i><br>Betting</div></button>
-  <button id="tv"><div><i class="fas fa-tv"></i><br>TV</div></button>
-  <button id="loan"><div><i class="fas fa-hand-holding-usd"></i><br>Loan</div></button>
-  <button id="business"><div><i class="fas fa-briefcase"></i><br>Business</div></button>
-  <button id="earn"><div><i class="fas fa-users"></i><br>Refer & Earn</div></button>
+  <button id="airtime"><i class="fas fa-phone"></i><br>Airtime</button>
+  <button id="data"><i class="fas fa-wifi"></i><br>Data</button>
+  <button id="electric"><i class="fas fa-bolt"></i><br>Electricity</button>
+  <button id="betting"><i class="fas fa-futbol"></i><br>Betting</button>
+  <button id="tv"><i class="fas fa-tv"></i><br>TV</button>
+  <button id="loan"><i class="fas fa-hand-holding-usd"></i><br>Loan</button>
+  <button id="business"><i class="fas fa-briefcase"></i><br>Business</button>
+  <button id="earn"><i class="fas fa-users"></i><br>Refer & Earn</button>
 </div>
 
 <!-- Bottom Nav -->
 <div class="bottom-nav">
-  <button id="home"><div><i class="fas fa-home"></i>Home</div></button>
-  <button id="loanBottom"><div><i class="fas fa-credit-card"></i>Loan</div></button>
-  <button id="wealth"><div><i class="fas fa-chart-line"></i>Wealth</div></button>
-  <button id="reward"><div><i class="fas fa-gift"></i>Reward</div></button>
+  <button id="home"><i class="fas fa-home"></i>Home</button>
+  <button id="loanBottom"><i class="fas fa-credit-card"></i>Loan</button>
+  <button id="wealth"><i class="fas fa-chart-line"></i>Wealth</button>
+  <button id="reward"><i class="fas fa-gift"></i>Reward</button>
 </div>
 
 <!-- Profile Modal -->
@@ -179,10 +177,7 @@ document.getElementById('profileLink').addEventListener('click', () => {
 
 // --- Helper function to call backend ---
 async function callBackend(route, amount = 0, extra={}) {
-  if(!user){
-    window.location.href = 'paymelogin.html';
-    return;
-  }
+  if(!user){ window.location.href = 'paymelogin.html'; return; }
   const res = await fetch(`https://payme-pvwh.onrender.com/${route}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -207,19 +202,34 @@ document.getElementById('addMoney').addEventListener('click', async () => {
 document.getElementById('toWallet').addEventListener('click', async () => {
   const acct = prompt("Enter receiver account number (10 digits):");
   if(!acct) return;
-  const allUsers = JSON.parse(localStorage.getItem('allUsers')) || [];
-  const receiver = allUsers.find(u => u.accountNumber === acct);
-  if(!receiver){ alert("❌ Account not found!"); return; }
-  alert("Receiver: " + receiver.username);
   const amount = parseFloat(prompt("Enter amount to send:"));
-  if(!isNaN(amount)) await callBackend('send', amount, {receiverId: receiver.id});
+  if(isNaN(amount)) return alert("Invalid amount!");
+
+  const res = await fetch(`https://payme-pvwh.onrender.com/send`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      senderId: user.id,
+      receiverAccountNumber: acct,
+      amount: amount
+    })
+  });
+  const data = await res.json();
+  if(res.ok){
+    user.balance = data.balance;
+    localStorage.setItem('user', JSON.stringify(user));
+    document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
+  }
+  alert(data.message);
 });
 
-// --- Other Quick Actions ---
+// --- To Bank ---
 document.getElementById('toBank').addEventListener('click', async () => {
   const amount = parseFloat(prompt("Enter amount to transfer to bank:"));
   if(!isNaN(amount)) await callBackend('transfer', amount);
 });
+
+// --- Other Quick Actions ---
 document.getElementById('atmcard').addEventListener('click', () => { alert("ATM card feature coming soon!"); });
 
 // --- Services ---
@@ -245,9 +255,7 @@ document.getElementById('reward').addEventListener('click', () => { alert("Rewar
 const buttons = ['toBank','toWallet','atmcard','airtime','data','electric','betting','tv','loan','business','earn','home','loanBottom','wealth','reward'];
 buttons.forEach(id => {
   const btn = document.getElementById(id);
-  btn.addEventListener('click', () => {
-    if(!user) window.location.href = 'paymelogin.html';
-  });
+  btn.addEventListener('click', () => { if(!user) window.location.href = 'paymelogin.html'; });
 });
 </script>
 
