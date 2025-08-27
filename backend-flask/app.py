@@ -190,37 +190,29 @@ def send():
 def send_to_bank():
     data = request.json
     try:
-        sender_id = int(data.get('senderId'))
-        receiver_id = int(data.get('receiverId'))
+        sender_id = int(data.get('userId'))
         amount = float(data.get('amount'))
+        bank_name = data.get('bankName')
+        account_number = data.get('accountNumber')
     except Exception:
         return jsonify({'message': 'Invalid input'}), 400
 
     sender = find_user_by_id(sender_id)
-    receiver = find_user_by_id(receiver_id)
-    if not sender or not receiver:
+    if not sender:
         return jsonify({'message': 'User not found'}), 404
     if sender['balance'] < amount:
         return jsonify({'message': 'Insufficient funds'}), 400
 
     sender['balance'] -= amount
-    receiver['balance'] += amount
-
     ts = now_iso()
     sender.setdefault("transactions", []).append({
         "type": "send-to-bank",
         "amount": amount,
         "timestamp": ts,
-        "details": f"Sent to {receiver.get('username')} ({receiver.get('accountNumber')})"
-    })
-    receiver.setdefault("transactions", []).append({
-        "type": "receive-from-bank",
-        "amount": amount,
-        "timestamp": ts,
-        "details": f"Received from {sender.get('username')} ({sender.get('accountNumber')})"
+        "details": f"Sent to {bank_name} ({account_number})"
     })
     save_users()
-    return jsonify({'message': f'₦{amount} sent to {receiver["username"]}', 'balance': sender['balance']}), 200
+    return jsonify({'message': f'₦{amount} sent to {bank_name} ({account_number})', 'balance': sender['balance']}), 200
 
 # --- Optional DB dump for debugging ---
 @app.route("/_db", methods=["GET"])
