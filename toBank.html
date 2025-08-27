@@ -18,14 +18,14 @@ button:hover { background-color: #4cd137; }
 </head>
 <body>
 <div class="container">
-<h2>Send Money</h2>
-<input type="text" id="receiverAccount" placeholder="Receiver Account Number">
-<div class="info" id="receiverName">Receiver: N/A</div>
-<input type="number" id="amount" placeholder="Amount to Send">
-<button id="sendBtn">Send Money</button>
-<div class="success" id="successMsg"></div>
-<div class="error" id="errorMsg"></div>
-<div class="info" id="balance">Your Balance: ₦0</div>
+  <h2>Send Money</h2>
+  <input type="text" id="receiverAccount" placeholder="Receiver Account Number">
+  <div class="info" id="receiverName">Receiver: N/A</div>
+  <input type="number" id="amount" placeholder="Amount to Send">
+  <button id="sendBtn">Send Money</button>
+  <div class="success" id="successMsg"></div>
+  <div class="error" id="errorMsg"></div>
+  <div class="info" id="balance">Your Balance: ₦0</div>
 </div>
 
 <script>
@@ -38,4 +38,81 @@ const receiverInput = document.getElementById('receiverAccount');
 const receiverName = document.getElementById('receiverName');
 const amountInput = document.getElementById('amount');
 const sendBtn = document.getElementById('sendBtn');
-const successMsg = document.getElement
+const successMsg = document.getElementById('successMsg');
+const errorMsg = document.getElementById('errorMsg');
+const balanceDisplay = document.getElementById('balance');
+
+let receiverId = null;
+
+// Show initial balance
+balanceDisplay.textContent = `Your Balance: ₦${balance}`;
+
+// Resolve receiver account number
+receiverInput.addEventListener('input', async () => {
+  const acc = receiverInput.value.trim();
+  receiverName.textContent = 'Receiver: N/A';
+  receiverId = null;
+  if(acc.length === 10){
+    try {
+      const res = await fetch(`https://payme-pvwh.onrender.com/resolve-account/${acc}`);
+      const data = await res.json();
+      console.log(data); // Debug
+      if(data.exists){
+        receiverName.textContent = `Receiver: ${data.name}`;
+        receiverId = data.id;
+      } else {
+        receiverName.textContent = 'Receiver: Not found';
+      }
+    } catch(err){
+      console.error('Error resolving account', err);
+    }
+  }
+});
+
+// Send money
+sendBtn.addEventListener('click', async () => {
+  successMsg.textContent = '';
+  errorMsg.textContent = '';
+  const amt = parseFloat(amountInput.value);
+
+  if(!receiverId){
+    errorMsg.textContent = 'Please enter a valid receiver account number.';
+    return;
+  }
+  if(!amt || amt <= 0){
+    errorMsg.textContent = 'Please enter a valid amount.';
+    return;
+  }
+  if(amt > balance){
+    errorMsg.textContent = 'Insufficient balance.';
+    return;
+  }
+
+  try {
+    const res = await fetch('https://payme-pvwh.onrender.com/send-to-bank', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ senderId, receiverId, amount: amt })
+    });
+    const data = await res.json();
+    if(res.ok){
+      // Update localStorage and balance
+      balance = data.balance;
+      user.balance = balance;
+      localStorage.setItem('user', JSON.stringify(user));
+      balanceDisplay.textContent = `Your Balance: ₦${balance}`;
+      successMsg.textContent = data.message;
+      amountInput.value = '';
+      receiverInput.value = '';
+      receiverName.textContent = 'Receiver: N/A';
+    } else {
+      errorMsg.textContent = data.message || 'Transaction failed';
+    }
+  } catch(err){
+    console.error(err);
+    errorMsg.textContent = 'Error sending money';
+  }
+});
+</script>
+</body>
+</html>
