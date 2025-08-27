@@ -264,3 +264,21 @@ if __name__ == "__main__":
     # Use PORT environment variable on Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+@app.route('/send-to-bank', methods=['POST'])
+def send_to_bank():
+    data = request.json
+    sender_id = data['senderId']
+    receiver_id = data['receiverId']
+    amount = float(data['amount'])
+
+    if sender_id not in users or receiver_id not in users:
+        return jsonify({'message': 'User not found'}), 404
+
+    if users[sender_id]['balance'] < amount:
+        return jsonify({'message': 'Insufficient funds'}), 400
+
+    users[sender_id]['balance'] -= amount
+    users[receiver_id]['balance'] += amount
+
+    return jsonify({'message': f'₦{amount} sent to {users[receiver_id]["username"]}', 
+                    'balance': users[sender_id]['balance']})
