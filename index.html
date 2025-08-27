@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PayGo Dashboard</title>
+<title>PayMe Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
 /* --- NAVBAR --- */
@@ -129,15 +129,15 @@ const hamburger = document.getElementById('hamburger');
 const navLinks = document.getElementById('nav-links');
 hamburger.addEventListener('click', () => { navLinks.classList.toggle('active'); });
 
-// --- Check login ---
+// --- Check login and update dashboard ---
 let user = JSON.parse(localStorage.getItem('user'));
-if(!user){
-  window.location.href = 'paymelogin.html';
-} else {
+if(!user){ window.location.href = 'paymelogin.html'; }
+else{
   document.querySelector('.header h2').innerText = `Hi, ${user.username} 👋`;
+  document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
 }
 
-// --- Refresh Balance from Backend ---
+// --- Refresh balance from backend ---
 async function refreshBalance(){
   if(!user) return;
   try{
@@ -193,8 +193,7 @@ document.getElementById('toBank').addEventListener('click', () => {
   window.location.href='toBank.html';
 });
 
-// --- Other features remain unchanged ---
+// Other features (ATM, airtime, etc.) remain untouched
 </script>
-
 </body>
 </html>
