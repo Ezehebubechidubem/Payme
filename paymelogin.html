@@ -3,38 +3,75 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login - PayMe</title>
+<title>PayMe Register</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f7f7f7;
+  display: flex; justify-content: center; align-items: center;
+  height: 100vh; margin: 0;
+}
+.container {
+  background: white;
+  padding: 25px;
+  border-radius: 10px;
+  width: 100%; max-width: 400px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+h2 { text-align: center; margin-bottom: 20px; }
+input {
+  width: 100%; padding: 10px; margin: 10px 0;
+  border: 1px solid #ccc; border-radius: 6px;
+}
+button {
+  width: 100%; padding: 12px;
+  background: #5b4dff; color: white;
+  border: none; border-radius: 6px;
+  cursor: pointer; font-size: 16px;
+}
+button:hover { background: #4332e0; }
+p { text-align: center; }
+a { color: #5b4dff; text-decoration: none; }
+</style>
 </head>
 <body>
-<h2>Login</h2>
-<form id="loginForm">
-  <input type="email" id="email" placeholder="Email" required><br><br>
-  <input type="password" id="password" placeholder="Password" required><br><br>
-  <button type="submit">Login</button>
-</form>
-<p>Don't have an account? <a href="paymeregister.html">Register here</a></p>
+<div class="container">
+  <h2>Create Account</h2>
+  <input type="text" id="username" placeholder="Username" required>
+  <input type="email" id="email" placeholder="Email" required>
+  <input type="tel" id="phone" placeholder="Phone (e.g. 08123456789)" required>
+  <input type="password" id="password" placeholder="Password" required>
+  <button onclick="register()">Register</button>
+  <p>Already have an account? <a href="paymelogin.html">Login</a></p>
+</div>
 
 <script>
-const loginForm = document.getElementById('loginForm');
+async function register(){
+  const username = document.getElementById('username').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const password = document.getElementById('password').value.trim();
 
-loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
-
-  const res = await fetch('https://payme-xkga.onrender.com/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  });
-  
-  const data = await res.json();
-  alert(data.message);
-  if(res.ok){
-    localStorage.setItem('user', JSON.stringify(data.user));
-    window.location.href = 'index.html';
+  if(!username || !email || !phone || !password){
+    return alert("All fields are required!");
   }
-});
+
+  try {
+    const res = await fetch("http://localhost:5000/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, email, phone, password })
+    });
+    const data = await res.json();
+    alert(data.message);
+    if(res.ok){
+      localStorage.setItem("user", JSON.stringify(data.user));
+      window.location.href = "index.html";
+    }
+  } catch(err){
+    alert("Error connecting to server");
+  }
+}
 </script>
 </body>
 </html>
