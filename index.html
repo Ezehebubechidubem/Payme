@@ -54,6 +54,21 @@ body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
 .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #ddd; }
 .bottom-nav div { text-align: center; font-size: 14px; color: gray; }
 .bottom-nav div i { display: block; font-size: 20px; margin-bottom: 5px; color: purple; }
+
+/* Profile Modal */
+#profileModal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  justify-content: center; align-items: center;
+}
+#profileModal .modal-content {
+  background: white; padding: 20px;
+  border-radius: 10px; width: 90%; max-width: 400px;
+}
+#profileModal h2 { margin-top: 0; }
 </style>
 </head>
 <body>
@@ -116,6 +131,19 @@ body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
   <button id="reward"><div><i class="fas fa-gift"></i>Reward</div></button>
 </div>
 
+<!-- Profile Modal -->
+<div id="profileModal">
+  <div class="modal-content">
+    <h2>My Profile</h2>
+    <p><b>Username:</b> <span id="profileUsername"></span></p>
+    <p><b>Email:</b> <span id="profileEmail"></span></p>
+    <p><b>Phone:</b> <span id="profilePhone"></span></p>
+    <p><b>Account No:</b> <span id="profileAccount"></span></p>
+    <p><b>Balance:</b> ₦<span id="profileBalance"></span></p>
+    <button onclick="document.getElementById('profileModal').style.display='none'">Close</button>
+  </div>
+</div>
+
 <script>
 // Hamburger toggle
 const hamburger = document.getElementById('hamburger');
@@ -137,13 +165,18 @@ document.getElementById('logout').addEventListener('click', () => {
   window.location.href = 'paymelogin.html';
 });
 
-// --- Hamburger Links ---
-document.getElementById('profileLink').addEventListener('click', () => { alert("Profile page coming soon!"); });
-document.getElementById('walletLink').addEventListener('click', () => { alert("Wallet page coming soon!"); });
-document.getElementById('settingsLink').addEventListener('click', () => { alert("Settings page coming soon!"); });
+// --- Profile Modal ---
+document.getElementById('profileLink').addEventListener('click', () => {
+  document.getElementById('profileUsername').innerText = user.username;
+  document.getElementById('profileEmail').innerText = user.email;
+  document.getElementById('profilePhone').innerText = user.phone;
+  document.getElementById('profileAccount').innerText = user.accountNumber;
+  document.getElementById('profileBalance').innerText = user.balance;
+  document.getElementById('profileModal').style.display = 'flex';
+});
 
 // --- Helper function to call backend ---
-async function callBackend(route, amount = 0) {
+async function callBackend(route, amount = 0, extra={}) {
   if(!user){
     window.location.href = 'paymelogin.html';
     return;
@@ -151,7 +184,7 @@ async function callBackend(route, amount = 0) {
   const res = await fetch(`https://payme-xkga.onrender.com/${route}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: user.id, amount })
+    body: JSON.stringify({ userId: user.id, amount, ...extra })
   });
   const data = await res.json();
   if(res.ok){
@@ -168,14 +201,22 @@ document.getElementById('addMoney').addEventListener('click', async () => {
   if(!isNaN(amount)) await callBackend('update-balance', amount);
 });
 
-// --- Send / Transfer / Quick Actions ---
+// --- Transfer to Wallet by account number ---
+document.getElementById('toWallet').addEventListener('click', async () => {
+  const acct = prompt("Enter receiver account number (10 digits):");
+  if(!acct) return;
+  const allUsers = JSON.parse(localStorage.getItem('allUsers')) || [];
+  const receiver = allUsers.find(u => u.accountNumber === acct);
+  if(!receiver){ alert("❌ Account not found!"); return; }
+  alert("Receiver: " + receiver.username);
+  const amount = parseFloat(prompt("Enter amount to send:"));
+  if(!isNaN(amount)) await callBackend('send', amount, {receiverId: receiver.id});
+});
+
+// --- Other Quick Actions ---
 document.getElementById('toBank').addEventListener('click', async () => {
   const amount = parseFloat(prompt("Enter amount to transfer to bank:"));
   if(!isNaN(amount)) await callBackend('transfer', amount);
-});
-document.getElementById('toWallet').addEventListener('click', async () => {
-  const amount = parseFloat(prompt("Enter amount to send to another wallet:"));
-  if(!isNaN(amount)) await callBackend('send', amount);
 });
 document.getElementById('atmcard').addEventListener('click', () => { alert("ATM card feature coming soon!"); });
 
@@ -209,4 +250,4 @@ buttons.forEach(id => {
 </script>
 
 </body>
-</html>
+    </html>
