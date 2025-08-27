@@ -57,7 +57,7 @@ async function register(){
   }
 
   try {
-    const res = await fetch("https://payme-pvwh.onrender.com/register", {
+    const res = await fetch("https://payme-pvwh.onrender.com/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, email, phone, password })
