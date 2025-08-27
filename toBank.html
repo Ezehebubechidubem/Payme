@@ -3,45 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Transfer to Bank</title>
-<style>
-body { font-family: Arial, sans-serif; background: #f7f7f7; margin:0; padding:20px; }
-.container { max-width: 400px; margin: auto; background:white; padding:20px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
-input, select { width:100%; padding:10px; margin:10px 0; border-radius:6px; border:1px solid #ccc; }
-button { width:100%; padding:12px; background:#5b4dff; color:white; border:none; border-radius:6px; cursor:pointer; }
-button:hover{ background:#4332e0; }
-</style>
+<title>Send to Bank</title>
 </head>
 <body>
-<div class="container">
-  <h2>Transfer to Bank</h2>
-  <input type="text" id="bankName" placeholder="Bank Name">
-  <input type="text" id="accountNumber" placeholder="Account Number">
-  <input type="number" id="amount" placeholder="Amount">
-  <button onclick="transferToBank()">Send</button>
-</div>
+<h2>Send Money to Bank</h2>
+<label>Receiver ID: <input type="text" id="receiver"></label><br>
+<label>Amount: <input type="text" id="amount"></label><br>
+<button onclick="sendToBank()">Send</button>
 
 <script>
-async function transferToBank(){
-  const userId = localStorage.getItem('userId');
-  if(!userId){ alert("Login required"); window.location.href="paymelogin.html"; return; }
+let senderId = localStorage.getItem('userId');
+if(!senderId) window.location.href="login.html";
 
-  const bankName = document.getElementById('bankName').value.trim();
-  const accountNumber = document.getElementById('accountNumber').value.trim();
-  const amount = parseFloat(document.getElementById('amount').value);
+async function sendToBank(){
+  const receiverId=document.getElementById('receiver').value;
+  const amount=document.getElementById('amount').value;
+  if(!receiverId||!amount) return alert("Enter all fields");
 
-  if(!bankName || !accountNumber || isNaN(amount)){ return alert("All fields are required"); }
-
-  try{
-    const res = await fetch("https://payme-pvwh.onrender.com/transfer-bank", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ userId, bankName, accountNumber, amount })
-    });
-    const data = await res.json();
-    alert(data.message);
-    if(res.ok){ window.location.href="index.html"; }
-  }catch(err){ console.error(err); alert("Error sending money"); }
+  const res=await fetch("http://127.0.0.1:5000/send-to-bank",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({senderId, receiverId, amount})
+  });
+  const data=await res.json();
+  alert(data.message);
 }
 </script>
 </body>
