@@ -129,34 +129,29 @@ const hamburger = document.getElementById('hamburger');
 const navLinks = document.getElementById('nav-links');
 hamburger.addEventListener('click', () => { navLinks.classList.toggle('active'); });
 
-// --- Check login and update dashboard ---
-let user = JSON.parse(localStorage.getItem('user'));
-if(!user){ window.location.href = 'paymelogin.html'; }
-else{
-  document.querySelector('.header h2').innerText = `Hi, ${user.username} 👋`;
-  document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
-}
+// --- Fetch user data from backend ---
+let userId = localStorage.getItem('userId'); // only store minimal info like userId
+if(!userId){ window.location.href='paymelogin.html'; }
 
-// --- Refresh balance from backend ---
-async function refreshBalance(){
-  if(!user) return;
+let user = {}; // will be fetched from backend
+
+async function fetchUser(){
   try{
-    const res = await fetch(`https://payme-pvwh.onrender.com/user/${user.id}`);
+    const res = await fetch(`https://payme-pvwh.onrender.com/user/${userId}`);
     if(res.ok){
-      const data = await res.json();
-      user.balance = data.balance;
-      localStorage.setItem('user', JSON.stringify(user));
+      user = await res.json();
+      document.querySelector('.header h2').innerText = `Hi, ${user.username} 👋`;
       document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
     }
-  } catch(err){ console.error(err); }
+  }catch(err){ console.error(err); }
 }
-refreshBalance();
-window.addEventListener('focus', refreshBalance);
+fetchUser();
+window.addEventListener('focus', fetchUser);
 
 // --- Logout ---
 document.getElementById('logout').addEventListener('click', () => {
-  localStorage.removeItem('user');
-  window.location.href = 'paymelogin.html';
+  localStorage.removeItem('userId');
+  window.location.href='paymelogin.html';
 });
 
 // --- Profile Modal ---
@@ -166,34 +161,33 @@ document.getElementById('profileLink').addEventListener('click', () => {
   document.getElementById('profilePhone').innerText = user.phone;
   document.getElementById('profileAccount').innerText = user.accountNumber;
   document.getElementById('profileBalance').innerText = user.balance;
-  document.getElementById('profileModal').style.display = 'flex';
+  document.getElementById('profileModal').style.display='flex';
 });
 
 // --- Add Money ---
 document.getElementById('addMoney').addEventListener('click', async () => {
   const amount = parseFloat(prompt("Enter amount to add:"));
   if(!isNaN(amount)){
-    const res = await fetch('https://payme-pvwh.onrender.com/update-balance', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ userId: user.id, amount })
-    });
-    const data = await res.json();
-    if(res.ok){
-      user.balance = data.balance;
-      localStorage.setItem('user', JSON.stringify(user));
-      document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
-    }
-    alert(data.message);
+    try{
+      const res = await fetch('https://payme-pvwh.onrender.com/update-balance', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ userId, amount })
+      });
+      const data = await res.json();
+      if(res.ok){
+        user.balance = data.balance;
+        document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
+      }
+      alert(data.message);
+    }catch(err){ console.error(err); alert('Error adding money'); }
   }
 });
 
 // --- To Bank ---
-document.getElementById('toBank').addEventListener('click', () => {
-  window.location.href='toBank.html';
-});
+document.getElementById('toBank').addEventListener('click', () => { window.location.href='toBank.html'; });
 
-// Other features (ATM, airtime, etc.) remain untouched
+// Other features remain untouched
 </script>
 </body>
 </html>
