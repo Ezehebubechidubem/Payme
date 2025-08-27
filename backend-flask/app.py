@@ -1,222 +1,94 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import json
-import os
-from pathlib import Path
-from datetime import datetime
-
-BASE_DIR = Path(__file__).resolve().parent
-DB_FILE = BASE_DIR / "users.json"
 
 app = Flask(__name__)
 CORS(app)
 
-# Ensure DB exists
-if not DB_FILE.exists():
-    DB_FILE.write_text("[]", encoding="utf-8")
+# Simple in-memory database (for demo)
+users = []  # Each user: {id, username, email, phone, accountNumber, password, balance}
 
-# Load DB
-try:
-    with DB_FILE.open("r", encoding="utf-8") as f:
-        users = json.load(f)
-except:
-    users = []
-
-def save_users():
-    with DB_FILE.open("w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2)
-
-def next_id():
-    try:
-        return max([u.get("id",0) for u in users]) + 1
-    except:
-        return 1
-
-def find_user_by_id(uid):
-    return next((u for u in users if u.get("id") == uid), None)
-
-def find_user_by_email(email):
-    return next((u for u in users if u.get("email").lower() == email.lower()), None)
-
-def find_user_by_account(acc):
-    return next((u for u in users if u.get("accountNumber") == acc), None)
-
-def account_number_from_phone(phone):
-    digits = "".join([c for c in phone if c.isdigit()])
-    return digits[-10:] if len(digits) >= 10 else None
-
-def now_iso():
-    return datetime.utcnow().isoformat() + "Z"
-
-# --- Routes ---
-@app.route("/")
-def home():
-    return jsonify({"message":"PayMe API running"}),200
-
-# Registration
-@app.route("/register", methods=["POST"])
+# --- Register ---
+@app.route('/register', methods=['POST'])
 def register():
-    data = request.get_json() or {}
-    username = data.get("username")
-    email = data.get("email")
-    phone = data.get("phone")
-    password = data.get("password")
+    data = request.get_json()
+    username = data.get('username')
+    email = data.get('email')
+    phone = data.get('phone')
+    password = data.get('password')
 
     if not username or not email or not phone or not password:
-        return jsonify({"message":"All fields required"}),400
+        return jsonify({'message': 'All fields are required'}), 400
 
-    phone_digits = "".join([c for c in phone if c.isdigit()])
-    acc = account_number_from_phone(phone)
-    # Check duplicates
+    if len(phone) != 11 or not phone.isdigit():
+        return jsonify({'message': 'Phone must be 11 digits'}), 400
+
+    # Check if phone already exists
     for u in users:
-        if (u.get("email").lower() == email.lower() or
-            u.get("username").lower() == username.lower() or
-            u.get("phone") == phone_digits or
-            u.get("accountNumber") == acc):
-            return jsonify({"message":"Email, username, phone, or account already exists"}),400
+        if u['phone'] == phone:
+            return jsonify({'message': 'Phone number already registered'}), 400
+
+    # Account number = full phone number (as-is)
+    account_number = phone
 
     user = {
-        "id": next_id(),
-        "username": username,
-        "email": email,
-        "phone": phone_digits,
-        "accountNumber": acc,
-        "password": password,
-        "balance": 0,
-        "transactions": []
+        'id': len(users) + 1,
+        'username': username,
+        'email': email,
+        'phone': phone,
+        'accountNumber': account_number,
+        'password': password,
+        'balance': 0
     }
     users.append(user)
-    save_users()
-    safe_user = {k:v for k,v in user.items() if k!="password"}
-    return jsonify({"message":"Registration successful","user":safe_user}),201
+    return jsonify({'user': user, 'message': 'Registered successfully!'}), 200
 
-# Login
-@app.route("/login", methods=["POST"])
+# --- Login ---
+@app.route('/login', methods=['POST'])
 def login():
-    data = request.get_json() or {}
-    email = data.get("email")
-    password = data.get("password")
-    if not email or not password:
-        return jsonify({"message":"Email & password required"}),400
-    user = find_user_by_email(email)
-    if not user or user.get("password") != password:
-        return jsonify({"message":"Invalid credentials"}),400
-    safe_user = {k:v for k,v in user.items() if k!="password"}
-    return jsonify({"message":"Login successful","user":safe_user}),200
+    data = request.get_json()
+    phone = data.get('phone')
+    password = data.get('password')
 
-# Get user by ID
-@app.route("/user/<int:userId>")
-def get_user(userId):
-    user = find_user_by_id(userId)
-    if not user: return jsonify({"message":"User not found"}),404
-    safe_user = {k:v for k,v in user.items() if k!="password"}
-    return jsonify(safe_user),200
+    for user in users:
+        if user['phone'] == phone and user['password'] == password:
+            return jsonify({'user': user, 'message': 'Login successful!'}), 200
 
-# Add money
-@app.route("/update-balance", methods=["POST"])
+    return jsonify({'message': 'Invalid phone number or password'}), 401
+
+# --- Update Balance ---
+@app.route('/update-balance', methods=['POST'])
 def update_balance():
-    data = request.get_json() or {}
-    try:
-        userId = int(data.get("userId"))
-        amount = float(data.get("amount"))
-    except:
-        return jsonify({"message":"Invalid input"}),400
-    user = find_user_by_id(userId)
-    if not user: return jsonify({"message":"User not found"}),404
-    if amount <= 0: return jsonify({"message":"Amount must be positive"}),400
-    user["balance"] += amount
-    user.setdefault("transactions",[]).append({
-        "type":"add",
-        "amount":amount,
-        "timestamp":now_iso(),
-        "details":"Wallet top-up"
-    })
-    save_users()
-    return jsonify({"message":f"₦{amount} added","balance":user["balance"]}),200
+    data = request.get_json()
+    user_id = data.get('userId')
+    amount = data.get('amount')
 
-# Send to another wallet
-@app.route("/send", methods=["POST"])
-def send():
-    data = request.get_json() or {}
-    try:
-        sender_id = int(data.get("userId"))
-        receiver_acc = str(data.get("receiverAccount"))
-        amount = float(data.get("amount"))
-    except:
-        return jsonify({"message":"Invalid input"}),400
+    for user in users:
+        if user['id'] == user_id:
+            user['balance'] += float(amount)
+            return jsonify({'balance': user['balance'], 'message': 'Balance updated!'}), 200
 
-    sender = find_user_by_id(sender_id)
-    receiver = find_user_by_account(receiver_acc)
-    if not sender or not receiver: return jsonify({"message":"User not found"}),404
-    if sender["balance"] < amount: return jsonify({"message":"Insufficient balance"}),400
-    if sender["id"] == receiver["id"]: return jsonify({"message":"Cannot send to self"}),400
+    return jsonify({'message': 'User not found'}), 404
 
-    sender["balance"] -= amount
-    receiver["balance"] += amount
-    ts = now_iso()
-    sender.setdefault("transactions",[]).append({
-        "type":"send",
-        "amount":amount,
-        "timestamp":ts,
-        "details":f"Sent to {receiver.get('username')} ({receiver.get('accountNumber')})"
-    })
-    receiver.setdefault("transactions",[]).append({
-        "type":"receive",
-        "amount":amount,
-        "timestamp":ts,
-        "details":f"Received from {sender.get('username')} ({sender.get('accountNumber')})"
-    })
-    save_users()
-    return jsonify({"message":f"₦{amount} sent to {receiver.get('username')}","balance":sender["balance"]}),200
+# --- Send Money ---
+@app.route('/send', methods=['POST'])
+def send_money():
+    data = request.get_json()
+    sender_id = data.get('userId')
+    receiver_phone = data.get('receiverPhone')
+    amount = float(data.get('amount'))
 
-# Send to Bank
-@app.route("/send-to-bank", methods=["POST"])
-def send_to_bank():
-    data = request.get_json() or {}
-    try:
-        sender_id = int(data.get("senderId"))
-        receiver_id = int(data.get("receiverId"))
-        amount = float(data.get("amount"))
-    except:
-        return jsonify({"message":"Invalid input"}),400
-    sender = find_user_by_id(sender_id)
-    receiver = find_user_by_id(receiver_id)
-    if not sender or not receiver: return jsonify({"message":"User not found"}),404
-    if sender["balance"] < amount: return jsonify({"message":"Insufficient funds"}),400
+    sender = next((u for u in users if u['id'] == sender_id), None)
+    receiver = next((u for u in users if u['phone'] == receiver_phone), None)
 
-    sender["balance"] -= amount
-    receiver["balance"] += amount
-    ts = now_iso()
-    sender.setdefault("transactions",[]).append({
-        "type":"send-to-bank",
-        "amount":amount,
-        "timestamp":ts,
-        "details":f"Sent to {receiver.get('username')} ({receiver.get('accountNumber')})"
-    })
-    receiver.setdefault("transactions",[]).append({
-        "type":"receive-from-bank",
-        "amount":amount,
-        "timestamp":ts,
-        "details":f"Received from {sender.get('username')} ({sender.get('accountNumber')})"
-    })
-    save_users()
-    return jsonify({"message":f"₦{amount} sent to {receiver['username']}","balance":sender["balance"]}),200
+    if not sender or not receiver:
+        return jsonify({'message': 'Sender or receiver not found'}), 404
+    if sender['balance'] < amount:
+        return jsonify({'message': 'Insufficient balance'}), 400
 
-# Resolve account number
-@app.route("/resolve-account/<accountNumber>", methods=["GET"])
-def resolve_account(accountNumber):
-    user = find_user_by_account(accountNumber)
-    if not user:
-        return jsonify({"exists":False,"name":None,"id":None}),200
-    return jsonify({"exists":True,"name":user["username"],"id":user["id"]}),200
+    sender['balance'] -= amount
+    receiver['balance'] += amount
 
-# Transactions history
-@app.route("/transactions/<int:userId>", methods=["GET"])
-def transactions(userId):
-    user = find_user_by_id(userId)
-    if not user: return jsonify({"message":"User not found"}),404
-    return jsonify(user.get("transactions",[])),200
+    return jsonify({'balance': sender['balance'], 'message': f'Sent ₦{amount} to {receiver["username"]}'}), 200
 
-if __name__=="__main__":
-    port = int(os.environ.get("PORT",5000))
-    app.run(host="0.0.0.0",port=port, debug=True)
+if __name__ == '__main__':
+    app.run(debug=True)
