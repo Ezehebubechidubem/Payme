@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Send to Bank - PayGo</title>
+<title>Send to Bank - PayMe</title>
 <style>
 body { font-family: Arial, sans-serif; background-color: #f5f6fa; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
 .container { background-color: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
@@ -30,7 +30,11 @@ button:hover { background-color: #4cd137; }
 
 <script>
 let user = JSON.parse(localStorage.getItem('user'));
-if(!user){ alert("Please login first!"); window.location.href='paymelogin.html'; }
+if(!user){ 
+  alert("Please login first!"); 
+  window.location.href='paymelogin.html'; 
+}
+
 let senderId = user.id;
 let balance = user.balance || 0;
 
@@ -47,16 +51,16 @@ let receiverId = null;
 // Show initial balance
 balanceDisplay.textContent = `Your Balance: ₦${balance}`;
 
-// Resolve receiver account number
+// Resolve receiver account number (must be exactly 10 digits)
 receiverInput.addEventListener('input', async () => {
   const acc = receiverInput.value.trim();
   receiverName.textContent = 'Receiver: N/A';
   receiverId = null;
+
   if(acc.length === 10){
     try {
       const res = await fetch(`https://payme-pvwh.onrender.com/resolve-account/${acc}`);
       const data = await res.json();
-      console.log(data); // Debug
       if(data.exists){
         receiverName.textContent = `Receiver: ${data.name}`;
         receiverId = data.id;
@@ -74,6 +78,13 @@ sendBtn.addEventListener('click', async () => {
   successMsg.textContent = '';
   errorMsg.textContent = '';
   const amt = parseFloat(amountInput.value);
+  const acc = receiverInput.value.trim();
+
+  // Enforce 10-digit account number
+  if(acc.length !== 10){
+    errorMsg.textContent = 'Account number must be exactly 10 digits.';
+    return;
+  }
 
   if(!receiverId){
     errorMsg.textContent = 'Please enter a valid receiver account number.';
@@ -96,7 +107,6 @@ sendBtn.addEventListener('click', async () => {
     });
     const data = await res.json();
     if(res.ok){
-      // Update localStorage and balance
       balance = data.balance;
       user.balance = balance;
       localStorage.setItem('user', JSON.stringify(user));
