@@ -91,7 +91,7 @@
     // Fetch sender balance on load
     async function fetchBalance() {
       try {
-        const res = await fetch(`http://localhost:5000/user/${senderId}`);
+        const res = await fetch(`https://payme-pvwh.onrender.com/user/${senderId}`);
         const data = await res.json();
         balanceDisplay.textContent = `Your Balance: ₦${data.balance}`;
       } catch (err) {
@@ -107,7 +107,7 @@
       receiverId = null;
       if (acc.length === 10) {
         try {
-          const res = await fetch(`http://localhost:5000/resolve-account/${acc}`);
+          const res = await fetch(`https://payme-pvwh.onrender.com/resolve-account/${acc}`);
           const data = await res.json();
           if (data.exists) {
             receiverName.textContent = `Receiver: ${data.name}`;
@@ -135,7 +135,7 @@
         return;
       }
       try {
-        const res = await fetch('http://localhost:5000/send-to-bank', {
+        const res = await fetch('https://payme-pvwh.onrender.com/send-to-bank', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
