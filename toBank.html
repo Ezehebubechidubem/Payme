@@ -22,7 +22,7 @@
 <body>
 
 <header>
-  <h2>PayMe- Transfer to Bank</h2>
+  <h2>PayMe - Transfer to Bank</h2>
 </header>
 
 <div class="balance">
@@ -41,15 +41,31 @@
 </div>
 
 <script>
-  // Load user info from localStorage
-  const user = JSON.parse(localStorage.getItem('user')) || null;
-  if(!user){
+(async () => {
+  const API_BASE = "https://payme-pvwh.onrender.com"; // Change if using localhost: http://127.0.0.1:5000
+
+  // Load logged-in user from localStorage
+  const localUser = JSON.parse(localStorage.getItem('user'));
+  if(!localUser){
     alert("Please login first!");
     window.location.href = "paymelogin.html";
-  } else {
-    document.getElementById('userBalance').innerText = `₦${user.balance}`;
+    return;
   }
 
+  // Fetch fresh user info from server
+  let user;
+  try {
+    const res = await fetch(`${API_BASE}/user/${localUser.id}`);
+    if(!res.ok) throw new Error("Failed to fetch user info");
+    user = await res.json();
+    document.getElementById('userBalance').innerText = `₦${user.balance.toFixed(2)}`;
+  } catch(e) {
+    alert("Error fetching user data from server");
+    console.error(e);
+    return;
+  }
+
+  // Handle Send to Bank button
   document.getElementById('sendBtn').addEventListener('click', async () => {
     const acct = document.getElementById('receiverAcct').value.trim();
     const amount = parseFloat(document.getElementById('amount').value);
@@ -63,16 +79,41 @@
       return;
     }
 
-    // Fetch all users from localStorage (demo purpose)
-    const allUsers = JSON.parse(localStorage.getItem('allUsers')) || [];
-    const receiver = allUsers.find(u => u.accountNumber === acct);
-    if(!receiver){
-      alert("❌ Account not found!");
+    // Resolve account via API
+    let receiverInfo;
+    try {
+      const res = await fetch(`${API_BASE}/resolve-account/${acct}`);
+      const data = await res.json();
+      if(!data.exists){
+        alert("❌ Account not found!");
+        return;
+      }
+      receiverInfo = data;
+    } catch(err) {
+      alert("Error resolving account");
+      console.error(err);
       return;
     }
 
+    // Get receiver ID from _db (temporary for demo)
+    let receiver;
     try {
-      const res = await fetch('https://payme-pvwh.onrender.com/send-to-bank', {
+      const allRes = await fetch(`${API_BASE}/_db`);
+      const allUsers = await allRes.json();
+      receiver = allUsers.find(u => u.accountNumber === acct);
+      if(!receiver){
+        alert("❌ Receiver not found in server database");
+        return;
+      }
+    } catch(err) {
+      alert("Error fetching server users");
+      console.error(err);
+      return;
+    }
+
+    // Send transfer
+    try {
+      const res = await fetch(`${API_BASE}/send-to-bank`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ senderId: user.id, receiverId: receiver.id, amount })
@@ -81,18 +122,19 @@
       if(res.ok){
         user.balance = data.balance;
         localStorage.setItem('user', JSON.stringify(user));
-        document.getElementById('userBalance').innerText = `₦${user.balance}`;
-        alert("✅ Transfer successful!");
+        document.getElementById('userBalance').innerText = `₦${user.balance.toFixed(2)}`;
+        alert(`✅ Transfer successful! ₦${amount} sent to ${receiver.username}`);
         document.getElementById('receiverAcct').value = '';
         document.getElementById('amount').value = '';
       } else {
         alert(data.message);
       }
-    } catch (err) {
+    } catch(err) {
       alert("Error connecting to server");
       console.error(err);
     }
   });
+})();
 </script>
 
 </body>
