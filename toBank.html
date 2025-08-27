@@ -77,7 +77,16 @@
   </div>
 
   <script>
-    const senderId = 1; // Replace with logged-in user ID
+    // Get logged-in user
+    const user = JSON.parse(localStorage.getItem('user'));
+    if(!user){
+      alert("Please login first!");
+      window.location.href = 'paymelogin.html';
+    }
+
+    const senderId = user.id;
+    let balance = user.balance || 0;
+
     const receiverInput = document.getElementById('receiverAccount');
     const receiverName = document.getElementById('receiverName');
     const amountInput = document.getElementById('amount');
@@ -88,19 +97,10 @@
 
     let receiverId = null;
 
-    // Fetch sender balance on load
-    async function fetchBalance() {
-      try {
-        const res = await fetch(`https://payme-pvwh.onrender.com/user/${senderId}`);
-        const data = await res.json();
-        balanceDisplay.textContent = `Your Balance: ₦${data.balance}`;
-      } catch (err) {
-        console.error('Error fetching balance', err);
-      }
-    }
-    fetchBalance();
+    // Display initial balance
+    balanceDisplay.textContent = `Your Balance: ₦${balance}`;
 
-    // Resolve account number to username and ID
+    // Resolve receiver account
     receiverInput.addEventListener('input', async () => {
       const acc = receiverInput.value.trim();
       receiverName.textContent = 'Receiver: N/A';
@@ -126,6 +126,7 @@
       successMsg.textContent = '';
       errorMsg.textContent = '';
       const amt = parseFloat(amountInput.value);
+
       if (!receiverId) {
         errorMsg.textContent = 'Please enter a valid receiver account number.';
         return;
@@ -134,6 +135,11 @@
         errorMsg.textContent = 'Please enter a valid amount.';
         return;
       }
+      if (amt > balance) {
+        errorMsg.textContent = 'Insufficient balance.';
+        return;
+      }
+
       try {
         const res = await fetch('https://payme-pvwh.onrender.com/send-to-bank', {
           method: 'POST',
@@ -144,10 +150,18 @@
             amount: amt
           })
         });
+
         const data = await res.json();
         if (res.ok) {
+          // Update local user balance
+          balance = data.balance;
+          user.balance = balance;
+          localStorage.setItem('user', JSON.stringify(user));
+          balanceDisplay.textContent = `Your Balance: ₦${balance}`;
           successMsg.textContent = data.message;
-          fetchBalance();
+          amountInput.value = '';
+          receiverInput.value = '';
+          receiverName.textContent = 'Receiver: N/A';
         } else {
           errorMsg.textContent = data.message || 'Transaction failed';
         }
