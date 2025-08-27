@@ -222,4 +222,8 @@ app.get('/user/:id', (req, res) => {
 
 app.get('/', (_req, res) => res.send('PayMe API is running'));
 
-app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
+// ---- START SERVER ----
+app.listen(PORT, () => {
+  console.log(`API running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
+});
