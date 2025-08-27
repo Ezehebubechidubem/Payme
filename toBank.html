@@ -4,29 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Send to Bank</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f7f7f7;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
+.container{background:white;padding:25px;border-radius:10px;width:100%;max-width:400px;box-shadow:0 2px 6px rgba(0,0,0,0.2);}
+input{width:100%;padding:10px;margin:10px 0;border:1px solid #ccc;border-radius:6px;}
+button{width:100%;padding:12px;background:#5b4dff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:16px;}
+button:hover{background:#4332e0;}
+</style>
 </head>
 <body>
-<h2>Send Money to Bank</h2>
-<label>Receiver ID: <input type="text" id="receiver"></label><br>
-<label>Amount: <input type="text" id="amount"></label><br>
-<button onclick="sendToBank()">Send</button>
-
+<div class="container">
+<h2>Send to Bank</h2>
+<input type="text" id="receiverAccount" placeholder="Receiver Account #">
+<input type="number" id="amount" placeholder="Amount">
+<button onclick="sendBank()">Send</button>
+</div>
 <script>
-let senderId = localStorage.getItem('userId');
-if(!senderId) window.location.href="login.html";
-
-async function sendToBank(){
-  const receiverId=document.getElementById('receiver').value;
-  const amount=document.getElementById('amount').value;
-  if(!receiverId||!amount) return alert("Enter all fields");
-
-  const res=await fetch("http://127.0.0.1:5000/send-to-bank",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({senderId, receiverId, amount})
-  });
-  const data=await res.json();
-  alert(data.message);
+let userId=localStorage.getItem("userId");
+if(!userId){alert("Not logged in");window.location.href="login.html";}
+async function sendBank(){
+const receiverAccount=document.getElementById('receiverAccount').value.trim();
+const amount=parseFloat(document.getElementById('amount').value);
+if(!receiverAccount||!amount||amount<=0)return alert("Enter valid details");
+try{
+const res=await fetch("http://127.0.0.1:5000/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,receiverAccount,amount})});
+const data=await res.json();
+alert(data.message);
+}catch(err){alert("Server error");console.error(err);}
 }
 </script>
 </body>
