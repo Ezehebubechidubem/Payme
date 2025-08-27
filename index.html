@@ -106,7 +106,9 @@ body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
 
 <!-- Quick Actions -->
 <div class="quick-actions">
-  <button id="toBank"><i class="fas fa-university"></i><br>To Bank</button>
+  <button id="toBank" onclick="window.location.href='toBank.html'">
+  <i class="fas fa-university"></i><br>To Bank
+  </button>
   <button id="toWallet"><i class="fas fa-wallet"></i><br>To Wallet</button>
   <button id="atmcard"><i class="fas fa-credit-card"></i><br>ATM Card</button>
 </div>
@@ -223,11 +225,7 @@ document.getElementById('toWallet').addEventListener('click', async () => {
   alert(data.message);
 });
 
-// --- To Bank ---
-document.getElementById('toBank').addEventListener('click', async () => {
-  const amount = parseFloat(prompt("Enter amount to transfer to bank:"));
-  if(!isNaN(amount)) await callBackend('transfer', amount);
-});
+
 
 // --- Other Quick Actions ---
 document.getElementById('atmcard').addEventListener('click', () => { alert("ATM card feature coming soon!"); });
