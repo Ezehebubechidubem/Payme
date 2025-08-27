@@ -23,22 +23,20 @@ a { color: #5b4dff; text-decoration: none; }
   <input type="tel" id="phone" placeholder="Phone (e.g. 08123456789)" required>
   <input type="password" id="password" placeholder="Password" required>
   <button onclick="register()">Register</button>
-  <p>Already have an account? <a href="paymelogin.html">Login</a></p>
+  <p>Already have an account? <a href="login.html">Login</a></p>
 </div>
 
 <script>
-async function register(){
+async function register() {
   const username = document.getElementById('username').value.trim();
   const email = document.getElementById('email').value.trim();
   const phone = document.getElementById('phone').value.trim();
   const password = document.getElementById('password').value.trim();
 
-  if(!username || !email || !phone || !password){
-    return alert("All fields are required!");
-  }
+  if(!username || !email || !phone || !password) return alert("All fields are required!");
 
   try {
-    const res = await fetch("https://payme-pvwh.onrender.com/register", {
+    const res = await fetch("http://127.0.0.1:5000/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, email, phone, password })
@@ -46,11 +44,12 @@ async function register(){
     const data = await res.json();
     alert(data.message);
     if(res.ok){
-      localStorage.setItem("userId", data.user.id); // only store userId
+      localStorage.setItem("userId", data.user.id);
       window.location.href = "index.html";
     }
   } catch(err){
     alert("Error connecting to server");
+    console.error(err);
   }
 }
 </script>
