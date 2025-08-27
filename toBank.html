@@ -1,175 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Send to Bank - PayGo</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f5f6fa;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .container {
-      background-color: #fff;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-      width: 100%;
-      max-width: 400px;
-    }
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #2f3640;
-    }
-    input[type="text"], input[type="number"] {
-      width: 100%;
-      padding: 12px;
-      margin: 10px 0;
-      border-radius: 8px;
-      border: 1px solid #dcdde1;
-      font-size: 16px;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      background-color: #44bd32;
-      color: white;
-      font-size: 16px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-    button:hover {
-      background-color: #4cd137;
-    }
-    .info {
-      margin: 10px 0;
-      font-weight: bold;
-      color: #2f3640;
-    }
-    .success {
-      color: green;
-      margin: 10px 0;
-    }
-    .error {
-      color: red;
-      margin: 10px 0;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Send to Bank - PayGo</title>
+<style>
+body { font-family: Arial, sans-serif; background-color: #f5f6fa; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+.container { background-color: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+h2 { text-align: center; margin-bottom: 20px; color: #2f3640; }
+input[type="text"], input[type="number"] { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #dcdde1; font-size: 16px; }
+button { width: 100%; padding: 12px; background-color: #44bd32; color: white; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+button:hover { background-color: #4cd137; }
+.info { margin: 10px 0; font-weight: bold; color: #2f3640; }
+.success { color: green; margin: 10px 0; }
+.error { color: red; margin: 10px 0; }
+</style>
 </head>
 <body>
-  <div class="container">
-    <h2>Send Money</h2>
-    <input type="text" id="receiverAccount" placeholder="Receiver Account Number">
-    <div class="info" id="receiverName">Receiver: N/A</div>
-    <input type="number" id="amount" placeholder="Amount to Send">
-    <button id="sendBtn">Send Money</button>
-    <div class="success" id="successMsg"></div>
-    <div class="error" id="errorMsg"></div>
-    <div class="info" id="balance">Your Balance: ₦0</div>
-  </div>
+<div class="container">
+<h2>Send Money</h2>
+<input type="text" id="receiverAccount" placeholder="Receiver Account Number">
+<div class="info" id="receiverName">Receiver: N/A</div>
+<input type="number" id="amount" placeholder="Amount to Send">
+<button id="sendBtn">Send Money</button>
+<div class="success" id="successMsg"></div>
+<div class="error" id="errorMsg"></div>
+<div class="info" id="balance">Your Balance: ₦0</div>
+</div>
 
-  <script>
-    // Get logged-in user
-    const user = JSON.parse(localStorage.getItem('user'));
-    if(!user){
-      alert("Please login first!");
-      window.location.href = 'paymelogin.html';
-    }
+<script>
+let user = JSON.parse(localStorage.getItem('user'));
+if(!user){ alert("Please login first!"); window.location.href='paymelogin.html'; }
+let senderId = user.id;
+let balance = user.balance || 0;
 
-    const senderId = user.id;
-    let balance = user.balance || 0;
-
-    const receiverInput = document.getElementById('receiverAccount');
-    const receiverName = document.getElementById('receiverName');
-    const amountInput = document.getElementById('amount');
-    const sendBtn = document.getElementById('sendBtn');
-    const successMsg = document.getElementById('successMsg');
-    const errorMsg = document.getElementById('errorMsg');
-    const balanceDisplay = document.getElementById('balance');
-
-    let receiverId = null;
-
-    // Display initial balance
-    balanceDisplay.textContent = `Your Balance: ₦${balance}`;
-
-    // Resolve receiver account
-    receiverInput.addEventListener('input', async () => {
-      const acc = receiverInput.value.trim();
-      receiverName.textContent = 'Receiver: N/A';
-      receiverId = null;
-      if (acc.length === 10) {
-        try {
-          const res = await fetch(`https://payme-pvwh.onrender.com/resolve-account/${acc}`);
-          const data = await res.json();
-          if (data.exists) {
-            receiverName.textContent = `Receiver: ${data.name}`;
-            receiverId = data.id;
-          } else {
-            receiverName.textContent = 'Receiver: Not found';
-          }
-        } catch (err) {
-          console.error('Error resolving account', err);
-        }
-      }
-    });
-
-    // Send money
-    sendBtn.addEventListener('click', async () => {
-      successMsg.textContent = '';
-      errorMsg.textContent = '';
-      const amt = parseFloat(amountInput.value);
-
-      if (!receiverId) {
-        errorMsg.textContent = 'Please enter a valid receiver account number.';
-        return;
-      }
-      if (!amt || amt <= 0) {
-        errorMsg.textContent = 'Please enter a valid amount.';
-        return;
-      }
-      if (amt > balance) {
-        errorMsg.textContent = 'Insufficient balance.';
-        return;
-      }
-
-      try {
-        const res = await fetch('https://payme-pvwh.onrender.com/send-to-bank', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            senderId,
-            receiverId,
-            amount: amt
-          })
-        });
-
-        const data = await res.json();
-        if (res.ok) {
-          // Update local user balance
-          balance = data.balance;
-          user.balance = balance;
-          localStorage.setItem('user', JSON.stringify(user));
-          balanceDisplay.textContent = `Your Balance: ₦${balance}`;
-          successMsg.textContent = data.message;
-          amountInput.value = '';
-          receiverInput.value = '';
-          receiverName.textContent = 'Receiver: N/A';
-        } else {
-          errorMsg.textContent = data.message || 'Transaction failed';
-        }
-      } catch (err) {
-        errorMsg.textContent = 'Error sending money';
-        console.error(err);
-      }
-    });
-  </script>
-</body>
-</html>
+const receiverInput = document.getElementById('receiverAccount');
+const receiverName = document.getElementById('receiverName');
+const amountInput = document.getElementById('amount');
+const sendBtn = document.getElementById('sendBtn');
+const successMsg = document.getElement
