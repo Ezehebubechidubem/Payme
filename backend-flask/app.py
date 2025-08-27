@@ -11,14 +11,15 @@ DB_FILE = BASE_DIR / "users.json"
 app = Flask(__name__)
 CORS(app)
 
+# Ensure DB exists
+if not DB_FILE.exists():
+    DB_FILE.write_text("[]", encoding="utf-8")
+
 # Load DB
-if DB_FILE.exists():
-    try:
-        with DB_FILE.open("r", encoding="utf-8") as f:
-            users = json.load(f)
-    except:
-        users = []
-else:
+try:
+    with DB_FILE.open("r", encoding="utf-8") as f:
+        users = json.load(f)
+except:
     users = []
 
 def save_users():
@@ -48,7 +49,6 @@ def now_iso():
     return datetime.utcnow().isoformat() + "Z"
 
 # --- Routes ---
-
 @app.route("/")
 def home():
     return jsonify({"message":"PayMe API running"}),200
@@ -201,6 +201,21 @@ def send_to_bank():
     })
     save_users()
     return jsonify({"message":f"₦{amount} sent to {receiver['username']}","balance":sender["balance"]}),200
+
+# Resolve account number
+@app.route("/resolve-account/<accountNumber>", methods=["GET"])
+def resolve_account(accountNumber):
+    user = find_user_by_account(accountNumber)
+    if not user:
+        return jsonify({"exists":False,"name":None,"id":None}),200
+    return jsonify({"exists":True,"name":user["username"],"id":user["id"]}),200
+
+# Transactions history
+@app.route("/transactions/<int:userId>", methods=["GET"])
+def transactions(userId):
+    user = find_user_by_id(userId)
+    if not user: return jsonify({"message":"User not found"}),404
+    return jsonify(user.get("transactions",[])),200
 
 if __name__=="__main__":
     port = int(os.environ.get("PORT",5000))
