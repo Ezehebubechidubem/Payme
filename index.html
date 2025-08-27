@@ -6,188 +6,144 @@
 <title>PayMe Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-/* --- NAVBAR --- */
-.navbar { display: flex; justify-content: space-between; align-items: center; background-color: #222; padding: 10px 20px; position: relative; }
-.logo { color: #fff; font-size: 20px; font-weight: bold; }
-.hamburger { display: none; flex-direction: column; cursor: pointer; gap: 5px; }
-.hamburger .line { width: 25px; height: 3px; background-color: white; }
-.nav-links { list-style: none; display: flex; gap: 15px; }
-.nav-links li a { color: #fff; text-decoration: none; }
-.nav-links li { cursor: pointer; }
-@media (max-width: 768px){ .hamburger { display: flex; } .nav-links { display: none; flex-direction: column; background-color: #222; width: 100%; position: absolute; top: 60px; left: 0; padding: 10px 0; } .nav-links.active { display: flex; } }
+body { margin:0; font-family: Arial, sans-serif; background:#f7f7f7; }
+.navbar { display:flex; justify-content:space-between; align-items:center; background:#222; padding:10px 20px; color:white; }
+.navbar .logo { font-weight:bold; }
+.nav-links { display:flex; gap:15px; }
+.nav-links li { cursor:pointer; }
+.nav-links li a { color:white; text-decoration:none; }
+.hamburger { display:none; flex-direction:column; gap:5px; cursor:pointer; }
+.hamburger .line { width:25px; height:3px; background:white; }
+@media(max-width:768px){ .hamburger{display:flex} .nav-links{display:none; flex-direction:column; background:#222; position:absolute; top:50px; left:0; width:100%;} .nav-links.active{display:flex;} }
 
-/* --- BODY --- */
-body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
+.balance-card { background:#ecebff; margin:15px; padding:20px; border-radius:12px; }
+.balance-card h3{margin:0; color:#333;}
+.balance-card button{margin-top:10px; background:#5b4dff; color:white; padding:10px 15px; border:none; border-radius:6px; cursor:pointer;}
 
-/* Header */
-.header { background: white; padding: 15px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ddd; }
-.header h2 { margin: 0; font-size: 16px; }
-.header small { color: gray; }
-
-/* Balance Card */
-.balance-card { background: #ecebff; margin: 15px; padding: 20px; border-radius: 12px; }
-.balance-card h3 { margin: 0; color: #333; }
-.balance-card button { background: #5b4dff; color: white; border: none; padding: 10px 15px; border-radius: 6px; margin-top: 10px; cursor: pointer; }
-
-/* Quick Actions */
-.quick-actions { display: flex; justify-content: space-around; margin: 20px 10px; }
-.quick-actions button { text-align: center; background: none; border: none; cursor: pointer; font-size: 14px; }
-.quick-actions i { font-size: 24px; color: purple; }
-
-/* Services Grid */
-.services { background: white; padding: 20px; border-radius: 12px; margin: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
-.services button { text-align: center; background: none; border: none; cursor: pointer; font-size: 14px; }
-.services i { font-size: 20px; color: purple; }
-
-/* Bottom Nav */
-.bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #ddd; }
-.bottom-nav button { text-align: center; background: none; border: none; cursor: pointer; font-size: 14px; color: gray; }
-.bottom-nav i { display: block; font-size: 20px; margin-bottom: 5px; color: purple; }
-
-/* Profile Modal */
-#profileModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
-#profileModal .modal-content { background: white; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; }
-#profileModal h2 { margin-top: 0; }
+.quick-actions, .services { display:flex; justify-content:space-around; margin:20px 10px; }
+.quick-actions button, .services button{background:none; border:none; cursor:pointer; text-align:center;}
+.quick-actions i, .services i{font-size:24px; color:purple;}
+.bottom-nav{position:fixed;bottom:0;width:100%;display:flex; justify-content:space-around; background:white; border-top:1px solid #ddd; padding:10px 0;}
+.bottom-nav i{display:block;font-size:20px; margin-bottom:5px; color:purple;}
+#profileModal{display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center;}
+#profileModal .modal-content{background:white; padding:20px; border-radius:10px; width:90%; max-width:400px;}
 </style>
 </head>
 <body>
 
-<!-- NAVBAR -->
 <nav class="navbar">
   <div class="logo">PAYME</div>
+  <ul class="nav-links" id="nav-links">
+    <li id="profileLink">Profile</li>
+    <li onclick="logout()">Logout</li>
+  </ul>
   <div class="hamburger" id="hamburger">
     <span class="line"></span>
     <span class="line"></span>
     <span class="line"></span>
   </div>
-  <ul class="nav-links" id="nav-links">
-    <li id="profileLink">Profile</li>
-    <li id="walletLink">Wallet</li>
-    <li id="settingsLink">Settings</li>
-    <li id="logout">Logout</li>
-  </ul>
 </nav>
 
-<!-- Header -->
-<div class="header">
-  <div>
-    <h2>Hi, USER 👋</h2>
-    <small>Welcome, let’s make payments!</small>
-  </div>
-</div>
-
-<!-- Balance Card -->
 <div class="balance-card">
-  <h3>Available Balance</h3>
-  <h1>₦0.00</h1>
-  <button id="addMoney">Add Money</button>
+  <h3>Balance: ₦<span id="balance">0</span></h3>
+  <button onclick="addMoney()">Add Money</button>
 </div>
 
-<!-- Quick Actions -->
 <div class="quick-actions">
-  <button id="toBank"><i class="fas fa-university"></i><br>To Bank</button>
-  <button id="toWallet"><i class="fas fa-wallet"></i><br>To Wallet</button>
-  <button id="atmcard"><i class="fas fa-credit-card"></i><br>ATM Card</button>
+  <button onclick="sendMoney()">Send</button>
+  <button onclick="toBank()">Send to Bank</button>
 </div>
 
-<!-- Services -->
 <div class="services">
-  <button id="airtime"><i class="fas fa-phone"></i><br>Airtime</button>
-  <button id="data"><i class="fas fa-wifi"></i><br>Data</button>
-  <button id="electric"><i class="fas fa-bolt"></i><br>Electricity</button>
-  <button id="betting"><i class="fas fa-futbol"></i><br>Betting</button>
-  <button id="tv"><i class="fas fa-tv"></i><br>TV</button>
-  <button id="loan"><i class="fas fa-hand-holding-usd"></i><br>Loan</button>
-  <button id="business"><i class="fas fa-briefcase"></i><br>Business</button>
-  <button id="earn"><i class="fas fa-users"></i><br>Refer & Earn</button>
+  <button>Buy Airtime</button>
+  <button>Data</button>
+  <button>TV Subscription</button>
+  <button>Betting Funding</button>
 </div>
 
-<!-- Bottom Nav -->
 <div class="bottom-nav">
-  <button id="home"><i class="fas fa-home"></i>Home</button>
-  <button id="loanBottom"><i class="fas fa-credit-card"></i>Loan</button>
-  <button id="wealth"><i class="fas fa-chart-line"></i>Wealth</button>
-  <button id="reward"><i class="fas fa-gift"></i>Reward</button>
+  <button>Home <i class="fas fa-home"></i></button>
+  <button>Wallet <i class="fas fa-wallet"></i></button>
+  <button>Send <i class="fas fa-paper-plane"></i></button>
+  <button>Profile <i class="fas fa-user"></i></button>
 </div>
 
 <!-- Profile Modal -->
 <div id="profileModal">
   <div class="modal-content">
-    <h2>My Profile</h2>
-    <p><b>Username:</b> <span id="profileUsername"></span></p>
-    <p><b>Email:</b> <span id="profileEmail"></span></p>
-    <p><b>Phone:</b> <span id="profilePhone"></span></p>
-    <p><b>Account No:</b> <span id="profileAccount"></span></p>
-    <p><b>Balance:</b> ₦<span id="profileBalance"></span></p>
-    <button onclick="document.getElementById('profileModal').style.display='none'">Close</button>
+    <h2>Profile</h2>
+    <p><strong>Username:</strong> <span id="profileUsername"></span></p>
+    <p><strong>Email:</strong> <span id="profileEmail"></span></p>
+    <p><strong>Phone:</strong> <span id="profilePhone"></span></p>
+    <p><strong>Account:</strong> <span id="profileAcc"></span></p>
+    <p><strong>Balance:</strong> ₦<span id="profileBalance"></span></p>
+    <button onclick="closeProfile()">Close</button>
   </div>
 </div>
 
 <script>
-// Hamburger toggle
-const hamburger = document.getElementById('hamburger');
-const navLinks = document.getElementById('nav-links');
-hamburger.addEventListener('click', () => { navLinks.classList.toggle('active'); });
+let userId = localStorage.getItem('userId');
+if(!userId) window.location.href = "login.html";
 
-// --- Fetch user data from backend ---
-let userId = localStorage.getItem('userId'); // only store minimal info like userId
-if(!userId){ window.location.href='paymelogin.html'; }
-
-let user = {}; // will be fetched from backend
-
-async function fetchUser(){
-  try{
-    const res = await fetch(`https://payme-pvwh.onrender.com/user/${userId}`);
-    if(res.ok){
-      user = await res.json();
-      document.querySelector('.header h2').innerText = `Hi, ${user.username} 👋`;
-      document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
-    }
-  }catch(err){ console.error(err); }
+async function fetchUser() {
+  const res = await fetch("http://127.0.0.1:5000/_db");
+  const data = await res.json();
+  return data.find(u => u.id == userId);
 }
-fetchUser();
-window.addEventListener('focus', fetchUser);
 
-// --- Logout ---
-document.getElementById('logout').addEventListener('click', () => {
-  localStorage.removeItem('userId');
-  window.location.href='paymelogin.html';
-});
-
-// --- Profile Modal ---
-document.getElementById('profileLink').addEventListener('click', () => {
+async function updateDashboard() {
+  const user = await fetchUser();
+  document.getElementById('balance').innerText = user.balance;
   document.getElementById('profileUsername').innerText = user.username;
   document.getElementById('profileEmail').innerText = user.email;
   document.getElementById('profilePhone').innerText = user.phone;
-  document.getElementById('profileAccount').innerText = user.accountNumber;
+  document.getElementById('profileAcc').innerText = user.accountNumber;
   document.getElementById('profileBalance').innerText = user.balance;
-  document.getElementById('profileModal').style.display='flex';
-});
+}
+updateDashboard();
 
-// --- Add Money ---
-document.getElementById('addMoney').addEventListener('click', async () => {
-  const amount = parseFloat(prompt("Enter amount to add:"));
-  if(!isNaN(amount)){
-    try{
-      const res = await fetch('https://payme-pvwh.onrender.com/update-balance', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ userId, amount })
-      });
-      const data = await res.json();
-      if(res.ok){
-        user.balance = data.balance;
-        document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
-      }
-      alert(data.message);
-    }catch(err){ console.error(err); alert('Error adding money'); }
-  }
-});
+document.getElementById('profileLink').onclick = () => document.getElementById('profileModal').style.display='flex';
+function closeProfile(){document.getElementById('profileModal').style.display='none';}
 
-// --- To Bank ---
-document.getElementById('toBank').addEventListener('click', () => { window.location.href='toBank.html'; });
+async function addMoney(){
+  const amt = prompt("Enter amount to add:");
+  if(!amt || isNaN(amt)) return alert("Invalid amount");
+  const res = await fetch("http://127.0.0.1:5000/update-balance",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({userId, amount:amt})
+  });
+  const data = await res.json();
+  alert(data.message);
+  updateDashboard();
+}
 
-// Other features remain untouched
+function logout(){ localStorage.removeItem('userId'); window.location.href="login.html"; }
+
+async function sendMoney(){
+  const receiver = prompt("Receiver User ID:");
+  const amt = prompt("Amount:");
+  if(!receiver || !amt) return;
+  const res = await fetch("http://127.0.0.1:5000/send",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({userId, receiverId:receiver, amount:amt})
+  });
+  const data = await res.json();
+  alert(data.message);
+  updateDashboard();
+}
+
+async function toBank(){
+  const receiver = prompt("Bank Account User ID:");
+  const amt = prompt("Amount:");
+  if(!receiver || !amt) return;
+  const res = await fetch("http://127.0.0.1:5000/send-to-bank",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({senderId:userId, receiverId:receiver, amount:amt})
+  });
+  const data = await res.json();
+  alert(data.message);
+  updateDashboard();
+}
 </script>
 </body>
 </html>
