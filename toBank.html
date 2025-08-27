@@ -1,109 +1,161 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PayMe - Transfer to Bank</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<style>
-  body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 0; }
-  header { background: #5b4dff; color: white; padding: 15px; text-align: center; }
-  .balance { background: #ecebff; margin: 20px; padding: 20px; border-radius: 12px; text-align: center; }
-  .transfer-card { background: white; margin: 20px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-  label { display: block; margin: 10px 0 5px; }
-  input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; }
-  button { margin-top: 15px; padding: 10px; width: 100%; background: #5b4dff; color: white; border: none; border-radius: 6px; cursor: pointer; }
-  button:hover { background: #463bcc; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Send to Bank - PayGo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f6fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background-color: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #2f3640;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 1px solid #dcdde1;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #44bd32;
+      color: white;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #4cd137;
+    }
+    .info {
+      margin: 10px 0;
+      font-weight: bold;
+      color: #2f3640;
+    }
+    .success {
+      color: green;
+      margin: 10px 0;
+    }
+    .error {
+      color: red;
+      margin: 10px 0;
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <h2>Send Money</h2>
+    <input type="text" id="receiverAccount" placeholder="Receiver Account Number">
+    <div class="info" id="receiverName">Receiver: N/A</div>
+    <input type="number" id="amount" placeholder="Amount to Send">
+    <button id="sendBtn">Send Money</button>
+    <div class="success" id="successMsg"></div>
+    <div class="error" id="errorMsg"></div>
+    <div class="info" id="balance">Your Balance: ₦0</div>
+  </div>
 
-<header>
-  <h2>PayMe - Transfer to Bank</h2>
-</header>
+  <script>
+    const senderId = 1; // Replace with logged-in user ID
+    const receiverInput = document.getElementById('receiverAccount');
+    const receiverName = document.getElementById('receiverName');
+    const amountInput = document.getElementById('amount');
+    const sendBtn = document.getElementById('sendBtn');
+    const successMsg = document.getElementById('successMsg');
+    const errorMsg = document.getElementById('errorMsg');
+    const balanceDisplay = document.getElementById('balance');
 
-<div class="balance">
-  <h3>Available Balance</h3>
-  <h1 id="userBalance">₦0.00</h1>
-</div>
+    let receiverId = null;
 
-<div class="transfer-card">
-  <label for="receiverAcct">Recipient Account Number</label>
-  <input type="text" id="receiverAcct" placeholder="Enter 10-digit account number">
-  
-  <label for="amount">Amount</label>
-  <input type="number" id="amount" placeholder="Enter amount">
-  
-  <button id="sendBtn"><i class="fas fa-paper-plane"></i> Send to Bank</button>
-</div>
-
-<script>
-const API_BASE = "https://payme-pvwh.onrender.com"; // change to your Flask URL
-
-// Get logged-in user from localStorage
-let user = JSON.parse(localStorage.getItem('user'));
-if(!user){
-    alert("Please login first!");
-    window.location.href = "paymelogin.html";
-} else {
-    document.getElementById('userBalance').innerText = `₦${parseFloat(user.balance).toFixed(2)}`;
-}
-
-document.getElementById('sendBtn').addEventListener('click', async () => {
-    const acct = document.getElementById('receiverAcct').value.trim();
-    const amount = parseFloat(document.getElementById('amount').value);
-
-    if(!acct || acct.length !== 10){
-        alert("Enter a valid 10-digit account number");
-        return;
+    // Fetch sender balance on load
+    async function fetchBalance() {
+      try {
+        const res = await fetch(`http://localhost:5000/user/${senderId}`);
+        const data = await res.json();
+        balanceDisplay.textContent = `Your Balance: ₦${data.balance}`;
+      } catch (err) {
+        console.error('Error fetching balance', err);
+      }
     }
-    if(isNaN(amount) || amount <= 0){
-        alert("Enter a valid amount");
+    fetchBalance();
+
+    // Resolve account number to username and ID
+    receiverInput.addEventListener('input', async () => {
+      const acc = receiverInput.value.trim();
+      receiverName.textContent = 'Receiver: N/A';
+      receiverId = null;
+      if (acc.length === 10) {
+        try {
+          const res = await fetch(`http://localhost:5000/resolve-account/${acc}`);
+          const data = await res.json();
+          if (data.exists) {
+            receiverName.textContent = `Receiver: ${data.name}`;
+            receiverId = data.id;
+          } else {
+            receiverName.textContent = 'Receiver: Not found';
+          }
+        } catch (err) {
+          console.error('Error resolving account', err);
+        }
+      }
+    });
+
+    // Send money
+    sendBtn.addEventListener('click', async () => {
+      successMsg.textContent = '';
+      errorMsg.textContent = '';
+      const amt = parseFloat(amountInput.value);
+      if (!receiverId) {
+        errorMsg.textContent = 'Please enter a valid receiver account number.';
         return;
-    }
-
-    try {
-        // First resolve receiver account to get ID
-        const resolveRes = await fetch(`${API_BASE}/resolve-account/${acct}`);
-        const resolveData = await resolveRes.json();
-        if(!resolveData.exists){
-            alert("❌ Account not found!");
-            return;
-        }
-
-        // Fetch all users from server to get receiver ID
-        const allRes = await fetch(`${API_BASE}/_db`);
-        const allUsers = await allRes.json();
-        const receiver = allUsers.find(u => u.accountNumber === acct);
-        if(!receiver){
-            alert("❌ Receiver not found in database");
-            return;
-        }
-
-        // Send to bank
-        const sendRes = await fetch(`${API_BASE}/send-to-bank`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ senderId: user.id, receiverId: receiver.id, amount })
+      }
+      if (!amt || amt <= 0) {
+        errorMsg.textContent = 'Please enter a valid amount.';
+        return;
+      }
+      try {
+        const res = await fetch('http://localhost:5000/send-to-bank', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId,
+            receiverId,
+            amount: amt
+          })
         });
-        const sendData = await sendRes.json();
-
-        if(sendRes.ok){
-            user.balance = sendData.balance;
-            localStorage.setItem('user', JSON.stringify(user));
-            document.getElementById('userBalance').innerText = `₦${user.balance.toFixed(2)}`;
-            alert(`✅ Transfer successful! ₦${amount} sent to ${receiver.username}`);
-            document.getElementById('receiverAcct').value = '';
-            document.getElementById('amount').value = '';
+        const data = await res.json();
+        if (res.ok) {
+          successMsg.textContent = data.message;
+          fetchBalance();
         } else {
-            alert(sendData.message);
+          errorMsg.textContent = data.message || 'Transaction failed';
         }
-    } catch(err){
-        alert("Error connecting to server");
+      } catch (err) {
+        errorMsg.textContent = 'Error sending money';
         console.error(err);
-    }
-});
-</script>
-
+      }
+    });
+  </script>
 </body>
 </html>
