@@ -5,30 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PayMe Login</title>
 <style>
-body {
-  font-family: Arial, sans-serif;
-  background: #f7f7f7;
-  display: flex; justify-content: center; align-items: center;
-  height: 100vh; margin: 0;
-}
-.container {
-  background: white;
-  padding: 25px;
-  border-radius: 10px;
-  width: 100%; max-width: 400px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-}
+body { font-family: Arial, sans-serif; background: #f7f7f7; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+.container { background: white; padding: 25px; border-radius: 10px; width: 100%; max-width: 400px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
 h2 { text-align: center; margin-bottom: 20px; }
-input {
-  width: 100%; padding: 10px; margin: 10px 0;
-  border: 1px solid #ccc; border-radius: 6px;
-}
-button {
-  width: 100%; padding: 12px;
-  background: #5b4dff; color: white;
-  border: none; border-radius: 6px;
-  cursor: pointer; font-size: 16px;
-}
+input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; }
+button { width: 100%; padding: 12px; background: #5b4dff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
 button:hover { background: #4332e0; }
 p { text-align: center; }
 a { color: #5b4dff; text-decoration: none; }
@@ -36,11 +17,11 @@ a { color: #5b4dff; text-decoration: none; }
 </head>
 <body>
 <div class="container">
-  <h1>Login</h1>
+  <h2>Login</h2>
   <input type="email" id="email" placeholder="Email" required>
   <input type="password" id="password" placeholder="Password" required>
   <button onclick="login()">Login</button>
-  <p>Don’t have an account? <a href="paymeregister.html">Register</a></p>
+  <p>Don't have an account? <a href="paymeregister.html">Register</a></p>
 </div>
 
 <script>
@@ -59,16 +40,12 @@ async function login(){
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
-    console.log(res.status, data);
-
     alert(data.message);
     if(res.ok){
-      // Store only userId in localStorage
-      localStorage.setItem("userId", data.user.id);
+      localStorage.setItem("userId", data.user.id); // only store userId
       window.location.href = "index.html";
     }
   } catch(err){
-    console.error(err);
     alert("Error connecting to server");
   }
 }
