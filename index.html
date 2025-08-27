@@ -6,144 +6,95 @@
 <title>PayMe Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-body { margin:0; font-family: Arial, sans-serif; background:#f7f7f7; }
-.navbar { display:flex; justify-content:space-between; align-items:center; background:#222; padding:10px 20px; color:white; }
-.navbar .logo { font-weight:bold; }
-.nav-links { display:flex; gap:15px; }
-.nav-links li { cursor:pointer; }
-.nav-links li a { color:white; text-decoration:none; }
-.hamburger { display:none; flex-direction:column; gap:5px; cursor:pointer; }
-.hamburger .line { width:25px; height:3px; background:white; }
-@media(max-width:768px){ .hamburger{display:flex} .nav-links{display:none; flex-direction:column; background:#222; position:absolute; top:50px; left:0; width:100%;} .nav-links.active{display:flex;} }
-
-.balance-card { background:#ecebff; margin:15px; padding:20px; border-radius:12px; }
-.balance-card h3{margin:0; color:#333;}
-.balance-card button{margin-top:10px; background:#5b4dff; color:white; padding:10px 15px; border:none; border-radius:6px; cursor:pointer;}
-
-.quick-actions, .services { display:flex; justify-content:space-around; margin:20px 10px; }
-.quick-actions button, .services button{background:none; border:none; cursor:pointer; text-align:center;}
-.quick-actions i, .services i{font-size:24px; color:purple;}
-.bottom-nav{position:fixed;bottom:0;width:100%;display:flex; justify-content:space-around; background:white; border-top:1px solid #ddd; padding:10px 0;}
-.bottom-nav i{display:block;font-size:20px; margin-bottom:5px; color:purple;}
-#profileModal{display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center;}
-#profileModal .modal-content{background:white; padding:20px; border-radius:10px; width:90%; max-width:400px;}
+body{font-family:Arial,sans-serif;margin:0;background:#f7f7f7;}
+.navbar{display:flex;justify-content:space-between;align-items:center;background:#222;padding:10px 20px;color:white;}
+.logo{font-weight:bold;}
+.balance-card{background:#ecebff;margin:15px;padding:20px;border-radius:12px;}
+.balance-card h3{margin:0;}
+button{background:#5b4dff;color:white;border:none;padding:10px 15px;border-radius:6px;cursor:pointer;}
+.quick-actions{display:flex;justify-content:space-around;margin:20px 10px;}
+.quick-actions button{background:none;border:none;cursor:pointer;font-size:14px;text-align:center;}
+.quick-actions i{font-size:24px;color:purple;}
+.services{background:white;padding:20px;border-radius:12px;margin:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:15px;}
+.services button{background:none;border:none;cursor:pointer;text-align:center;font-size:14px;}
+.services i{font-size:20px;color:purple;}
+.bottom-nav{position:fixed;bottom:0;width:100%;background:white;display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid #ddd;}
+.bottom-nav button{background:none;border:none;color:gray;font-size:14px;text-align:center;}
+.bottom-nav i{display:block;font-size:20px;margin-bottom:5px;color:purple;}
+#profileModal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;}
+#profileModal .modal-content{background:white;padding:20px;border-radius:10px;width:90%;max-width:400px;}
 </style>
 </head>
 <body>
 
-<nav class="navbar">
-  <div class="logo">PAYME</div>
-  <ul class="nav-links" id="nav-links">
-    <li id="profileLink">Profile</li>
-    <li onclick="logout()">Logout</li>
-  </ul>
-  <div class="hamburger" id="hamburger">
-    <span class="line"></span>
-    <span class="line"></span>
-    <span class="line"></span>
-  </div>
-</nav>
+<div class="navbar">
+<div class="logo">PAYME</div>
+<button onclick="openProfile()">Profile</button>
+</div>
 
 <div class="balance-card">
-  <h3>Balance: ₦<span id="balance">0</span></h3>
-  <button onclick="addMoney()">Add Money</button>
+<h3>Balance: ₦<span id="balance">0</span></h3>
+<input type="number" id="addAmount" placeholder="Amount to add">
+<button onclick="addMoney()">Add Money</button>
 </div>
 
 <div class="quick-actions">
-  <button onclick="sendMoney()">Send</button>
-  <button onclick="toBank()">Send to Bank</button>
-</div>
-
-<div class="services">
-  <button>Buy Airtime</button>
-  <button>Data</button>
-  <button>TV Subscription</button>
-  <button>Betting Funding</button>
-</div>
-
-<div class="bottom-nav">
-  <button>Home <i class="fas fa-home"></i></button>
-  <button>Wallet <i class="fas fa-wallet"></i></button>
-  <button>Send <i class="fas fa-paper-plane"></i></button>
-  <button>Profile <i class="fas fa-user"></i></button>
+<button onclick="sendMoney()"><i class="fas fa-paper-plane"></i><br>Send</button>
+<button onclick="receiveMoney()"><i class="fas fa-arrow-down"></i><br>Receive</button>
+<button onclick="sendBank()"><i class="fas fa-university"></i><br>Bank</button>
+<button onclick="viewTransactions()"><i class="fas fa-list"></i><br>Transactions</button>
 </div>
 
 <!-- Profile Modal -->
 <div id="profileModal">
-  <div class="modal-content">
-    <h2>Profile</h2>
-    <p><strong>Username:</strong> <span id="profileUsername"></span></p>
-    <p><strong>Email:</strong> <span id="profileEmail"></span></p>
-    <p><strong>Phone:</strong> <span id="profilePhone"></span></p>
-    <p><strong>Account:</strong> <span id="profileAcc"></span></p>
-    <p><strong>Balance:</strong> ₦<span id="profileBalance"></span></p>
-    <button onclick="closeProfile()">Close</button>
-  </div>
+<div class="modal-content">
+<h2>Profile</h2>
+<p id="usernameDisplay"></p>
+<p id="emailDisplay"></p>
+<p id="phoneDisplay"></p>
+<p id="accDisplay"></p>
+<button onclick="logout()">Logout</button>
+<button onclick="closeProfile()">Close</button>
+</div>
 </div>
 
 <script>
-let userId = localStorage.getItem('userId');
-if(!userId) window.location.href = "login.html";
+let userId=localStorage.getItem("userId");
+if(!userId){alert("Not logged in");window.location.href="login.html";}
 
-async function fetchUser() {
-  const res = await fetch("http://127.0.0.1:5000/_db");
-  const data = await res.json();
-  return data.find(u => u.id == userId);
+async function fetchUser(){
+try{
+const res=await fetch(`http://127.0.0.1:5000/user/${userId}`);
+const data=await res.json();
+document.getElementById('balance').innerText=data.balance;
+document.getElementById('usernameDisplay').innerText="Username: "+data.username;
+document.getElementById('emailDisplay').innerText="Email: "+data.email;
+document.getElementById('phoneDisplay').innerText="Phone: "+data.phone;
+document.getElementById('accDisplay').innerText="Account #: "+data.accountNumber;
+}catch(err){console.error(err);}
 }
-
-async function updateDashboard() {
-  const user = await fetchUser();
-  document.getElementById('balance').innerText = user.balance;
-  document.getElementById('profileUsername').innerText = user.username;
-  document.getElementById('profileEmail').innerText = user.email;
-  document.getElementById('profilePhone').innerText = user.phone;
-  document.getElementById('profileAcc').innerText = user.accountNumber;
-  document.getElementById('profileBalance').innerText = user.balance;
-}
-updateDashboard();
-
-document.getElementById('profileLink').onclick = () => document.getElementById('profileModal').style.display='flex';
-function closeProfile(){document.getElementById('profileModal').style.display='none';}
+fetchUser();
 
 async function addMoney(){
-  const amt = prompt("Enter amount to add:");
-  if(!amt || isNaN(amt)) return alert("Invalid amount");
-  const res = await fetch("http://127.0.0.1:5000/update-balance",{
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({userId, amount:amt})
-  });
-  const data = await res.json();
-  alert(data.message);
-  updateDashboard();
+const amt=parseFloat(document.getElementById('addAmount').value);
+if(!amt||amt<=0)return alert("Enter valid amount");
+try{
+const res=await fetch("http://127.0.0.1:5000/update-balance",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,amount:amt})});
+const data=await res.json();
+alert(data.message);
+fetchUser();
+}catch(err){alert("Server error");console.error(err);}
 }
 
-function logout(){ localStorage.removeItem('userId'); window.location.href="login.html"; }
+function openProfile(){document.getElementById('profileModal').style.display="flex";}
+function closeProfile(){document.getElementById('profileModal').style.display="none";}
+function logout(){localStorage.removeItem("userId");window.location.href="login.html";}
 
-async function sendMoney(){
-  const receiver = prompt("Receiver User ID:");
-  const amt = prompt("Amount:");
-  if(!receiver || !amt) return;
-  const res = await fetch("http://127.0.0.1:5000/send",{
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({userId, receiverId:receiver, amount:amt})
-  });
-  const data = await res.json();
-  alert(data.message);
-  updateDashboard();
-}
-
-async function toBank(){
-  const receiver = prompt("Bank Account User ID:");
-  const amt = prompt("Amount:");
-  if(!receiver || !amt) return;
-  const res = await fetch("http://127.0.0.1:5000/send-to-bank",{
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({senderId:userId, receiverId:receiver, amount:amt})
-  });
-  const data = await res.json();
-  alert(data.message);
-  updateDashboard();
-}
+// Placeholder for send, receive, bank, transactions
+function sendMoney(){window.location.href="tobank.html";}
+function receiveMoney(){alert("Feature coming soon");}
+function sendBank(){window.location.href="tobank.html";}
+function viewTransactions(){alert("Feature coming soon");}
 </script>
 </body>
 </html>
