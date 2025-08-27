@@ -32,9 +32,7 @@ def digits_only(s):
 
 def account_number_from_phone(phone):
     d = digits_only(phone)
-    if len(d) == 11 and d.startswith("0"):
-        return d[1:]
-    return d[-10:]
+    return d[-10:] if len(d) >= 10 else None
 
 def find_user_by_id(uid):
     return next((u for u in users if int(u.get("id", 0)) == int(uid)), None)
@@ -61,7 +59,6 @@ def now_iso():
     return datetime.utcnow().isoformat() + "Z"
 
 # --- ROUTES ---
-
 @app.route("/")
 def home():
     return jsonify({"message": "PayMe API running (Flask)"}), 200
@@ -80,7 +77,7 @@ def register():
 
     acc = account_number_from_phone(phone)
     phone_digits = digits_only(phone)
-    if len(acc) != 10 or not is_unique(username, email, phone_digits, acc):
+    if not acc or len(acc) != 10 or not is_unique(username, email, phone_digits, acc):
         return jsonify({"message": "Invalid or duplicate account info"}), 400
 
     user = {
