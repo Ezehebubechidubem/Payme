@@ -267,18 +267,41 @@ if __name__ == "__main__":
 @app.route('/send-to-bank', methods=['POST'])
 def send_to_bank():
     data = request.json
-    sender_id = data['senderId']
-    receiver_id = data['receiverId']
-    amount = float(data['amount'])
+    try:
+        sender_id = int(data.get('senderId'))
+        receiver_id = int(data.get('receiverId'))
+        amount = float(data.get('amount'))
+    except Exception:
+        return jsonify({'message': 'Invalid input'}), 400
 
-    if sender_id not in users or receiver_id not in users:
+    sender = find_user_by_id(sender_id)
+    receiver = find_user_by_id(receiver_id)
+
+    if not sender or not receiver:
         return jsonify({'message': 'User not found'}), 404
-
-    if users[sender_id]['balance'] < amount:
+    if sender['balance'] < amount:
         return jsonify({'message': 'Insufficient funds'}), 400
 
-    users[sender_id]['balance'] -= amount
-    users[receiver_id]['balance'] += amount
+    sender['balance'] -= amount
+    receiver['balance'] += amount
 
-    return jsonify({'message': f'₦{amount} sent to {users[receiver_id]["username"]}', 
-                    'balance': users[sender_id]['balance']})
+    # Add transactions
+    ts = now_iso()
+    sender.setdefault("transactions", []).append({
+        "type": "send-to-bank",
+        "amount": amount,
+        "timestamp": ts,
+        "details": f"Sent to {receiver.get('username')} ({receiver.get('accountNumber')})"
+    })
+    receiver.setdefault("transactions", []).append({
+        "type": "receive-from-bank",
+        "amount": amount,
+        "timestamp": ts,
+        "details": f"Received from {sender.get('username')} ({sender.get('accountNumber')})"
+    })
+
+    save_users()
+    return jsonify({
+        'message': f'₦{amount} sent to {receiver["username"]}',
+        'balance': sender['balance']
+    }), 200
