@@ -3,35 +3,91 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Send to Bank</title>
+<title>Send Money - PayMe</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-body{font-family:Arial,sans-serif;background:#f7f7f7;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
-.container{background:white;padding:25px;border-radius:10px;width:100%;max-width:400px;box-shadow:0 2px 6px rgba(0,0,0,0.2);}
-input{width:100%;padding:10px;margin:10px 0;border:1px solid #ccc;border-radius:6px;}
-button{width:100%;padding:12px;background:#5b4dff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:16px;}
-button:hover{background:#4332e0;}
+body{font-family:Arial,sans-serif;background:#f7f7f7;margin:0;padding:0;}
+.container{max-width:400px;margin:50px auto;background:#fff;padding:20px;border-radius:12px;box-shadow:0 5px 15px rgba(0,0,0,0.1);}
+h2{text-align:center;color:#333;margin-bottom:20px;}
+label{display:block;margin:10px 0 5px;}
+input{width:100%;padding:10px;border:1px solid #ccc;border-radius:6px;margin-bottom:10px;}
+button{width:100%;padding:10px;background:#5b4dff;color:#fff;border:none;border-radius:6px;cursor:pointer;}
+#receiverName{margin-bottom:15px;color:green;font-weight:bold;}
+#errorMsg{color:red;text-align:center;margin-bottom:10px;}
 </style>
 </head>
 <body>
 <div class="container">
-<h2>Send to Bank</h2>
-<input type="text" id="receiverAccount" placeholder="Receiver Account #">
-<input type="number" id="amount" placeholder="Amount">
-<button onclick="sendBank()">Send</button>
+<h2>Send Money to User</h2>
+<div id="errorMsg"></div>
+<label>Receiver Phone / Account</label>
+<input type="text" id="receiverInput" placeholder="Enter last 10 digits">
+<div id="receiverName"></div>
+<label>Amount</label>
+<input type="number" id="amount" placeholder="Enter amount">
+<button id="sendBtn">Send Money</button>
 </div>
+
 <script>
-let userId=localStorage.getItem("userId");
-if(!userId){alert("Not logged in");window.location.href="login.html";}
-async function sendBank(){
-const receiverAccount=document.getElementById('receiverAccount').value.trim();
-const amount=parseFloat(document.getElementById('amount').value);
-if(!receiverAccount||!amount||amount<=0)return alert("Enter valid details");
-try{
-const res=await fetch("http://127.0.0.1:5000/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,receiverAccount,amount})});
-const data=await res.json();
-alert(data.message);
-}catch(err){alert("Server error");console.error(err);}
+let user = JSON.parse(localStorage.getItem('user'));
+if(!user){ window.location.href='paymelogin.html'; }
+
+let allUsers = [];
+
+async function fetchUsers(){
+const res = await fetch('https://payme-6.onrender.com/users');
+allUsers = await res.json();
+localStorage.setItem('allUsers', JSON.stringify(allUsers));
 }
+fetchUsers();
+
+const receiverInput = document.getElementById('receiverInput');
+const receiverNameDiv = document.getElementById('receiverName');
+let selectedReceiver = null;
+
+receiverInput.addEventListener('input', ()=>{
+  const val = receiverInput.value.trim();
+  if(val.length>=10){
+    selectedReceiver = allUsers.find(u=>u.accountNumber===val);
+    if(selectedReceiver){
+      receiverNameDiv.innerText = `Receiver: ${selectedReceiver.username}`;
+    } else {
+      receiverNameDiv.innerText = 'Receiver not found';
+      selectedReceiver = null;
+    }
+  } else {
+    receiverNameDiv.innerText = '';
+    selectedReceiver = null;
+  }
+});
+
+document.getElementById('sendBtn').addEventListener('click', async ()=>{
+  const errorMsg = document.getElementById('errorMsg');
+  errorMsg.innerText = '';
+  const amount = parseFloat(document.getElementById('amount').value);
+  if(!selectedReceiver){ errorMsg.innerText='Select a valid receiver'; return; }
+  if(isNaN(amount) || amount<=0){ errorMsg.innerText='Enter a valid amount'; return; }
+
+  try{
+    const res = await fetch('https://payme-6.onrender.com/send',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({userId:user.id, receiverId:selectedReceiver.id, amount})
+    });
+    const data = await res.json();
+    if(res.ok){
+      alert(data.message);
+      // update balance locally
+      user.balance = data.balance;
+      localStorage.setItem('user', JSON.stringify(user));
+      document.getElementById('amount').value='';
+      receiverInput.value='';
+      receiverNameDiv.innerText='';
+    } else { errorMsg.innerText = data.message; }
+  } catch(err){
+    errorMsg.innerText='Network error';
+  }
+});
 </script>
 </body>
 </html>
