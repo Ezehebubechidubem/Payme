@@ -10,20 +10,19 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# SQLite DB (file-based) so data persists across restarts
+# SQLite database
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "payme.db")
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 
-# ---------- Models ----------
+# ---------------- Models ----------------
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     phone = db.Column(db.String(20), unique=True, nullable=False)
-    account_number = db.Column(db.String(20), unique=True, nullable=False)  # last 10 digits
+    account_number = db.Column(db.String(20), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     balance = db.Column(db.Float, default=0.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -34,7 +33,7 @@ class User(db.Model):
             "username": self.username,
             "phone": self.phone,
             "accountNumber": self.account_number,
-            "balance": round(self.balance,2),
+            "balance": round(self.balance, 2),
             "created_at": self.created_at.isoformat()
         }
 
@@ -58,34 +57,23 @@ class Transaction(db.Model):
             "counterpartyId": self.counterparty_id
         }
 
-# ---------- Helpers ----------
+# ---------------- Helpers ----------------
 def normalize_phone(phone):
-    if not phone:
-        return None
     digits = "".join([c for c in phone if c.isdigit()])
-    if len(digits) >= 10:
-        return digits
-    return None
-
-def account_from_phone(phone_digits):
-    if not phone_digits:
-        return None
-    return phone_digits[-10:]
+    return digits[-10:] if len(digits) >= 10 else None
 
 def ensure_db():
     db.create_all()
 
-# ---------- Routes ----------
+# ---------------- Routes ----------------
 @app.route("/")
 def home():
-    return jsonify({"message": "PayMe API running"}), 200
+    return jsonify({"message":"PayMe API running"}), 200
 
-# Register endpoint
+# Register
 @app.route("/register", methods=["POST"])
 def register():
     data = request.get_json() or {}
-    print("Incoming register data:", data)  # Debugging
-
     username = (data.get("username") or "").strip()
     phone_raw = (data.get("phone") or "").strip()
     password = data.get("password") or ""
@@ -94,27 +82,23 @@ def register():
         return jsonify({"message":"All fields required"}), 400
 
     phone_digits = normalize_phone(phone_raw)
-    if not phone_digits or len(phone_digits) < 10:
-        return jsonify({"message":"Phone must contain at least 10 digits"}), 400
+    if not phone_digits:
+        return jsonify({"message":"Invalid phone number"}), 400
 
-    stored_phone = phone_digits
-    acc = account_from_phone(phone_digits)
-    if not acc:
-        return jsonify({"message":"Invalid phone/account"}), 400
+    account_number = phone_digits[-10:]
 
     # Check duplicates
-    if User.query.filter((User.username.ilike(username)) | (User.phone == stored_phone) | (User.account_number == acc)).first():
+    if User.query.filter((User.username.ilike(username)) | (User.phone == phone_digits) | (User.account_number == account_number)).first():
         return jsonify({"message":"Username, phone or account already exists"}), 400
 
-    # Create user
     pwd_hash = generate_password_hash(password)
-    user = User(username=username, phone=stored_phone, account_number=acc, password_hash=pwd_hash, balance=0.0)
+    user = User(username=username, phone=phone_digits, account_number=account_number, password_hash=pwd_hash, balance=0.0)
     db.session.add(user)
     db.session.commit()
 
-    return jsonify({"message":"Registration successful", "user": user.to_dict()}), 201
+    return jsonify({"message":"Registration successful"}), 201
 
-# Login endpoint
+# Login
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json() or {}
@@ -124,10 +108,10 @@ def login():
     if not identifier or not password:
         return jsonify({"message":"Identifier and password required"}), 400
 
-    maybe_phone = normalize_phone(identifier)
     user = None
-    if maybe_phone:
-        user = User.query.filter((User.phone == maybe_phone) | (User.account_number == maybe_phone[-10:])).first()
+    phone = normalize_phone(identifier)
+    if phone:
+        user = User.query.filter((User.phone==phone) | (User.account_number==phone)).first()
     if not user:
         user = User.query.filter(User.username.ilike(identifier)).first()
 
@@ -136,10 +120,90 @@ def login():
 
     return jsonify({"message":"Login successful", "user": user.to_dict()}), 200
 
-# All your other endpoints remain unchanged...
-# (get_user, get_user_by_account, update_profile, update_balance, send, transfer_to_bank,
-# service_handler, get_transactions, list_users)
+# Get all users
+@app.route("/users", methods=["GET"])
+def list_users():
+    users = User.query.all()
+    return jsonify([u.to_dict() for u in users]), 200
+
+# Get user by ID
+@app.route("/user/<int:user_id>", methods=["GET"])
+def get_user(user_id):
+    user = User.query.get(user_id)
+    if not user: return jsonify({"message":"User not found"}), 404
+    return jsonify(user.to_dict()), 200
+
+# Update profile
+@app.route("/update-profile", methods=["POST"])
+def update_profile():
+    data = request.get_json() or {}
+    user_id = data.get("userId")
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    user = User.query.get(user_id)
+    if not user: return jsonify({"message":"User not found"}), 404
+
+    if username:
+        if User.query.filter(User.username.ilike(username), User.id != user.id).first():
+            return jsonify({"message":"Username already taken"}), 400
+        user.username = username
+    if password:
+        user.password_hash = generate_password_hash(password)
+
+    db.session.commit()
+    return jsonify({"message":"Profile updated", "user": user.to_dict()}), 200
+
+# Update balance (Add money)
+@app.route("/update-balance", methods=["POST"])
+def update_balance():
+    data = request.get_json() or {}
+    user_id = data.get("userId")
+    amount = data.get("amount")
+    try: amount = float(amount)
+    except: return jsonify({"message":"Invalid amount"}), 400
+    if amount <= 0: return jsonify({"message":"Amount must be positive"}), 400
+
+    user = User.query.get(user_id)
+    if not user: return jsonify({"message":"User not found"}), 404
+
+    user.balance += amount
+    db.session.add(Transaction(user_id=user.id, type="add", amount=amount, details="Wallet top-up"))
+    db.session.commit()
+    return jsonify({"message":f"₦{amount} added", "balance": round(user.balance,2)}), 200
+
+# Send money
+@app.route("/send", methods=["POST"])
+def send():
+    data = request.get_json() or {}
+    sender_id = data.get("userId")
+    amount = data.get("amount")
+    receiver_id = data.get("receiverId")
+
+    try: amount = float(amount)
+    except: return jsonify({"message":"Invalid amount"}),400
+
+    sender = User.query.get(sender_id)
+    receiver = User.query.get(receiver_id)
+    if not sender or not receiver: return jsonify({"message":"User not found"}),404
+    if sender.id == receiver.id: return jsonify({"message":"Cannot send to self"}),400
+    if sender.balance < amount: return jsonify({"message":"Insufficient balance"}),400
+
+    sender.balance -= amount
+    receiver.balance += amount
+
+    db.session.add(Transaction(user_id=sender.id, type="send", amount=amount, details=f"Sent to {receiver.username}", counterparty_id=receiver.id))
+    db.session.add(Transaction(user_id=receiver.id, type="receive", amount=amount, details=f"Received from {sender.username}", counterparty_id=sender.id))
+    db.session.commit()
+
+    return jsonify({"message":f"₦{amount} sent to {receiver.username}", "balance": round(sender.balance,2)}), 200
+
+# Transactions
+@app.route("/transactions/<int:user_id>", methods=["GET"])
+def get_transactions(user_id):
+    txs = Transaction.query.filter_by(user_id=user_id).order_by(Transaction.timestamp.desc()).all()
+    return jsonify([t.to_dict() for t in txs]), 200
 
 if __name__ == "__main__":
     ensure_db()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)), debug=True)
