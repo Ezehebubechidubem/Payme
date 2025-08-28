@@ -351,8 +351,14 @@ document.getElementById('toBankForm').addEventListener('submit', async (e)=>{
     }catch(err){ alert('Error sending money'); }
 });
 
-// Initial load
-showSection('registerSection');
+// --- PERSIST LOGIN ---
+if(localStorage.getItem('paymeUser')){
+    currentUser = JSON.parse(localStorage.getItem('paymeUser'));
+    loadDashboard();
+    showSection('dashboardSection');
+} else {
+    showSection('registerSection'); // show register only if no user logged in
+}
 </script>
 </body>
 </html>
