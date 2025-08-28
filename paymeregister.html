@@ -3,41 +3,55 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PayMe Register</title>
+<title>Register - PayMe</title>
 <style>
 body{font-family:Arial,sans-serif;background:#f7f7f7;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
-.container{background:white;padding:25px;border-radius:10px;width:100%;max-width:400px;box-shadow:0 2px 6px rgba(0,0,0,0.2);}
-h2{text-align:center;margin-bottom:20px;}
-input{width:100%;padding:10px;margin:10px 0;border:1px solid #ccc;border-radius:6px;}
-button{width:100%;padding:12px;background:#5b4dff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:16px;}
-button:hover{background:#4332e0;}
-p{text-align:center;} a{color:#5b4dff;text-decoration:none;}
+.container{background:#fff;padding:20px;border-radius:12px;box-shadow:0 5px 15px rgba(0,0,0,0.1);width:90%;max-width:400px;}
+h2{text-align:center;color:#333;}
+label{display:block;margin:10px 0 5px;}
+input{width:100%;padding:10px;margin-bottom:10px;border-radius:6px;border:1px solid #ccc;}
+button{width:100%;padding:10px;background:#5b4dff;color:#fff;border:none;border-radius:6px;cursor:pointer;}
+#error{color:red;text-align:center;margin-bottom:10px;}
 </style>
 </head>
 <body>
 <div class="container">
 <h2>Create Account</h2>
-<input type="text" id="username" placeholder="Username">
-<input type="email" id="email" placeholder="Email">
-<input type="tel" id="phone" placeholder="Phone (08123456789)">
-<input type="password" id="password" placeholder="Password">
-<button onclick="register()">Register</button>
-<p>Already have an account? <a href="login.html">Login</a></p>
+<div id="error"></div>
+<label>Username</label>
+<input type="text" id="username" placeholder="Enter username">
+<label>Phone Number</label>
+<input type="text" id="phone" placeholder="Enter phone (11 digits)">
+<label>Password</label>
+<input type="password" id="password" placeholder="Enter password">
+<button id="registerBtn">Register</button>
+<p style="text-align:center;margin-top:10px;">Already have an account? <a href="paymelogin.html">Login</a></p>
 </div>
+
 <script>
-async function register(){
-const username=document.getElementById('username').value.trim();
-const email=document.getElementById('email').value.trim();
-const phone=document.getElementById('phone').value.trim();
-const password=document.getElementById('password').value.trim();
-if(!username||!email||!phone||!password)return alert("All fields required");
-try{
-const res=await fetch("http://127.0.0.1:5000/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,email,phone,password})});
-const data=await res.json();
-alert(data.message);
-if(res.ok){localStorage.setItem("userId",data.user.id);window.location.href="index.html";}
-}catch(err){alert("Server error");console.error(err);}
-}
+document.getElementById('registerBtn').addEventListener('click', async ()=>{
+  const username = document.getElementById('username').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const password = document.getElementById('password').value.trim();
+  const errorDiv = document.getElementById('error');
+  errorDiv.innerText='';
+
+  if(!username || !phone || !password){ errorDiv.innerText='All fields required'; return; }
+  if(!/^\d{11}$/.test(phone)){ errorDiv.innerText='Phone must be 11 digits'; return; }
+
+  try{
+    const res = await fetch('https://payme-6.onrender.com/register',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username, phone, password})
+    });
+    const data = await res.json();
+    if(res.ok){
+      alert(data.message);
+      window.location.href='paymelogin.html';
+    } else { errorDiv.innerText=data.message; }
+  } catch(err){ errorDiv.innerText='Network error'; }
+});
 </script>
 </body>
 </html>
