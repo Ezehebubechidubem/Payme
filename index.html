@@ -139,11 +139,12 @@ form small { display:block; text-align:center; margin-top:10px; color:gray; curs
 <div id="dataBtn"><i class="fas fa-wifi"></i><br>Data</div>
 <div id="electricBtn"><i class="fas fa-bolt"></i><br>Electricity</div>
 <div id="bettingBtn"><i class="fas fa-futbol"></i><br>Betting</div>
+    <section>
 <div id="tvBtn"><i class="fas fa-tv"></i><br>TV</div>
 <div id="loanBtn"><i class="fas fa-hand-holding-usd"></i><br>Loan</div>
 <div id="businessBtn"><i class="fas fa-briefcase"></i><br>Business</div>
 <div id="earnBtn"><i class="fas fa-users"></i><br>Refer & Earn</div>
-</div>
+    </section>
 </div>
 
 <div id="bottomBar">
@@ -203,7 +204,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e)=>{
     const password = document.getElementById('regPassword').value;
 
     try{
-        const res = await fetch('http://127.0.0.1:5000/register',{
+        const res = await fetch('https://payme-update.onrender.com/register',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({username, phone, password})
@@ -221,7 +222,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
     const password = document.getElementById('loginPassword').value;
 
     try{
-        const res = await fetch('http://127.0.0.1:5000/login',{
+        const res = await fetch('https://payme-update.onrender.com/login',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({phone, password})
@@ -246,7 +247,7 @@ async function loadDashboard(){
 
     // Load transactions
     try{
-        const res = await fetch('http://127.0.0.1:5000/transactions',{
+        const res = await fetch('https://payme-update.onrender.com/transactions',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({userId: currentUser.id})
@@ -281,7 +282,7 @@ document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
     const amount = parseFloat(prompt("Enter amount to add:"));
     if(!amount || amount<=0) return alert('Invalid amount');
     try{
-        const res = await fetch('http://127.0.0.1:5000/update-balance',{
+        const res = await fetch('https://payme-update.onrender.com/update-balance',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({userId: currentUser.id, amount})
@@ -317,7 +318,7 @@ document.getElementById('receiverPhone').addEventListener('input', async ()=>{
     const phone = document.getElementById('receiverPhone').value;
     if(phone.length<10) return;
     try{
-        const res = await fetch('http://127.0.0.1:5000/user-by-account',{
+        const res = await fetch('https://payme-update.onrender.com/user-by-account',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({accountNumber: phone.slice(-10)})
@@ -335,7 +336,7 @@ document.getElementById('toBankForm').addEventListener('submit', async (e)=>{
     if(!receiverId) return alert('Invalid receiver');
     if(amount<=0) return alert('Invalid amount');
     try{
-        const res = await fetch('http://127.0.0.1:5000/send',{
+        const res = await fetch('https://payme-update.onrender.com/send',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({userId: currentUser.id, receiverId, amount})
