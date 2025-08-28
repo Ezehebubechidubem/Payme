@@ -1,294 +1,156 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PayMe App</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<style>
-body { font-family: Arial, sans-serif; margin: 0; background-color: #f7f7f7; }
-.hidden { display: none; }
-/* --- Forms --- */
-form { max-width: 400px; margin: 50px auto; padding: 20px; background:white; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1);}
-form h2 { text-align:center; margin-bottom:20px;}
-form input { width:100%; padding:10px; margin:10px 0; border-radius:6px; border:1px solid #ccc;}
-form button { width:100%; padding:10px; background:#5b4dff; color:white; border:none; border-radius:6px; cursor:pointer; font-size:16px;}
-form small { display:block; text-align:center; margin-top:10px; color:gray; cursor:pointer; }
-/* --- Dashboard --- */
-.navbar { display:flex; justify-content:space-between; align-items:center; background:#222; padding:10px 20px;}
-.navbar .logo { color:#fff; font-size:20px; font-weight:bold;}
-.balance-card, .history-card, .quick-actions, .services, .fish{ margin:30px; padding:20px; border-radius:12px; background:white; }
-.balance-card h1 { margin:10px 0; }
-.quick-actions, .services,.fish { display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px; }
-.quick-actions div, .services div, .fish div { text-align:center; font-size:14px; cursor:pointer; }
-.quick-actions div i, .services div i ,.fish div i{ font-size:24px; color:purple; }
-#transactionList { list-style:none; padding:0; margin:0; max-height:250px; overflow-y:auto;}
-#transactionList li { border-bottom:1px solid #eee; padding:10px 0; font-size:14px;}
-#transactionList li.deposit { background:#e0ffe0; }
-#transactionList li.withdraw { background:#ffe0e0; }
-#transactionList li span.amount { font-weight:bold; }
-#transactionList li span.type { font-style:italic; color:gray; }
-/* Profile Modal */
-#profileModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; }
-#profileModal .modal-content { background:white; padding:20px; border-radius:10px; width:90%; max-width:400px; }
-</style>
-</head>
-<body>
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from threading import Lock
+import json
+import os
+from datetime import datetime
 
-<!-- Register -->
-<section id="registerSection">
-<form id="registerForm">
-<h2>Register</h2>
-<input type="text" placeholder="Username" id="regUsername" required>
-<input type="text" placeholder="Phone (11 digits)" id="regPhone" required>
-<input type="password" placeholder="Password" id="regPassword" required>
-<button type="submit">Register</button>
-<small id="toLogin">Already have account? Login</small>
-</form>
-</section>
+app = Flask(__name__)
+CORS(app)
 
-<!-- Login -->
-<section id="loginSection" class="hidden">
-<form id="loginForm">
-<h2>Login</h2>
-<input type="text" placeholder="Phone (11 digits)" id="loginPhone" required>
-<input type="password" placeholder="Password" id="loginPassword" required>
-<button type="submit">Login</button>
-<small id="toRegister">Don't have account? Register</small>
-</form>
-</section>
+DATA_FILE = 'payme_data.json'
+lock = Lock()  # To handle simultaneous requests safely
 
-<!-- Dashboard -->
-<section id="dashboardSection" class="hidden">
-<nav class="navbar">
-<div class="logo">PAYME</div>
-<div>
-<button id="profileBtn">Profile</button>
-<button id="logoutBtn">Logout</button>
-</div>
-</nav>
+# --- Load/Save Data ---
+if os.path.exists(DATA_FILE):
+    with open(DATA_FILE, 'r') as f:
+        data = json.load(f)
+else:
+    data = {'users': {}, 'transactions': []}  # userId: {username, phone, password, balance, account_number}
 
-<div class="balance-card">
-<h3>Available Balance</h3>
-<h1 id="balanceDisplay">₦0.00</h1>
-<button id="addMoneyBtn">Add Money</button>
-</div>
+def save_data():
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
 
-<div class="quick-actions">
-<div id="toBankBtn"><i class="fas fa-university"></i><br>To Bank</div>
-<div id="toWalletBtn"><i class="fas fa-wallet"></i><br>To Wallet</div>
-<div id="atmBtn"><i class="fas fa-credit-card"></i><br>ATM Card</div>
-</div>
+# --- Helpers ---
+def get_user_by_phone(phone):
+    for uid, u in data['users'].items():
+        if u['phone'] == phone:
+            return uid, u
+    return None, None
 
-<div class="services">
-<div id="airtimeBtn"><i class="fas fa-phone"></i><br>Airtime</div>
-<div id="dataBtn"><i class="fas fa-wifi"></i><br>Data</div>
-<div id="electricBtn"><i class="fas fa-bolt"></i><br>Electricity</div>
-<div id="bettingBtn"><i class="fas fa-futbol"></i><br>Betting</div>
-<div id="tvBtn"><i class="fas fa-tv"></i><br>TV</div>
-    <section>
-     <div id="loanBtn"><i class="fas fa-hand-holding-usd"></i><br>Loan</div>
-<div id="businessBtn"><i class="fas fa-briefcase"></i><br>Business</div>
-<div id="earnBtn"><i class="fas fa-users"></i><br>Refer & Earn</div>
-</div>
-</section>
-</section>
-    
+def get_user_by_account(account_number):
+    for uid, u in data['users'].items():
+        if u['account_number'] == account_number:
+            return uid, u
+    return None, None
 
-<div class="history-card">
-<h3>Transaction History</h3>
-<ul id="transactionList"><li>No transactions yet</li></ul>
-</div>
-
-   
-<!-- To Bank Section -->
-<section id="toBankSection" class="hidden">
-<form id="toBankForm" style="max-width:400px; margin:50px auto; padding:20px; background:white; border-radius:10px;">
-<h2>Send Money</h2>
-<input type="text" placeholder="Receiver Phone (11 digits)" id="receiverPhone" required>
-<p id="receiverName" style="margin:5px 0;color:green;"></p>
-<input type="number" placeholder="Amount" id="sendAmount" required>
-<button type="submit">Send</button>
-<small id="backDashboard" style="display:block; text-align:center; margin-top:10px; cursor:pointer;">Back to Dashboard</small>
-</form>
-</section>
-
-<!-- Profile Modal -->
-<div id="profileModal">
-<div class="modal-content">
-<h2>My Profile</h2>
-<p><b>Username:</b> <span id="profileUsername"></span></p>
-<p><b>Phone:</b> <span id="profilePhone"></span></p>
-<p><b>Account No:</b> <span id="profileAccount"></span></p>
-<p><b>Balance:</b> ₦<span id="profileBalance"></span></p>
-<button id="closeProfile">Close</button>
-</div>
-</div>
-
-<script>
-let currentUser = null;
-
-function showSection(sec){
-    document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));
-    document.getElementById(sec).classList.remove('hidden');
-}
-
-// --- Register ---
-document.getElementById('registerForm').addEventListener('submit', async(e)=>{
-    e.preventDefault();
-    const username = document.getElementById('regUsername').value;
-    const phone = document.getElementById('regPhone').value;
-    const password = document.getElementById('regPassword').value;
-    const res = await fetch('https://payme-update.onrender.com/register',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({username, phone, password})
-    });
-    const data = await res.json();
-    alert(data.message);
-    if(res.ok) showSection('loginSection');
-});
-
-// Switch forms
-document.getElementById('toLogin').addEventListener('click', ()=> showSection('loginSection'));
-document.getElementById('toRegister').addEventListener('click', ()=> showSection('registerSection'));
-
-// --- Login ---
-document.getElementById('loginForm').addEventListener('submit', async(e)=>{
-    e.preventDefault();
-    const phone = document.getElementById('loginPhone').value;
-    const password = document.getElementById('loginPassword').value;
-    const res = await fetch('https://payme-update.onrender.com/login',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({phone,password})
-    });
-    const data = await res.json();
-    if(!res.ok){ alert(data.message); return;}
-    currentUser = data.user;
-    showSection('dashboardSection');
-    loadDashboard();
-    loadTransactions();
-});
-
-// --- Dashboard ---
-function loadDashboard(){
-    if(!currentUser) return;
-    document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance}`;
-}
-
-// --- Profile ---
-document.getElementById('profileBtn').addEventListener('click',()=>{
-    if(!currentUser) return;
-    document.getElementById('profileUsername').innerText = currentUser.username;
-    document.getElementById('profilePhone').innerText = currentUser.phone;
-    document.getElementById('profileAccount').innerText = currentUser.account_number;
-    
-document.getElementById('profileBalance').innerText = currentUser.balance;
-    document.getElementById('profileModal').style.display='flex';
-});
-document.getElementById('closeProfile').addEventListener('click', ()=> {
-    document.getElementById('profileModal').style.display='none';
-});
-
-// --- Logout ---
-document.getElementById('logoutBtn').addEventListener('click', ()=>{
-    currentUser = null;
-    showSection('loginSection');
-});
-
-// --- Add Money ---
-document.getElementById('addMoneyBtn').addEventListener('click', async()=>{
-    const amount = parseFloat(prompt('Enter amount to add:'));
-    if(isNaN(amount) || amount<=0) return alert('Invalid amount!');
-    const res = await fetch('https://payme-update.onrender.com/update-balance',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({userId:currentUser.id, amount})
-    });
-    const data = await res.json();
-    alert(data.message);
-    if(res.ok){
-        currentUser.balance = data.balance;
-        loadDashboard();
-        loadTransactions();
+def add_transaction(user_id, tx_type, amount, receiver_id=None):
+    tx = {
+        'user_id': user_id,
+        'type': tx_type,
+        'amount': amount,
+        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'receiver_id': receiver_id
     }
-});
+    data['transactions'].append(tx)
+    save_data()
 
-// --- ToBank ---
-document.getElementById('toBankBtn').addEventListener('click',()=>showSection('toBankSection'));
-document.getElementById('backDashboard').addEventListener('click',()=>showSection('dashboardSection'));
+# --- REGISTER ---
+@app.route('/register', methods=['POST'])
+def register():
+    body = request.json
+    username = body.get('username')
+    phone = body.get('phone')
+    password = body.get('password')
 
-// Receiver Name display
-document.getElementById('receiverPhone').addEventListener('input', async()=>{
-    const phone = document.getElementById('receiverPhone').value;
-    if(phone.length<10){ document.getElementById('receiverName').innerText=''; return; }
-    const acct = phone.slice(-10);
-    const res = await fetch('https://payme-update.onrender.com/user-by-account',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({accountNumber:acct})
-    });
-    const data = await res.json();
-    if(data.username) document.getElementById('receiverName').innerText = `Receiver: ${data.username}`;
-    else document.getElementById('receiverName').innerText = '';
-});
+    with lock:
+        uid, _ = get_user_by_phone(phone)
+        if uid:
+            return jsonify({'message': 'Phone already registered'}), 400
+        user_id = str(len(data['users']) + 1)
+        account_number = phone[-10:]  # last 10 digits as account number
+        data['users'][user_id] = {
+            'username': username,
+            'phone': phone,
+            'password': password,
+            'balance': 0.0,
+            'account_number': account_number
+        }
+        save_data()
+    return jsonify({'message': 'Registration successful'}), 200
 
-// Send Money
-document.getElementById('toBankForm').addEventListener('submit', async(e)=>{
-    e.preventDefault();
-    const phone = document.getElementById('receiverPhone').value;
-    const receiverAccount = phone.slice(-10);
-    const amount = parseFloat(document.getElementById('sendAmount').value);
-    if(isNaN(amount) || amount<=0){ alert('Enter valid amount'); return;}
+# --- LOGIN ---
+@app.route('/login', methods=['POST'])
+def login():
+    body = request.json
+    phone = body.get('phone')
+    password = body.get('password')
+    uid, user = get_user_by_phone(phone)
+    if not user or user['password'] != password:
+        return jsonify({'message': 'Invalid credentials'}), 400
+    return jsonify({'message':'Login successful', 'user': {**user, 'id': uid}}), 200
 
-    // Get receiver ID first
-    const resUser = await fetch('https://payme-update.onrender.com/user-by-account',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({accountNumber:receiverAccount})
-    });
-    const dataUser = await resUser.json();
-    if(!dataUser.userId) return alert('Receiver not found!');
+# --- FETCH TRANSACTIONS ---
+@app.route('/transactions', methods=['POST'])
+def transactions():
+    body = request.json
+    user_id = body.get('userId')
+    user_tx = [tx for tx in data['transactions'] if tx['user_id'] == user_id or tx.get('receiver_id') == user_id]
+    # Format transactions
+    formatted_tx = []
+    for tx in user_tx:
+        tx_type = tx['type']
+        if tx_type == 'send' and tx['user_id'] == user_id:
+            tx_type = 'Sent'
+        elif tx_type == 'send' and tx.get('receiver_id') == user_id:
+            tx_type = 'Received'
+        formatted_tx.append({
+            'type': tx_type,
+            'amount': tx['amount'],
+            'date': tx['date']
+        })
+    return jsonify(formatted_tx), 200
 
-    const res = await fetch('https://payme-update.onrender.com/send',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({userId: currentUser.id, receiverId: dataUser.userId, amount})
-    });
-    const data = await res.json();
-    alert(data.message);
-    if(res.ok){ 
-        currentUser.balance = data.balance; 
-        loadDashboard(); 
-        loadTransactions(); 
-        showSection('dashboardSection'); 
-    }
-});
+# --- USER BY ACCOUNT NUMBER ---
+@app.route('/user-by-account', methods=['POST'])
+def user_by_account():
+    body = request.json
+    account_number = body.get('accountNumber')
+    uid, user = get_user_by_account(account_number)
+    if not user:
+        return jsonify({}), 404
+    return jsonify({'username': user['username'], 'userId': uid}), 200
 
-// --- Load Transaction History ---
-async function loadTransactions(){
-    if(!currentUser) return;
-    const res = await fetch('https://payme-update.onrender.com/transactions',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({userId:currentUser.id})
-    });
-    const data = await res.json();
-    const list = document.getElementById('transactionList');
-    list.innerHTML='';
-    if(!data || data.length===0){
-        list.innerHTML='<li>No transactions yet</li>';
-        return;
-    }
-    data.forEach(tx=>{
-        const li = document.createElement('li');
-        li.className = tx.type.startsWith('Deposit') || tx.type.startsWith('Received') ? 'deposit':'withdraw';
-        li.innerHTML = `<span class="type">${tx.type}</span>: <span class="amount">₦${tx.amount}</span> <small>${tx.date}</small>`;
-        list.appendChild(li);
-    });
-}
-</script>
-</body>
-</html>
-    
+# --- ADD MONEY / UPDATE BALANCE ---
+@app.route('/update-balance', methods=['POST'])
+def update_balance():
+    body = request.json
+    user_id = body.get('userId')
+    amount = float(body.get('amount', 0))
+    if amount <= 0:
+        return jsonify({'message':'Invalid amount'}), 400
+    with lock:
+        if user_id not in data['users']:
+            return jsonify({'message':'User not found'}), 404
+        data['users'][user_id]['balance'] += amount
+        save_data()
+        add_transaction(user_id, 'Deposit', amount)
+    return jsonify({'message':'Balance updated', 'balance': data['users'][user_id]['balance']}), 200
+
+# --- SEND MONEY ---
+@app.route('/send', methods=['POST'])
+def send_money():
+    body = request.json
+    user_id = body.get('userId')
+    receiver_id = body.get('receiverId')
+    amount = float(body.get('amount',0))
+    if amount <= 0:
+        return jsonify({'message':'Invalid amount'}), 400
+    with lock:
+        if user_id not in data['users'] or receiver_id not in data['users']:
+            return jsonify({'message':'User not found'}), 404
+        sender = data['users'][user_id]
+        receiver = data['users'][receiver_id]
+        if sender['balance'] < amount:
+            return jsonify({'message':'Insufficient balance'}), 400
+        sender['balance'] -= amount
+        receiver['balance'] += amount
+        save_data()
+        add_transaction(user_id, 'send', amount, receiver_id)
+        add_transaction(receiver_id, 'Received', amount, user_id)
+    return jsonify({'message':'Money sent', 'balance': sender['balance']}), 200
+
+# --- RUN APP ---
+if __name__ == '__main__':
+    app.run(debug=True)
