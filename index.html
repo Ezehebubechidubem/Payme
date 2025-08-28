@@ -134,18 +134,17 @@ form small { display:block; text-align:center; margin-top:10px; color:gray; curs
 <div id="atmBtn"><i class="fas fa-credit-card"></i><br>ATM Card</div>
 </div>
 
-<section class="services">
+<div class="services">
 <div id="airtimeBtn"><i class="fas fa-phone"></i><br>Airtime</div>
 <div id="dataBtn"><i class="fas fa-wifi"></i><br>Data</div>
 <div id="electricBtn"><i class="fas fa-bolt"></i><br>Electricity</div>
 <div id="bettingBtn"><i class="fas fa-futbol"></i><br>Betting</div>
-    <section>
 <div id="tvBtn"><i class="fas fa-tv"></i><br>TV</div>
 <div id="loanBtn"><i class="fas fa-hand-holding-usd"></i><br>Loan</div>
 <div id="businessBtn"><i class="fas fa-briefcase"></i><br>Business</div>
 <div id="earnBtn"><i class="fas fa-users"></i><br>Refer & Earn</div>
-    </section>
-</section>
+</div>
+</div>
 
 <div id="bottomBar">
 <div id="homeBtn"><i class="fas fa-home"></i><br>Home</div>
@@ -182,17 +181,11 @@ let currentUser = null;
 let allTransactions = [];
 let lastTxLimit = 5;
 
-// --- PERSIST LOGIN ---
-if(localStorage.getItem('paymeUser')){
-    currentUser = JSON.parse(localStorage.getItem('paymeUser'));
-    loadDashboard();
-    showSection('dashboardSection');
-}
-
 // Section navigation
 function showSection(sec){
     document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));
     document.getElementById(sec).classList.remove('hidden');
+    // Hide dashboard elements if not on dashboard
     if(sec!=='dashboardSection'){ document.getElementById('profileMenu').style.display='none'; document.getElementById('profileModal').style.display='none'; document.getElementById('bottomBar').style.display='none'; }
     else { document.getElementById('bottomBar').style.display='flex'; }
 }
@@ -210,7 +203,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e)=>{
     const password = document.getElementById('regPassword').value;
 
     try{
-        const res = await fetch('https://payme-update.onrender.com/register',{
+        const res = await fetch('http://127.0.0.1:5000/register',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({username, phone, password})
@@ -228,7 +221,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
     const password = document.getElementById('loginPassword').value;
 
     try{
-        const res = await fetch('https://payme-update.onrender.com/login',{
+        const res = await fetch('http://127.0.0.1:5000/login',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({phone, password})
@@ -236,7 +229,6 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
         const data = await res.json();
         if(res.ok){
             currentUser = data.user;
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser)); // <-- SAVE USER
             loadDashboard();
             showSection('dashboardSection');
         } else { alert(data.message); }
@@ -252,8 +244,9 @@ async function loadDashboard(){
     document.getElementById('profileAccount').innerText = currentUser.account_number;
     document.getElementById('profileBalance').innerText = currentUser.balance.toFixed(2);
 
+    // Load transactions
     try{
-        const res = await fetch('https://payme-update.onrender.com/transactions',{
+        const res = await fetch('http://127.0.0.1:5000/transactions',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({userId: currentUser.id})
@@ -288,7 +281,7 @@ document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
     const amount = parseFloat(prompt("Enter amount to add:"));
     if(!amount || amount<=0) return alert('Invalid amount');
     try{
-        const res = await fetch('https://payme-update.onrender.com/update-balance',{
+        const res = await fetch('http://127.0.0.1:5000/update-balance',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({userId: currentUser.id, amount})
@@ -296,7 +289,6 @@ document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
         const data = await res.json();
         if(res.ok){
             currentUser.balance = data.balance;
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser)); // <-- UPDATE USER
             loadDashboard();
             alert('Balance updated successfully');
         } else { alert(data.message); }
@@ -309,46 +301,48 @@ document.getElementById('hamburgerBtn').addEventListener('click', ()=>{
     menu.style.display = (menu.style.display==='block')?'none':'block';
 });
 document.getElementById('profileMenuBtn').addEventListener('click', ()=>{
-    document.getElementById('profileModal').style.display = 'flex';
-    document.getElementById('profileMenu').style.display = 'none';
+    document.getElementById('profileModal').style.display='flex';
 });
-
-// Close profile modal
 document.getElementById('closeProfile').addEventListener('click', ()=>{
-    document.getElementById('profileModal').style.display = 'none';
+    document.getElementById('profileModal').style.display='none';
 });
-
-// Logout
 document.getElementById('logoutMenuBtn').addEventListener('click', ()=>{
-    if(confirm("Are you sure you want to logout?")){
-        localStorage.removeItem('paymeUser');
-        currentUser = null;
-        showSection('loginSection');
-    }
+    currentUser=null;
+    showSection('loginSection');
 });
 
-// --- TO BANK SECTION ---
-document.getElementById('toBankBtn').addEventListener('click', ()=>{
-    showSection('toBankSection');
+// --- SEND MONEY / TO BANK ---
+document.getElementById('toBankBtn').addEventListener('click', ()=>{ showSection('toBankSection'); });
+document.getElementById('receiverPhone').addEventListener('input', async ()=>{
+    const phone = document.getElementById('receiverPhone').value;
+    if(phone.length<10) return;
+    try{
+        const res = await fetch('http://127.0.0.1:5000/user-by-account',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({accountNumber: phone.slice(-10)})
+        });
+        const data = await res.json();
+        document.getElementById('receiverName').innerText = data.username ? `Receiver: ${data.username}` : 'User not found';
+        document.getElementById('toBankForm').dataset.receiverId = data.userId || '';
+    }catch(err){ console.log('Error finding user'); }
 });
 
 document.getElementById('toBankForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const receiverPhone = document.getElementById('receiverPhone').value;
     const amount = parseFloat(document.getElementById('sendAmount').value);
-    if(!receiverPhone || receiverPhone.length !== 11) return alert('Invalid receiver phone');
-    if(!amount || amount <= 0) return alert('Invalid amount');
-
+    const receiverId = e.target.dataset.receiverId;
+    if(!receiverId) return alert('Invalid receiver');
+    if(amount<=0) return alert('Invalid amount');
     try{
-        const res = await fetch('https://payme-update.onrender.com/send-money',{
+        const res = await fetch('http://127.0.0.1:5000/send',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({fromUserId: currentUser.id, toPhone: receiverPhone, amount})
+            body: JSON.stringify({userId: currentUser.id, receiverId, amount})
         });
         const data = await res.json();
         if(res.ok){
-            currentUser.balance = data.newBalance;
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
+            currentUser.balance = data.balance;
             loadDashboard();
             alert('Money sent successfully');
             showSection('dashboardSection');
@@ -356,7 +350,8 @@ document.getElementById('toBankForm').addEventListener('submit', async (e)=>{
     }catch(err){ alert('Error sending money'); }
 });
 
-// --- END OF SCRIPT ---
+// Initial load
+showSection('registerSection');
 </script>
 </body>
 </html>
