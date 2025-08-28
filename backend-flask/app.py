@@ -1,28 +1,26 @@
-# app.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-import re
 import os
 
 app = Flask(__name__)
 CORS(app)
 
-# SQLite database
+# Database
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "payme.db")
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# ---------------- Models ----------------
+# Models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     phone = db.Column(db.String(20), unique=True, nullable=False)
-    account_number = db.Column(db.String(20), unique=True, nullable=False)
+    account_number = db.Column(db.String(10), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     balance = db.Column(db.Float, default=0.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -33,7 +31,7 @@ class User(db.Model):
             "username": self.username,
             "phone": self.phone,
             "accountNumber": self.account_number,
-            "balance": round(self.balance, 2),
+            "balance": round(self.balance,2),
             "created_at": self.created_at.isoformat()
         }
 
@@ -57,7 +55,7 @@ class Transaction(db.Model):
             "counterpartyId": self.counterparty_id
         }
 
-# ---------------- Helpers ----------------
+# Helpers
 def normalize_phone(phone):
     digits = "".join([c for c in phone if c.isdigit()])
     return digits[-10:] if len(digits) >= 10 else None
@@ -65,7 +63,7 @@ def normalize_phone(phone):
 def ensure_db():
     db.create_all()
 
-# ---------------- Routes ----------------
+# Routes
 @app.route("/")
 def home():
     return jsonify({"message":"PayMe API running"}), 200
@@ -82,20 +80,18 @@ def register():
         return jsonify({"message":"All fields required"}), 400
 
     phone_digits = normalize_phone(phone_raw)
-    if not phone_digits:
-        return jsonify({"message":"Invalid phone number"}), 400
+    if not phone_digits or len(phone_digits) != 10:
+        return jsonify({"message":"Phone must be at least 10 digits"}), 400
 
     account_number = phone_digits[-10:]
 
-    # Check duplicates
-    if User.query.filter((User.username.ilike(username)) | (User.phone == phone_digits) | (User.account_number == account_number)).first():
+    if User.query.filter((User.username.ilike(username)) | (User.phone==phone_digits) | (User.account_number==account_number)).first():
         return jsonify({"message":"Username, phone or account already exists"}), 400
 
     pwd_hash = generate_password_hash(password)
-    user = User(username=username, phone=phone_digits, account_number=account_number, password_hash=pwd_hash, balance=0.0)
+    user = User(username=username, phone=phone_digits, account_number=account_number, password_hash=pwd_hash)
     db.session.add(user)
     db.session.commit()
-
     return jsonify({"message":"Registration successful"}), 201
 
 # Login
@@ -120,19 +116,6 @@ def login():
 
     return jsonify({"message":"Login successful", "user": user.to_dict()}), 200
 
-# Get all users
-@app.route("/users", methods=["GET"])
-def list_users():
-    users = User.query.all()
-    return jsonify([u.to_dict() for u in users]), 200
-
-# Get user by ID
-@app.route("/user/<int:user_id>", methods=["GET"])
-def get_user(user_id):
-    user = User.query.get(user_id)
-    if not user: return jsonify({"message":"User not found"}), 404
-    return jsonify(user.to_dict()), 200
-
 # Update profile
 @app.route("/update-profile", methods=["POST"])
 def update_profile():
@@ -154,7 +137,7 @@ def update_profile():
     db.session.commit()
     return jsonify({"message":"Profile updated", "user": user.to_dict()}), 200
 
-# Update balance (Add money)
+# Add money
 @app.route("/update-balance", methods=["POST"])
 def update_balance():
     data = request.get_json() or {}
@@ -168,11 +151,11 @@ def update_balance():
     if not user: return jsonify({"message":"User not found"}), 404
 
     user.balance += amount
-    db.session.add(Transaction(user_id=user.id, type="add", amount=amount, details="Wallet top-up"))
+    db.session.add(Transaction(user_id=user.id, type="deposit", amount=amount, details="Wallet top-up"))
     db.session.commit()
     return jsonify({"message":f"₦{amount} added", "balance": round(user.balance,2)}), 200
 
-# Send money
+# Send money to another user
 @app.route("/send", methods=["POST"])
 def send():
     data = request.get_json() or {}
@@ -181,7 +164,7 @@ def send():
     receiver_id = data.get("receiverId")
 
     try: amount = float(amount)
-    except: return jsonify({"message":"Invalid amount"}),400
+    except: return jsonify({"message":"Invalid amount"}), 400
 
     sender = User.query.get(sender_id)
     receiver = User.query.get(receiver_id)
@@ -198,7 +181,13 @@ def send():
 
     return jsonify({"message":f"₦{amount} sent to {receiver.username}", "balance": round(sender.balance,2)}), 200
 
-# Transactions
+# Get all users (for frontend live search)
+@app.route("/users", methods=["GET"])
+def list_users():
+    users = User.query.all()
+    return jsonify([u.to_dict() for u in users]), 200
+
+# Transaction history
 @app.route("/transactions/<int:user_id>", methods=["GET"])
 def get_transactions(user_id):
     txs = Transaction.query.filter_by(user_id=user_id).order_by(Transaction.timestamp.desc()).all()
