@@ -6,95 +6,190 @@
 <title>PayMe Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
+/* --- NAVBAR --- */
+.navbar { display:flex; justify-content:space-between; align-items:center; background:#222; padding:10px 20px; position:relative; }
+.logo { color:#fff; font-size:20px; font-weight:bold; }
+.hamburger { display:none; flex-direction:column; cursor:pointer; gap:5px; }
+.hamburger .line { width:25px; height:3px; background:white; }
+.nav-links { list-style:none; display:flex; gap:15px; }
+.nav-links li a { color:#fff; text-decoration:none; }
+.nav-links li { cursor:pointer; }
+@media(max-width:768px){ .hamburger{display:flex;} .nav-links{display:none; flex-direction:column; background:#222; width:100%; position:absolute; top:60px; left:0; padding:10px 0;} .nav-links.active{display:flex;} }
+
+/* BODY */
 body{font-family:Arial,sans-serif;margin:0;background:#f7f7f7;}
-.navbar{display:flex;justify-content:space-between;align-items:center;background:#222;padding:10px 20px;color:white;}
-.logo{font-weight:bold;}
+.header{background:white;padding:15px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ddd;}
+.header h2{margin:0;font-size:16px;}
+.header small{color:gray;}
 .balance-card{background:#ecebff;margin:15px;padding:20px;border-radius:12px;}
-.balance-card h3{margin:0;}
-button{background:#5b4dff;color:white;border:none;padding:10px 15px;border-radius:6px;cursor:pointer;}
+.balance-card h3{margin:0;color:#333;}
+.balance-card button{background:#5b4dff;color:white;border:none;padding:10px 15px;border-radius:6px;margin-top:10px;cursor:pointer;}
+.history-card{background:white;margin:15px;padding:20px;border-radius:12px;max-height:300px;overflow-y:auto;box-shadow:0 5px 15px rgba(0,0,0,0.1);}
+.history-card h3{margin-top:0;color:#333;}
+#transactionList{list-style:none;padding:0;margin:0;}
+#transactionList li{border-bottom:1px solid #eee;padding:10px 0;font-size:14px;}
+#transactionList li span.amount{font-weight:bold;}
+#transactionList li span.type{font-style:italic;color:gray;}
 .quick-actions{display:flex;justify-content:space-around;margin:20px 10px;}
-.quick-actions button{background:none;border:none;cursor:pointer;font-size:14px;text-align:center;}
-.quick-actions i{font-size:24px;color:purple;}
+.quick-actions div{text-align:center;}
+.quick-actions div i{font-size:24px;color:purple;}
 .services{background:white;padding:20px;border-radius:12px;margin:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:15px;}
-.services button{background:none;border:none;cursor:pointer;text-align:center;font-size:14px;}
+.services div{text-align:center;font-size:14px;}
 .services i{font-size:20px;color:purple;}
-.bottom-nav{position:fixed;bottom:0;width:100%;background:white;display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid #ddd;}
-.bottom-nav button{background:none;border:none;color:gray;font-size:14px;text-align:center;}
-.bottom-nav i{display:block;font-size:20px;margin-bottom:5px;color:purple;}
+.bottom-nav{position:fixed;bottom:0;left:0;width:100%;background:white;display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid #ddd;}
+.bottom-nav div{text-align:center;font-size:14px;color:gray;}
+.bottom-nav div i{display:block;font-size:20px;margin-bottom:5px;color:purple;}
 #profileModal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;}
 #profileModal .modal-content{background:white;padding:20px;border-radius:10px;width:90%;max-width:400px;}
+#profileModal h2{margin-top:0;}
+#profileModal label{display:block;margin-top:10px;}
+#profileModal input{width:100%;padding:8px;margin-top:5px;border-radius:6px;border:1px solid #ccc;}
+#profileModal button{margin-top:10px;}
 </style>
 </head>
 <body>
 
-<div class="navbar">
+<!-- NAVBAR -->
+<nav class="navbar">
 <div class="logo">PAYME</div>
-<button onclick="openProfile()">Profile</button>
+<div class="hamburger" id="hamburger">
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"></span>
+</div>
+<ul class="nav-links" id="nav-links">
+<li id="profileLink">Profile</li>
+<li id="walletLink">Wallet</li>
+<li id="settingsLink">Settings</li>
+<li id="logout">Logout</li>
+</ul>
+</nav>
+
+<!-- HEADER -->
+<div class="header">
+<div>
+<h2>Hi, USER 👋</h2>
+<small>Welcome, let’s make payments!</small>
+</div>
 </div>
 
+<!-- BALANCE -->
 <div class="balance-card">
-<h3>Balance: ₦<span id="balance">0</span></h3>
-<input type="number" id="addAmount" placeholder="Amount to add">
-<button onclick="addMoney()">Add Money</button>
+<h3>Available Balance</h3>
+<h1>₦0.00</h1>
+<button id="addMoney">Add Money</button>
 </div>
 
+<!-- TRANSACTIONS -->
+<div class="history-card">
+<h3>Transaction History</h3>
+<ul id="transactionList">
+<li>Loading transactions...</li>
+</ul>
+</div>
+
+<!-- QUICK ACTIONS -->
 <div class="quick-actions">
-<button onclick="sendMoney()"><i class="fas fa-paper-plane"></i><br>Send</button>
-<button onclick="receiveMoney()"><i class="fas fa-arrow-down"></i><br>Receive</button>
-<button onclick="sendBank()"><i class="fas fa-university"></i><br>Bank</button>
-<button onclick="viewTransactions()"><i class="fas fa-list"></i><br>Transactions</button>
+<button id="toBank"><div><i class="fas fa-university"></i><br>To Bank</div></button>
+<button id="toWallet"><div><i class="fas fa-wallet"></i><br>To Wallet</div></button>
+<button id="atmcard"><div><i class="fas fa-credit-card"></i><br>ATM Card</div></button>
 </div>
 
-<!-- Profile Modal -->
+<!-- SERVICES -->
+<div class="services">
+<button id="airtime"><div><i class="fas fa-phone"></i><br>Airtime</div></button>
+<button id="data"><div><i class="fas fa-wifi"></i><br>Data</div></button>
+<button id="electric"><div><i class="fas fa-bolt"></i><br>Electricity</div></button>
+<button id="betting"><div><i class="fas fa-futbol"></i><br>Betting</div></button>
+<button id="tv"><div><i class="fas fa-tv"></i><br>TV</div></button>
+<button id="loan"><div><i class="fas fa-hand-holding-usd"></i><br>Loan</div></button>
+<button id="business"><div><i class="fas fa-briefcase"></i><br>Business</div></button>
+<button id="earn"><div><i class="fas fa-users"></i><br>Refer & Earn</div></button>
+</div>
+
+<!-- BOTTOM NAV -->
+<div class="bottom-nav">
+<button id="home"><div><i class="fas fa-home"></i>Home</div></button>
+<button id="loanBottom"><div><i class="fas fa-credit-card"></i>Loan</div></button>
+<button id="wealth"><div><i class="fas fa-chart-line"></i>Wealth</div></button>
+<button id="reward"><div><i class="fas fa-gift"></i>Reward</div></button>
+</div>
+
+<!-- PROFILE MODAL -->
 <div id="profileModal">
 <div class="modal-content">
-<h2>Profile</h2>
-<p id="usernameDisplay"></p>
-<p id="emailDisplay"></p>
-<p id="phoneDisplay"></p>
-<p id="accDisplay"></p>
-<button onclick="logout()">Logout</button>
-<button onclick="closeProfile()">Close</button>
+<h2>My Profile</h2>
+<p><b>Username:</b> <span id="profileUsername"></span></p>
+<p><b>Phone:</b> <span id="profilePhone"></span></p>
+<p><b>Account No:</b> <span id="profileAccount"></span></p>
+<p><b>Balance:</b> ₦<span id="profileBalance"></span></p>
+<label>Change Username</label>
+<input type="text" id="newUsername" placeholder="New username">
+<label>Change Password</label>
+<input type="password" id="newPassword" placeholder="New password">
+<button id="updateProfileBtn">Update Profile</button>
+<button onclick="document.getElementById('profileModal').style.display='none'">Close</button>
 </div>
 </div>
 
 <script>
-let userId=localStorage.getItem("userId");
-if(!userId){alert("Not logged in");window.location.href="login.html";}
+// Hamburger
+const hamburger = document.getElementById('hamburger');
+const navLinks = document.getElementById('nav-links');
+hamburger.addEventListener('click', ()=>navLinks.classList.toggle('active'));
 
-async function fetchUser(){
-try{
-const res=await fetch(`http://127.0.0.1:5000/user/${userId}`);
-const data=await res.json();
-document.getElementById('balance').innerText=data.balance;
-document.getElementById('usernameDisplay').innerText="Username: "+data.username;
-document.getElementById('emailDisplay').innerText="Email: "+data.email;
-document.getElementById('phoneDisplay').innerText="Phone: "+data.phone;
-document.getElementById('accDisplay').innerText="Account #: "+data.accountNumber;
-}catch(err){console.error(err);}
-}
-fetchUser();
+// Check login
+let user = JSON.parse(localStorage.getItem('user'));
+if(!user){ window.location.href='paymelogin.html'; }
+document.querySelector('.header h2').innerText = `Hi, ${user.username} 👋`;
+document.querySelector('.balance-card h1').innerText = `₦${user.balance}`;
 
-async function addMoney(){
-const amt=parseFloat(document.getElementById('addAmount').value);
-if(!amt||amt<=0)return alert("Enter valid amount");
-try{
-const res=await fetch("http://127.0.0.1:5000/update-balance",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,amount:amt})});
-const data=await res.json();
-alert(data.message);
-fetchUser();
-}catch(err){alert("Server error");console.error(err);}
-}
+// Logout
+document.getElementById('logout').addEventListener('click', ()=>{
+localStorage.removeItem('user');
+window.location.href='paymelogin.html';
+});
 
-function openProfile(){document.getElementById('profileModal').style.display="flex";}
-function closeProfile(){document.getElementById('profileModal').style.display="none";}
-function logout(){localStorage.removeItem("userId");window.location.href="login.html";}
+// Profile Modal
+document.getElementById('profileLink').addEventListener('click', ()=>{
+document.getElementById('profileUsername').innerText=user.username;
+document.getElementById('profilePhone').innerText=user.phone;
+document.getElementById('profileAccount').innerText=user.accountNumber;
+document.getElementById('profileBalance').innerText=user.balance;
+document.getElementById('profileModal').style.display='flex';
+});
 
-// Placeholder for send, receive, bank, transactions
-function sendMoney(){window.location.href="tobank.html";}
-function receiveMoney(){alert("Feature coming soon");}
-function sendBank(){window.location.href="tobank.html";}
-function viewTransactions(){alert("Feature coming soon");}
+// Update profile
+document.getElementById('updateProfileBtn').addEventListener('click', async ()=>{
+const newUsername = document.getElementById('newUsername').value.trim();
+const newPassword = document.getElementById('newPassword').value.trim();
+
+if(!newUsername && !newPassword){ alert('Enter username or password to update'); return; }
+
+const res = await fetch('https://payme-6.onrender.com/update-profile',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({userId:user.id, username:newUsername, password:newPassword})
+});
+const data = await res.json();
+if(res.ok){ alert(data.message); user = data.user; localStorage.setItem('user',JSON.stringify(user)); document.querySelector('.header h2').innerText = `Hi, ${user.username} 👋`; document.getElementById('profileModal').style.display='none'; }
+else{ alert(data.message); }
+});
+
+// Add Money
+document.getElementById('addMoney').addEventListener('click', async ()=>{
+const amount = parseFloat(prompt('Enter amount to add:'));
+if(!isNaN(amount)){
+const res = await fetch('https://payme-6.onrender.com/update-balance',{
+method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId:user.id, amount})
+});
+const data = await res.json();
+if(res.ok){ user.balance = data.balance; localStorage.setItem('user', JSON.stringify(user)); document.querySelector('.balance-card h1').innerText = `₦${user.balance}`; alert(data.message); }
+else alert(data.message);
+});
+
+// ToBank redirect
+document.getElementById('toBank').addEventListener('click', ()=>{ window.location.href='toBank.html'; });
 </script>
-</body>
-</html>
+
+</body
