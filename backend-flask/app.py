@@ -8,7 +8,7 @@ app = Flask(__name__)
 CORS(app)
 
 # --- MONGODB SETUP ---
-MONGO_URI = "mongodb+srv://Payme:08167542829Pr$24@payme.62k49sg.mongodb.net/?retryWrites=true&w=majority&appName=Payme"
+MONGO_URI = "mongodb+srv://Payme:08167542829Pr$@payme.62k49sg.mongodb.net/?retryWrites=true&w=majority&appName=Payme"
 client = MongoClient(MONGO_URI)
 db = client.payme_db
 users_col = db.users
