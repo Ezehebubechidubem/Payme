@@ -7,7 +7,9 @@ import os
 
 app = Flask(__name__)
 CORS(app)
-
+@app.route('/')
+def home():
+    return jsonify({"message": "PayMe API is running ✅"})
 # --- MONGODB SETUP ---
 MONGO_URI = os.environ.get("MONGO_URI") or "mongodb+srv://Payme:08167542829Pr%24@payme.62k49sg.mongodb.net/?retryWrites=true&w=majority&appName=Payme"
 client = MongoClient(MONGO_URI)
