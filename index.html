@@ -10,7 +10,7 @@
 body {
     font-family: Arial, sans-serif;
     margin: 0;
-    background-color: #f7f7f7;
+    background-color: skyblue;
 }
 .hidden { display: none; }
 button { cursor: pointer; }
@@ -83,10 +83,10 @@ form small { display:block; text-align:center; margin-top:10px; color:gray; curs
 <form id="registerForm">
 <h2>Register</h2>
 <input type="text" placeholder="Username" id="regUsername" required>
-<input type="text" placeholder="Phone (11 digits)" id="regPhone" required>
+<input type="number" placeholder="Phone (11 digits)" id="regPhone" required>
 <input type="password" placeholder="Password" id="regPassword" required>
 <button type="submit">Register</button>
-<small id="toLogin">Already have account? Login</small>
+<small id="toLogin">Already have account? <strong>Login</strong></small>
 </form>
 </section>
 
@@ -94,10 +94,10 @@ form small { display:block; text-align:center; margin-top:10px; color:gray; curs
 <section id="loginSection" class="hidden">
 <form id="loginForm">
 <h2>Login</h2>
-<input type="text" placeholder="Phone (11 digits)" id="loginPhone" required>
+<input type="number" placeholder="Phone (11 digits)" id="loginPhone" required>
 <input type="password" placeholder="Password" id="loginPassword" required>
 <button type="submit">Login</button>
-<small id="toRegister">Don't have account? Register</small>
+<small id="toRegister">Don't have account? <strong>Register</strong></small>
 </form>
 </section>
 
@@ -211,7 +211,12 @@ document.getElementById('registerForm').addEventListener('submit', async (e)=>{
         });
         const data = await res.json();
         alert(data.message);
-        if(res.ok) showSection('loginSection');
+        if(res.ok){
+    currentUser = data.user;
+    localStorage.setItem('paymeUser', JSON.stringify(currentUser)); // <-- ADD THIS
+    loadDashboard();
+    showSection('loginSection');
+}
     }catch(err){ alert('Error registering user'); }
 });
 
@@ -229,10 +234,12 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
         });
         const data = await res.json();
         if(res.ok){
-            currentUser = data.user;
-            loadDashboard();
-            showSection('dashboardSection');
-        } else { alert(data.message); }
+    currentUser = data.user;
+    localStorage.setItem('paymeUser', JSON.stringify(currentUser)); // <-- ADD THIS
+    loadDashboard();
+    showSection('dashboardSection');
+}
+         else { alert(data.message); }
     }catch(err){ alert('Error logging in'); }
 });
 
@@ -277,24 +284,7 @@ document.getElementById('seeMoreBtn').addEventListener('click', ()=>{
     displayTransactions(allTransactions.length);
 });
 
-// --- ADD MONEY ---
-document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
-    const amount = parseFloat(prompt("Enter amount to add:"));
-    if(!amount || amount<=0) return alert('Invalid amount');
-    try{
-        const res = await fetch('https://payme-update.onrender.com/update-balance',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({userId: currentUser.id, amount})
-        });
-        const data = await res.json();
-        if(res.ok){
-            currentUser.balance = data.balance;
-            loadDashboard();
-            alert('Balance updated successfully');
-        } else { alert(data.message); }
-    }catch(err){ alert('Error updating balance'); }
-});
+
 
 // --- HAMBURGER MENU / PROFILE ---
 document.getElementById('hamburgerBtn').addEventListener('click', ()=>{
@@ -309,9 +299,41 @@ document.getElementById('closeProfile').addEventListener('click', ()=>{
 });
 document.getElementById('logoutMenuBtn').addEventListener('click', ()=>{
     currentUser=null;
+    localStorage.removeItem('paymeUser'); // <-- ADD THIS
     showSection('loginSection');
 });
+  
+// --- ADD MONEY ---
+document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
+    const amount = parseFloat(prompt("Enter amount to add:"));
+    if(!amount || amount <= 0) return alert('Invalid amount');
 
+    console.log("Adding money for user:", currentUser); // check currentUser data
+
+    try{
+        const res = await fetch('https://payme-update.onrender.com/update-balance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: currentUser.id,   // make sure your backend expects this key
+                amount: amount
+            })
+        });
+        const data = await res.json();
+        if(res.ok){
+            currentUser.balance = data.balance;
+            localStorage.setItem('paymeUser', JSON.stringify(currentUser)); // update localStorage
+            loadDashboard();
+            alert('Balance updated successfully');
+        } else {
+            console.log("Error response:", data);
+            alert(data.message || 'Error updating balance');
+        }
+    } catch(err){
+        console.log("Fetch error:", err);
+        alert('Error updating balance');
+    }
+});
 // --- SEND MONEY / TO BANK ---
 document.getElementById('toBankBtn').addEventListener('click', ()=>{ showSection('toBankSection'); });
 document.getElementById('receiverPhone').addEventListener('input', async ()=>{
