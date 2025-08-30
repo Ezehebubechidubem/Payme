@@ -2,13 +2,16 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+
 app = Flask(__name__)
 CORS(app)
-//Database setup
+
+# --- Database setup ---
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///payme.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
+# --- Models ---
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), nullable=False)
@@ -26,26 +29,17 @@ class Transaction(db.Model):
 
 with app.app_context():
     db.create_all()
-# In-memory DB
-
-users = {}   # user_id: user_data
-transactions = []
-next_id = 1
 
 # --- HELPERS ---
 def find_user_by_phone(phone):
-    for user in users.values():
-        if user['phone'][-10:] == phone[-10:]:
-            return user
-    return None
+    return User.query.filter(User.phone.like(f"%{phone[-10:]}")).first()
 
 def find_user_by_id(user_id):
-    return users.get(user_id)
+    return User.query.get(user_id)
 
 # --- REGISTER ---
 @app.route('/register', methods=['POST'])
 def register():
-    global next_id
     data = request.get_json()
     username = data.get('username')
     phone = data.get('phone')
@@ -57,20 +51,24 @@ def register():
     if find_user_by_phone(phone):
         return jsonify({'message': 'Phone already registered!'}), 400
 
-    user_id = str(next_id)
     account_number = phone[-10:]
-    users[user_id] = {
-        'id': user_id,
-        'username': username,
-        'phone': phone,
-        'password': password,
-        'balance': 0.0,
-        'account_number': account_number
-    }
-    next_id += 1
+    new_user = User(
+        username=username,
+        phone=phone,
+        password=password,
+        balance=0.0,
+        account_number=account_number
+    )
+    db.session.add(new_user)
+    db.session.commit()
 
-    user_copy = users[user_id].copy()
-    user_copy.pop("password")
+    user_copy = {
+        "id": new_user.id,
+        "username": new_user.username,
+        "phone": new_user.phone,
+        "balance": new_user.balance,
+        "account_number": new_user.account_number
+    }
     return jsonify({'message': 'User registered successfully!', 'user': user_copy}), 200
 
 # --- LOGIN ---
@@ -81,95 +79,127 @@ def login():
     password = data.get('password')
     user = find_user_by_phone(phone)
 
-    if not user or user['password'] != password:
+    if not user or user.password != password:
         return jsonify({'message': 'Invalid credentials!'}), 401
 
-    user_copy = user.copy()
-    user_copy.pop("password")
+    user_copy = {
+        "id": user.id,
+        "username": user.username,
+        "phone": user.phone,
+        "balance": user.balance,
+        "account_number": user.account_number
+    }
     return jsonify({'message': 'Login successful!', 'user': user_copy}), 200
 
 # --- ALL USERS ---
 @app.route('/all-users', methods=['GET'])
 def all_users():
+    all_users = User.query.all()
     clean_users = []
-    for u in users.values():
-        u_copy = u.copy()
-        u_copy.pop("password")
-        clean_users.append(u_copy)
+    for u in all_users:
+        clean_users.append({
+            "id": u.id,
+            "username": u.username,
+            "phone": u.phone,
+            "balance": u.balance,
+            "account_number": u.account_number
+        })
     return jsonify(clean_users), 200
 
 # --- UPDATE BALANCE ---
 @app.route('/update-balance', methods=['POST'])
 def update_balance():
     data = request.get_json()
-    user = find_user_by_id(str(data.get('userId')))
+    user = find_user_by_id(data.get('userId'))
     amount = float(data.get('amount', 0))
 
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    user['balance'] += amount
-    transactions.append({
-        'type': 'Deposit',
-        'amount': amount,
-        'userId': user['id'],
-        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
+    user.balance += amount
+    tx = Transaction(
+        type="Deposit",
+        amount=amount,
+        userId=user.id,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    db.session.add(tx)
+    db.session.commit()
 
-    user_copy = user.copy()
-    user_copy.pop("password")
-    return jsonify({'message': f'Added ₦{amount}', 'balance': user['balance'], 'user': user_copy}), 200
+    user_copy = {
+        "id": user.id,
+        "username": user.username,
+        "phone": user.phone,
+        "balance": user.balance,
+        "account_number": user.account_number
+    }
+    return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance, 'user': user_copy}), 200
 
 # --- SEND MONEY ---
 @app.route('/send', methods=['POST'])
 def send_money():
     data = request.get_json()
-    sender = find_user_by_id(str(data.get('userId')))
-    receiver = find_user_by_id(str(data.get('receiverId')))
+    sender = find_user_by_id(data.get('userId'))
+    receiver = find_user_by_id(data.get('receiverId'))
     amount = float(data.get('amount', 0))
 
     if not sender or not receiver:
         return jsonify({'message': 'User not found'}), 404
-    if sender['balance'] < amount:
+    if sender.balance < amount:
         return jsonify({'message': 'Insufficient funds!'}), 400
 
-    sender['balance'] -= amount
-    receiver['balance'] += amount
+    sender.balance -= amount
+    receiver.balance += amount
 
-    # Record tx
-    transactions.append({
-        'type': f'Sent to {receiver["username"]}',
-        'amount': amount,
-        'userId': sender['id'],
-        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
-    transactions.append({
-        'type': f'Received from {sender["username"]}',
-        'amount': amount,
-        'userId': receiver['id'],
-        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
+    # Record transactions
+    tx1 = Transaction(
+        type=f"Sent to {receiver.username}",
+        amount=amount,
+        userId=sender.id,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    tx2 = Transaction(
+        type=f"Received from {sender.username}",
+        amount=amount,
+        userId=receiver.id,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    db.session.add_all([tx1, tx2])
+    db.session.commit()
 
-    sender_copy = sender.copy()
-    sender_copy.pop("password")
-    return jsonify({'message': f'₦{amount} sent to {receiver["username"]}', 'balance': sender['balance'], 'user': sender_copy}), 200
+    sender_copy = {
+        "id": sender.id,
+        "username": sender.username,
+        "phone": sender.phone,
+        "balance": sender.balance,
+        "account_number": sender.account_number
+    }
+    return jsonify({'message': f'₦{amount} sent to {receiver.username}', 'balance': sender.balance, 'user': sender_copy}), 200
 
 # --- TRANSACTIONS ---
 @app.route('/transactions', methods=['POST'])
 def get_transactions():
     data = request.get_json()
-    user_id = str(data.get('userId'))
-    user_tx = [tx for tx in transactions if tx['userId'] == user_id]
-    return jsonify(user_tx), 200
+    user_id = data.get('userId')
+    user = find_user_by_id(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user_tx = Transaction.query.filter_by(userId=user.id).all()
+    result = [
+        {"id": tx.id, "type": tx.type, "amount": tx.amount, "date": tx.date}
+        for tx in user_tx
+    ]
+    return jsonify(result), 200
 
 # --- USER BY ACCOUNT ---
 @app.route('/user-by-account', methods=['POST'])
 def user_by_account():
     data = request.get_json()
     acct = data.get('accountNumber')
-    for user in users.values():
-        if user['account_number'] == acct:
-            return jsonify({'username': user['username'], 'userId': user['id']}), 200
+    user = User.query.filter_by(account_number=acct).first()
+    if user:
+        return jsonify({'username': user.username, 'userId': user.id}), 200
     return jsonify({'message': 'User not found'}), 404
 
 if __name__ == "__main__":
