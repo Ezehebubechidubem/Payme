@@ -6,7 +6,7 @@
 <title>PayMe App</title>    
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">    
 <style> 
-   
+
     h2 {
       margin: 15px;
       font-size: 18px;
@@ -185,7 +185,7 @@ background:white;
 <div class="history-card">    
 <h3>Transaction History</h3>    
 <ul id="transactionList"><li>No transactions yet</li></ul>    
-<button id="seeMoreBtn" style="display:none; margin-top:10px;">See More</button>    
+<button id="seeMoreBtn" style="display:none; margin-top:10px;">See More</button>  
 </div>  
 
 <div class="quick-actions">    
@@ -193,7 +193,7 @@ background:white;
 <div id="toWalletBtn"><i class="fas fa-wallet"></i><br>To Wallet</div>    
 <div id="atmBtn"><i class="fas fa-credit-card"></i><br>ATM Card</div>    
 </div>   
- 
+
 <section>    
 <div id="tvBtn"><i class="fas fa-tv"></i><br>TV</div>    
 <div id="loanBtn"><i class="fas fa-hand-holding-usd"></i><br>Loan</div>    
@@ -205,9 +205,9 @@ background:white;
     <h2>Quick Services</h2>
     <div class="services-grid">
       <div class="service-item" id="airtimeBtn"><i class="fas fa-phone"></i><br>Airtime</div>    
-<div class="service-item" id="dataBtn"><i class="fas fa-wifi"></i><br>Data</div>    
-<div class="service-item" id="electricBtn"><i class="fas fa-bolt"></i><br>Electricity</div>    
-<div class="service-item" id="bettingBtn"><i class="fas fa-futbol"></i><br>Betting</div>  
+      <div class="service-item" id="dataBtn"><i class="fas fa-wifi"></i><br>Data</div>    
+      <div class="service-item" id="electricBtn"><i class="fas fa-bolt"></i><br>Electricity</div>    
+      <div class="service-item" id="bettingBtn"><i class="fas fa-futbol"></i><br>Betting</div>  
       <div class="service-item" id="withdrawBtn"><i class="fas fa-money-bill-wave"></i><br>Withdraw</div>
       <div class="service-item" id="businessBtn"><i class="fas fa-store"></i><br>My Business Hub</div>
     </div>
@@ -270,10 +270,6 @@ background:white;
       <div class="service-item" id="businessBtn"><i class="fas fa-store"></i><br>My Business Hub</div>
     </div>
   </div>
-
-
-
-  
 
 <div id="bottomBar">    
 <div id="homeBtn"><i class="fas fa-home"></i><br>Home</div>    
@@ -378,11 +374,11 @@ try{
 // --- DASHBOARD ---
 async function loadDashboard(){
 if(!currentUser) return;
-document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
+document.getElementById('balanceDisplay').innerText = `₦${(currentUser.balance || 0).toFixed(2)}`;
 document.getElementById('profileUsername').innerText = currentUser.username;
 document.getElementById('profilePhone').innerText = currentUser.phone;
 document.getElementById('profileAccount').innerText = currentUser.account_number;
-document.getElementById('profileBalance').innerText = currentUser.balance.toFixed(2);
+document.getElementById('profileBalance').innerText = (currentUser.balance || 0).toFixed(2);
 
 // Load transactions    
 try{    
@@ -404,7 +400,7 @@ list.innerHTML = '';
 if(allTransactions.length === 0){ list.innerHTML='<li>No transactions yet</li>'; return; }
 allTransactions.slice(0,limit).forEach(tx=>{
 const li = document.createElement('li');
-li.className = tx.type.toLowerCase();
+li.className = (tx.type || '').toLowerCase();
 li.innerHTML = `<span class="type">${tx.type}</span> - <span class="amount">₦${tx.amount}</span> <br> <small>${tx.date}</small>`;
 list.appendChild(li);
 });
@@ -496,7 +492,12 @@ body: JSON.stringify({userId: currentUser.id, receiverId, amount})
 });
 const data = await res.json();
 if(res.ok){
-    currentUser.balance = data.balance;
+    // <- fixed: backend returns sender & receiver objects
+    if (data.sender && typeof data.sender.balance !== 'undefined') {
+        currentUser.balance = data.sender.balance;
+    } else if (typeof data.balance !== 'undefined') {
+        currentUser.balance = data.balance;
+    }
     localStorage.setItem('paymeUser', JSON.stringify(currentUser));
 
     // Reload transactions immediately
