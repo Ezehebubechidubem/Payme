@@ -23,9 +23,11 @@ class User(db.Model):
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     userId = db.Column(db.Integer, db.ForeignKey("user.id"))
-    type = db.Column(db.String(100))
+    type = db.Column(db.String(100))  # e.g. Deposit, Sent, Received
     amount = db.Column(db.Float)
     date = db.Column(db.String(50))
+    sender = db.Column(db.String(100))
+    receiver = db.Column(db.String(100))
 
 with app.app_context():
     db.create_all()
@@ -106,7 +108,7 @@ def all_users():
         })
     return jsonify(clean_users), 200
 
-# --- UPDATE BALANCE ---
+# --- UPDATE BALANCE (Deposit) ---
 @app.route('/update-balance', methods=['POST'])
 def update_balance():
     data = request.get_json()
@@ -121,6 +123,8 @@ def update_balance():
         type="Deposit",
         amount=amount,
         userId=user.id,
+        sender="System",
+        receiver=user.username,
         date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
     db.session.add(tx)
@@ -153,30 +157,43 @@ def send_money():
 
     # Record transactions
     tx1 = Transaction(
-        type=f"Sent to {receiver.username}",
+        type="Sent",
         amount=amount,
         userId=sender.id,
+        sender=sender.username,
+        receiver=receiver.username,
         date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
     tx2 = Transaction(
-        type=f"Received from {sender.username}",
+        type="Received",
         amount=amount,
         userId=receiver.id,
+        sender=sender.username,
+        receiver=receiver.username,
         date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
     db.session.add_all([tx1, tx2])
     db.session.commit()
 
-    sender_copy = {
-        "id": sender.id,
-        "username": sender.username,
-        "phone": sender.phone,
-        "balance": sender.balance,
-        "account_number": sender.account_number
-    }
-    return jsonify({'message': f'₦{amount} sent to {receiver.username}', 'balance': sender.balance, 'user': sender_copy}), 200
+    return jsonify({
+        'message': f'₦{amount} sent to {receiver.username}',
+        'sender': {
+            "id": sender.id,
+            "username": sender.username,
+            "phone": sender.phone,
+            "balance": sender.balance,
+            "account_number": sender.account_number
+        },
+        'receiver': {
+            "id": receiver.id,
+            "username": receiver.username,
+            "phone": receiver.phone,
+            "balance": receiver.balance,
+            "account_number": receiver.account_number
+        }
+    }), 200
 
-# --- TRANSACTIONS ---
+# --- GET USER TRANSACTIONS ---
 @app.route('/transactions', methods=['POST'])
 def get_transactions():
     data = request.get_json()
@@ -187,7 +204,14 @@ def get_transactions():
 
     user_tx = Transaction.query.filter_by(userId=user.id).all()
     result = [
-        {"id": tx.id, "type": tx.type, "amount": tx.amount, "date": tx.date}
+        {
+            "id": tx.id,
+            "type": tx.type,
+            "amount": tx.amount,
+            "date": tx.date,
+            "sender": tx.sender,
+            "receiver": tx.receiver
+        }
         for tx in user_tx
     ]
     return jsonify(result), 200
