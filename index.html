@@ -143,7 +143,7 @@ background:white;
 <form id="registerForm">    
 <h2>Register</h2>    
 <input type="text" placeholder="Username" id="regUsername" required>    
-<input type="number" placeholder="Phone (11 digits)" id="regPhone" required>    
+<input type="tel" placeholder="Phone (11 digits)" id="regPhone" minlength="11" maxlength="11" required>    
 <input type="password" placeholder="Password" id="regPassword" required>    
 <button type="submit">Register</button>    
 <small id="toLogin">Already have account? <strong>Login</strong></small>    
@@ -154,7 +154,7 @@ background:white;
 <section id="loginSection" class="hidden">    
 <form id="loginForm">    
 <h2>Login</h2>    
-<input type="number" placeholder="Phone (11 digits)" id="loginPhone" required>    
+<input type="tel" placeholder="Phone (11 digits)" id="loginPhone" minlength="11" max="11" required>    
 <input type="password" placeholder="Password" id="loginPassword" required>    
 <button type="submit">Login</button>    
 <small id="toRegister">Don't have account?<strong>Register</strong></small>    
@@ -298,7 +298,7 @@ background:white;
 <section id="toBankSection" class="hidden">    
 <form id="toBankForm">    
 <h2>Send Money</h2>    
-<input type="text" placeholder="Receiver Phone (11 digits)" id="receiverPhone" required>    
+<input type="text" placeholder="Receiver Phone (11 digits)" id="receiverPhone" required width="11">    
 <p id="receiverName" style="margin:5px 0;color:green;"></p>    
 <input type="number" placeholder="Amount" id="sendAmount" required>    
 <button type="submit">Send</button>    
