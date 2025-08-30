@@ -34,10 +34,20 @@ with app.app_context():
 
 # --- HELPERS ---
 def find_user_by_phone(phone):
-    return User.query.filter(User.phone.like(f"%{phone[-10:]}")).first()
+    if not phone:
+        return None
+    # match by last 10 digits (frontend sends full phone but compares by last 10)
+    tail = phone[-10:]
+    return User.query.filter(User.phone.like(f"%{tail}")).first()
 
 def find_user_by_id(user_id):
-    return User.query.get(user_id)
+    if user_id is None:
+        return None
+    try:
+        uid = int(user_id)
+    except (ValueError, TypeError):
+        return None
+    return User.query.get(uid)
 
 # --- REGISTER ---
 @app.route('/register', methods=['POST'])
@@ -54,6 +64,15 @@ def register():
         return jsonify({'message': 'Phone already registered!'}), 400
 
     account_number = phone[-10:]
+    # If account_number uniqueness is violated for some reason, add suffix
+    existing = User.query.filter_by(account_number=account_number).first()
+    if existing:
+        # rare case: append a small suffix to keep unique (keeps account_number string-like)
+        suffix = 1
+        while User.query.filter_by(account_number=f"{account_number}{suffix}").first():
+            suffix += 1
+        account_number = f"{account_number}{suffix}"
+
     new_user = User(
         username=username,
         phone=phone,
@@ -113,7 +132,10 @@ def all_users():
 def update_balance():
     data = request.get_json()
     user = find_user_by_id(data.get('userId'))
-    amount = float(data.get('amount', 0))
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'message': 'Invalid amount'}), 400
 
     if not user:
         return jsonify({'message': 'User not found'}), 404
@@ -137,6 +159,7 @@ def update_balance():
         "balance": user.balance,
         "account_number": user.account_number
     }
+    # return balance and user so front-end can update localStorage and UI
     return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance, 'user': user_copy}), 200
 
 # --- SEND MONEY ---
@@ -145,24 +168,33 @@ def send_money():
     data = request.get_json()
     sender = find_user_by_id(data.get('userId'))
     receiver = find_user_by_id(data.get('receiverId'))
-    amount = float(data.get('amount', 0))
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'message': 'Invalid amount'}), 400
 
     if not sender or not receiver:
         return jsonify({'message': 'User not found'}), 404
+    if sender.id == receiver.id:
+        return jsonify({'message': 'Cannot send to yourself'}), 400
+    if amount <= 0:
+        return jsonify({'message': 'Invalid amount'}), 400
     if sender.balance < amount:
         return jsonify({'message': 'Insufficient funds!'}), 400
 
+    # perform transfer
     sender.balance -= amount
     receiver.balance += amount
 
     # Record transactions
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     tx1 = Transaction(
         type="Sent",
         amount=amount,
         userId=sender.id,
         sender=sender.username,
         receiver=receiver.username,
-        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        date=now
     )
     tx2 = Transaction(
         type="Received",
@@ -170,13 +202,15 @@ def send_money():
         userId=receiver.id,
         sender=sender.username,
         receiver=receiver.username,
-        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        date=now
     )
     db.session.add_all([tx1, tx2])
     db.session.commit()
 
+    # return both updated balances and user info (keeps compatibility with your frontend)
     return jsonify({
         'message': f'₦{amount} sent to {receiver.username}',
+        'balance': sender.balance,
         'sender': {
             "id": sender.id,
             "username": sender.username,
@@ -202,7 +236,7 @@ def get_transactions():
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    user_tx = Transaction.query.filter_by(userId=user.id).all()
+    user_tx = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
     result = [
         {
             "id": tx.id,
@@ -221,6 +255,8 @@ def get_transactions():
 def user_by_account():
     data = request.get_json()
     acct = data.get('accountNumber')
+    if not acct:
+        return jsonify({'message': 'Account number required'}), 400
     user = User.query.filter_by(account_number=acct).first()
     if user:
         return jsonify({'username': user.username, 'userId': user.id}), 200
