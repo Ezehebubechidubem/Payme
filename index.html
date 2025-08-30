@@ -348,7 +348,7 @@ try{
         currentUser = data.user;    
         localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
         loadDashboard();    
-        showSection('dashboardSection');
+        showSection('loginSection');
     }
 }catch(err){ alert('Error registering user'); }
 });
