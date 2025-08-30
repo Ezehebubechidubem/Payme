@@ -348,7 +348,7 @@ try{
         currentUser = data.user;    
         localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
         loadDashboard();    
-        showSection('loginSection');
+        showSection('dashboardSection');
     }
 }catch(err){ alert('Error registering user'); }
 });
@@ -448,11 +448,15 @@ try{
         })    
     });    
     const data = await res.json();    
-    if(res.ok){    
-        currentUser.balance = data.balance;    
-        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
-        loadDashboard();    
-        alert('Balance updated successfully');    
+   if(res.ok){    
+    currentUser.balance = data.balance;    
+    localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
+
+    // Reload transactions immediately
+    await loadDashboard();    
+
+    alert('Balance updated successfully');    
+
     } else {    
         alert(data.message || 'Error updating balance');    
     }    
@@ -492,11 +496,15 @@ body: JSON.stringify({userId: currentUser.id, receiverId, amount})
 });
 const data = await res.json();
 if(res.ok){
-currentUser.balance = data.balance;
-localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-loadDashboard();
-alert('Money sent successfully');
-showSection('dashboardSection');
+    currentUser.balance = data.balance;
+    localStorage.setItem('paymeUser', JSON.stringify(currentUser));
+
+    // Reload transactions immediately
+    await loadDashboard();
+
+    alert('Money sent successfully');
+    showSection('dashboardSection');
+
 } else { alert(data.message); }
 }catch(err){ alert('Error sending money'); }
 });
