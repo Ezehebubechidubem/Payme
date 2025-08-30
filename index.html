@@ -307,6 +307,24 @@ let currentUser = null;
 let allTransactions = [];    
 let lastTxLimit = 5;    
 
+// helper: get latest user info from server (uses /all-users)
+async function refreshUserFromServer(){
+    if(!currentUser) return;
+    try{
+        const res = await fetch('https://payme-update.onrender.com/all-users');
+        if(!res.ok) return;
+        const users = await res.json();
+        const serverUser = users.find(u => u.id === currentUser.id);
+        if(serverUser){
+            // update local copy and localStorage
+            currentUser = serverUser;
+            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
+        }
+    }catch(err){
+        console.log('Could not refresh user from server', err);
+    }
+}
+
 // Section navigation
 function showSection(sec){
 document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));
@@ -374,6 +392,11 @@ try{
 // --- DASHBOARD ---
 async function loadDashboard(){
 if(!currentUser) return;
+
+// refresh currentUser from server (so balance is up-to-date if someone else changed it)
+await refreshUserFromServer();
+
+// show values from currentUser (now refreshed if server returned a newer copy)
 document.getElementById('balanceDisplay').innerText = `₦${(currentUser.balance || 0).toFixed(2)}`;
 document.getElementById('profileUsername').innerText = currentUser.username;
 document.getElementById('profilePhone').innerText = currentUser.phone;
@@ -445,10 +468,15 @@ try{
     });    
     const data = await res.json();    
    if(res.ok){    
-    currentUser.balance = data.balance;    
+    // server returns updated balance in data.balance (and user copy in data.user)
+    if (data.user && typeof data.user.balance !== 'undefined') {
+        currentUser = data.user;
+    } else if (typeof data.balance !== 'undefined') {
+        currentUser.balance = data.balance;
+    }
     localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
 
-    // Reload transactions immediately
+    // Reload dashboard (transactions + fresh user)
     await loadDashboard();    
 
     alert('Balance updated successfully');    
@@ -485,40 +513,4 @@ const receiverId = e.target.dataset.receiverId;
 if(!receiverId) return alert('Invalid receiver');
 if(amount<=0) return alert('Invalid amount');
 try{
-const res = await fetch('https://payme-update.onrender.com/send',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({userId: currentUser.id, receiverId, amount})
-});
-const data = await res.json();
-if(res.ok){
-    // <- fixed: backend returns sender & receiver objects
-    if (data.sender && typeof data.sender.balance !== 'undefined') {
-        currentUser.balance = data.sender.balance;
-    } else if (typeof data.balance !== 'undefined') {
-        currentUser.balance = data.balance;
-    }
-    localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-
-    // Reload transactions immediately
-    await loadDashboard();
-
-    alert('Money sent successfully');
-    showSection('dashboardSection');
-
-} else { alert(data.message); }
-}catch(err){ alert('Error sending money'); }
-});
-
-// --- PERSIST LOGIN ---
-if(localStorage.getItem('paymeUser')){
-currentUser = JSON.parse(localStorage.getItem('paymeUser'));
-loadDashboard();
-showSection('dashboardSection');
-} else {
-showSection('registerSection');
-}
-</script>  
-
-</body>
-</html>
+const res = await fetch('https://payme-update.onrender.
