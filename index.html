@@ -494,4 +494,73 @@ try{
         method: 'POST',    
         headers: { 'Content-Type': 'application/json' },    
         body: JSON.stringify({    
-        
+            userId: currentUser.id,    
+            amount: amount    
+        })    
+    });    
+    const data = await res.json();    
+    if(res.ok){    
+        currentUser.balance = data.balance;    
+        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
+        loadDashboard();    
+        alert('Balance updated successfully');    
+    } else {    
+        alert(data.message || 'Error updating balance');    
+    }    
+} catch(err){    
+    alert('Error updating balance');    
+}
+});
+
+// --- SEND MONEY / TO BANK ---
+document.getElementById('toBankBtn').addEventListener('click', ()=>{ showSection('toBankSection'); });
+document.getElementById('receiverPhone').addEventListener('input', async ()=>{
+const phone = document.getElementById('receiverPhone').value;
+if(phone.length<10) return;
+try{
+const res = await fetch('https://payme-update.onrender.com/user-by-account',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({accountNumber: phone.slice(-10)})
+});
+const data = await res.json();
+document.getElementById('receiverName').innerText = data.username ? `Receiver: ${data.username}` : 'User not found';
+document.getElementById('toBankForm').dataset.receiverId = data.userId || '';
+}catch(err){ console.log('Error finding user'); }
+});
+
+document.getElementById('toBankForm').addEventListener('submit', async (e)=>{
+e.preventDefault();
+const amount = parseFloat(document.getElementById('sendAmount').value);
+const receiverId = e.target.dataset.receiverId;
+if(!receiverId) return alert('Invalid receiver');
+if(amount<=0) return alert('Invalid amount');
+try{
+const res = await fetch('https://payme-update.onrender.com/send',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({userId: currentUser.id, receiverId, amount})
+});
+const data = await res.json();
+if(res.ok){
+currentUser.balance = data.balance;
+localStorage.setItem('paymeUser', JSON.stringify(currentUser));
+loadDashboard();
+alert('Money sent successfully');
+showSection('dashboardSection');
+} else { alert(data.message); }
+}catch(err){ alert('Error sending money'); }
+});
+
+// --- PERSIST LOGIN ---
+if(localStorage.getItem('paymeUser')){
+currentUser = JSON.parse(localStorage.getItem('paymeUser'));
+loadDashboard();
+showSection('dashboardSection');
+} else {
+showSection('registerSection');
+}
+</script>  
+
+</body>
+</html>
