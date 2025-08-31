@@ -514,8 +514,7 @@ showSection('dashboardSection');
 } else {
 showSection('registerSection');
 }
-
-// --- MANUAL REFRESH BUTTON ---
+// Refresh Button
 document.getElementById('refreshBtn').addEventListener('click', async () => {
     if (!currentUser) return alert('Not logged in');
 
@@ -529,14 +528,14 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
         const data = await res.json();
 
         if (res.ok) {
-            // Update current user balance
-            currentUser.balance = data.balance;
+            // Update currentUser balance and transactions
+            if (typeof data.balance !== 'undefined') currentUser.balance = data.balance;
+            if (Array.isArray(data.transactions)) allTransactions = data.transactions.reverse();
+
             localStorage.setItem('paymeUser', JSON.stringify(currentUser));
 
-            // Update balance on dashboard
+            // Update dashboard display
             document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
-
-            // Reload transactions
             displayTransactions(); 
         } else {
             alert(data.message || 'Error refreshing balance');
@@ -546,28 +545,6 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
         console.error('Error refreshing balance:', err);
     }
 });
-
-// --- AUTO REFRESH EVERY 10 SECONDS ---
-setInterval(async () => {
-    if (!currentUser) return;
-
-    try {
-        const res = await fetch('https://payme-update.onrender.com/refresh', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            currentUser.balance = data.balance;
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-            document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
-            displayTransactions();
-        }
-    } catch (err) {
-        console.log('Error auto-refreshing balance:', err);
-    }
-}, 10000); // refresh every 10 seconds
 </script>
 
 </body>
