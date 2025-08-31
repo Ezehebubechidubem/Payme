@@ -255,40 +255,31 @@ def user_by_account():
         return jsonify({'username': user.username, 'userId': user.id}), 200
     return jsonify({'message': 'User not found'}), 404
 #---Refresh---
+# In-memory "database"
+users = [
+    {"id": 1, "username": "Emeka", "phone": "09076811335", "balance": 19021, "account_number": "9076811335"}
+]
+
+transactions = [
+    {"id": 1, "type": "Deposit", "amount": 5000, "date": "2025-08-31", "sender": "Bank", "receiver": "Emeka"}
+]
+
 @app.route('/refresh', methods=['POST'])
 def refresh():
     data = request.get_json()
-    try:
-        user_id = int(data.get('userId'))  # ensure it's integer
-    except:
-        return jsonify({'message': 'Invalid userId'}), 400
-
-    user = User.query.filter_by(id=user_id).first()  # make sure this matches your DB
+    user_id = int(data.get('userId'))
+    
+    # find user in memory
+    user = next((u for u in users if u["id"] == user_id), None)
     if not user:
-        return jsonify({'message': 'User not found'}), 404
+        return jsonify({"message": "User not found"}), 404
 
-    # Fetch transactions
-    user_tx = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
-    tx_list = [
-        {
-            "id": tx.id,
-            "type": tx.type,
-            "amount": tx.amount,
-            "date": tx.date,
-            "sender": tx.sender,
-            "receiver": tx.receiver
-        } for tx in user_tx
-    ]
-
+    # get transactions for this user
+    user_tx = [tx for tx in transactions if tx["receiver"] == user["username"]]
+    
     return jsonify({
-        'message': 'Balance refreshed!',
-        'balance': user.balance,
-        'transactions': tx_list,
-        'user': {
-            "id": user.id,
-            "username": user.username,
-            "phone": user.phone,
-            "balance": user.balance,
-            "account_number": user.account_number
-        }
+        "message": "Balance refreshed!",
+        "balance": user["balance"],
+        "user": user,
+        "transactions": user_tx
     }), 200
