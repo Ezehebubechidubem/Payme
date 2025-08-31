@@ -302,3 +302,25 @@ background:white;
 <small id="backDashboard" style="display:block; text-align:center; margin-top:10px; cursor:pointer;">Back to Dashboard</small>    
 </form>    
 </section>
+<script>
+let currentUser = null;    
+let allTransactions = [];    
+let lastTxLimit = 5;    
+
+// Section navigation
+function showSection(sec){
+document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));
+document.getElementById(sec).classList.remove('hidden');
+if(sec!=='dashboardSection'){ 
+    document.getElementById('profileMenu').style.display='none'; 
+    document.getElementById('profileModal').style.display='none'; 
+    document.getElementById('bottomBar').style.display='none'; 
+} else { 
+    document.getElementById('bottomBar').style.display='flex'; 
+}
+}
+
+// --- Form switches ---
+document.getElementById('toLogin').addEventListener('click', ()=>{ showSection('loginSection'); });
+document.getElementById('toRegister').addEventListener('click', ()=>{ showSection('registerSection'); });
+document.getElementById('backDashboard').addEventListener('click', ()=>{ showSection('dashboardSection'); });
