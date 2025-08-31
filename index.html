@@ -1,6 +1,3 @@
-<!DOCTYPE html>  
-<html lang="en">  
-<head>    
 <meta charset="UTF-8">    
 <meta name="viewport" content="width=device-width, initial-scale=1.0">    
 <title>PayMe App</title>    
@@ -270,7 +267,7 @@ background:white;
     <div class="services-grid">
       <div class="service-item" id="withdrawBtn"><i class="fas fa-money-bill-wave"></i><br>Withdraw</div>
       <div class="service-item" id="businessBtn"><i class="fas fa-store"></i><br>My Business Hub</div>
-    </div>
+    </div>  
   </div>
 
 <div id="bottomBar">    
@@ -287,7 +284,6 @@ background:white;
 <p><b>Account No:</b> <span id="profileAccount"></span></p>    
 <p><b>Balance:</b> ₦<span id="profileBalance"></span></p>    
 <button id="closeProfile">Close</button>    
-</div>    
 </div>    
 </div>
 </section>  
@@ -518,7 +514,9 @@ showSection('dashboardSection');
 } else {
 showSection('registerSection');
 }
-
-// --- MANUAL REFRESH BUTTON ---
+//Manual refresh
 document.getElementById('refreshBtn').addEventListener('click', async () => {
-    if (!currentUser) ret
+    if (!currentUser) return alert('No user logged in');
+
+    try {
+                // Fetch latest
