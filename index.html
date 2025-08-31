@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>  
 <html lang="en">  
 <head>    
@@ -179,9 +177,11 @@ background:white;
 
 <div id="dashboardContent">    
 <div class="balance-card">    
-<h3>Available Balance</h3>    
+    <h3>Available Balance</h3> 
 <h1 id="balanceDisplay">₦0.00</h1>    
-<button id="addMoneyBtn">Add Money</button>    
+<button id="addMoneyBtn">Add Money</button>   
+  <button id="refreshBtn" >🔄</button>
+</div> 
 </div>  
 
 <div class="history-card">    
@@ -270,7 +270,7 @@ background:white;
     <div class="services-grid">
       <div class="service-item" id="withdrawBtn"><i class="fas fa-money-bill-wave"></i><br>Withdraw</div>
       <div class="service-item" id="businessBtn"><i class="fas fa-store"></i><br>My Business Hub</div>
-    </div>
+    </div>  
   </div>
 
 <div id="bottomBar">    
@@ -288,7 +288,6 @@ background:white;
 <p><b>Balance:</b> ₦<span id="profileBalance"></span></p>    
 <button id="closeProfile">Close</button>    
 </div>    
-</div>    
 </div>
 </section>  
 
@@ -302,253 +301,4 @@ background:white;
 <button type="submit">Send</button>    
 <small id="backDashboard" style="display:block; text-align:center; margin-top:10px; cursor:pointer;">Back to Dashboard</small>    
 </form>    
-</section>  
-
-<script>    
-let currentUser = null;    
-let allTransactions = [];    
-let lastTxLimit = 5;    
-
-// helper: get latest user info from server (uses /all-users)
-async function refreshUserFromServer(){
-    if(!currentUser) return;
-    try{
-        const res = await fetch('https://payme-update.onrender.com/all-users');
-        if(!res.ok) return;
-        const users = await res.json();
-        const serverUser = users.find(u => u.id === currentUser.id);
-        if(serverUser){
-            // update local copy and localStorage
-            currentUser = serverUser;
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-        }
-    }catch(err){
-        console.log('Could not refresh user from server', err);
-    }
-}
-
-// Section navigation
-function showSection(sec){
-document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));
-document.getElementById(sec).classList.remove('hidden');
-if(sec!=='dashboardSection'){ 
-    document.getElementById('profileMenu').style.display='none'; 
-    document.getElementById('profileModal').style.display='none'; 
-    document.getElementById('bottomBar').style.display='none'; 
-} else { 
-    document.getElementById('bottomBar').style.display='flex'; 
-}
-}
-
-// --- Form switches ---
-document.getElementById('toLogin').addEventListener('click', ()=>{ showSection('loginSection'); });
-document.getElementById('toRegister').addEventListener('click', ()=>{ showSection('registerSection'); });
-document.getElementById('backDashboard').addEventListener('click', ()=>{ showSection('dashboardSection'); });
-
-// --- REGISTER ---
-document.getElementById('registerForm').addEventListener('submit', async (e)=>{
-e.preventDefault();
-const username = document.getElementById('regUsername').value;
-const phone = document.getElementById('regPhone').value;
-const password = document.getElementById('regPassword').value;
-
-try{    
-    const res = await fetch('https://payme-update.onrender.com/register',{    
-        method:'POST',    
-        headers:{'Content-Type':'application/json'},    
-        body: JSON.stringify({username, phone, password})    
-    });    
-    const data = await res.json();    
-    alert(data.message);    
-    if(res.ok){    
-        currentUser = data.user;    
-        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
-        loadDashboard();    
-        showSection('dashboardSection');
-    }
-}catch(err){ alert('Error registering user'); }
-});
-
-// --- LOGIN ---
-document.getElementById('loginForm').addEventListener('submit', async (e)=>{
-e.preventDefault();
-const phone = document.getElementById('loginPhone').value;
-const password = document.getElementById('loginPassword').value;
-
-try{    
-    const res = await fetch('https://payme-update.onrender.com/login',{    
-        method:'POST',    
-        headers:{'Content-Type':'application/json'},    
-        body: JSON.stringify({phone, password})    
-    });    
-    const data = await res.json();    
-    if(res.ok){    
-        currentUser = data.user;    
-        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
-        loadDashboard();    
-        showSection('dashboardSection');
-    } else { alert(data.message); }
-}catch(err){ alert('Error logging in'); }
-});
-
-// --- DASHBOARD ---
-async function loadDashboard(){
-if(!currentUser) return;
-
-// refresh currentUser from server (so balance is up-to-date if someone else changed it)
-await refreshUserFromServer();
-
-// show values from currentUser (now refreshed if server returned a newer copy)
-document.getElementById('balanceDisplay').innerText = `₦${(currentUser.balance || 0).toFixed(2)}`;
-document.getElementById('profileUsername').innerText = currentUser.username;
-document.getElementById('profilePhone').innerText = currentUser.phone;
-document.getElementById('profileAccount').innerText = currentUser.account_number;
-document.getElementById('profileBalance').innerText = (currentUser.balance || 0).toFixed(2);
-
-// Load transactions    
-try{    
-    const res = await fetch('https://payme-update.onrender.com/transactions',{    
-        method:'POST',    
-        headers:{'Content-Type':'application/json'},    
-        body: JSON.stringify({userId: currentUser.id})    
-    });    
-    const tx = await res.json();    
-    allTransactions = tx.reverse();    
-    displayTransactions();    
-}catch(err){ console.log('Error fetching transactions'); }
-}
-
-// Display limited transactions
-function displayTransactions(limit=lastTxLimit){
-const list = document.getElementById('transactionList');
-list.innerHTML = '';
-if(allTransactions.length === 0){ list.innerHTML='<li>No transactions yet</li>'; return; }
-allTransactions.slice(0,limit).forEach(tx=>{
-const li = document.createElement('li');
-li.className = (tx.type || '').toLowerCase();
-li.innerHTML = `<span class="type">${tx.type}</span> - <span class="amount">₦${tx.amount}</span> <br> <small>${tx.date}</small>`;
-list.appendChild(li);
-});
-document.getElementById('seeMoreBtn').style.display = (allTransactions.length>limit)?'block':'none';
-}
-
-// --- SEE MORE TRANSACTIONS ---
-document.getElementById('seeMoreBtn').addEventListener('click', ()=>{
-displayTransactions(allTransactions.length);
-});
-
-// --- HAMBURGER MENU / PROFILE ---
-document.getElementById('hamburgerBtn').addEventListener('click', ()=>{
-const menu = document.getElementById('profileMenu');
-menu.style.display = (menu.style.display==='block')?'none':'block';
-});
-document.getElementById('profileMenuBtn').addEventListener('click', ()=>{
-document.getElementById('profileModal').style.display='flex';
-});
-document.getElementById('closeProfile').addEventListener('click', ()=>{
-document.getElementById('profileModal').style.display='none';
-});
-document.getElementById('logoutMenuBtn').addEventListener('click', ()=>{
-currentUser=null;
-localStorage.removeItem('paymeUser'); 
-showSection('loginSection');
-});
-
-// --- ADD MONEY ---
-document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
-const amount = parseFloat(prompt("Enter amount to add:"));
-if(!amount || amount <= 0) return alert('Invalid amount');
-
-try{    
-    const res = await fetch('https://payme-update.onrender.com/update-balance', {    
-        method: 'POST',    
-        headers: { 'Content-Type': 'application/json' },    
-        body: JSON.stringify({    
-            userId: currentUser.id,    
-            amount: amount    
-        })    
-    });    
-    const data = await res.json();    
-   if(res.ok){    
-    // server returns updated balance in data.balance (and user copy in data.user)
-    if (data.user && typeof data.user.balance !== 'undefined') {
-        currentUser = data.user;
-    } else if (typeof data.balance !== 'undefined') {
-        currentUser.balance = data.balance;
-    }
-    localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
-
-    // Reload dashboard (transactions + fresh user)
-    await loadDashboard();    
-
-    alert('Balance updated successfully');    
-
-    } else {    
-        alert(data.message || 'Error updating balance');    
-    }    
-} catch(err){    
-    alert('Error updating balance');    
-}
-});
-
-// --- SEND MONEY / TO BANK ---
-document.getElementById('toBankBtn').addEventListener('click', ()=>{ showSection('toBankSection'); });
-document.getElementById('receiverPhone').addEventListener('input', async ()=>{
-const phone = document.getElementById('receiverPhone').value;
-if(phone.length<10) return;
-try{
-const res = await fetch('https://payme-update.onrender.com/user-by-account',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({accountNumber: phone.slice(-10)})
-});
-const data = await res.json();
-document.getElementById('receiverName').innerText = data.username ? `Receiver: ${data.username}` : 'User not found';
-document.getElementById('toBankForm').dataset.receiverId = data.userId || '';
-}catch(err){ console.log('Error finding user'); }
-});
-
-document.getElementById('toBankForm').addEventListener('submit', async (e)=>{
-e.preventDefault();
-const amount = parseFloat(document.getElementById('sendAmount').value);
-const receiverId = e.target.dataset.receiverId;
-if(!receiverId) return alert('Invalid receiver');
-if(amount<=0) return alert('Invalid amount');
-try{
-const res = await fetch('https://payme-update.onrender.com/send',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({userId: currentUser.id, receiverId, amount})
-});
-const data = await res.json();
-if(res.ok){
-    // backend returns sender & receiver objects (see your backend)
-    if (data.sender && typeof data.sender.balance !== 'undefined') {
-        currentUser = data.sender;
-    } else if (typeof data.balance !== 'undefined') {
-        currentUser.balance = data.balance;
-    }
-    localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-
-    // Reload dashboard (transactions + fresh user) so receiver's balance also becomes correct when they next open dashboard
-    await loadDashboard();
-
-    alert('Money sent successfully');
-    showSection('dashboardSection');
-
-} else { alert(data.message); }
-}catch(err){ alert('Error sending money'); }
-});
-
-// --- PERSIST LOGIN ---
-if(localStorage.getItem('paymeUser')){
-currentUser = JSON.parse(localStorage.getItem('paymeUser'));
-loadDashboard();
-showSection('dashboardSection');
-} else {
-showSection('registerSection');
-}
-</script>  
-
-</body>
-</html>
+</section>
