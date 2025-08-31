@@ -517,56 +517,35 @@ showSection('dashboardSection');
 } else {
 showSection('registerSection');
 }
-
-// --- MANUAL REFRESH BUTTON ---
+//Manual refresh
 document.getElementById('refreshBtn').addEventListener('click', async () => {
-    if (!currentUser) return alert('Not logged in');
-    try {
-        const res = await fetch('https://payme-update.onrender.com/refresh', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            currentUser.balance = data.balance;
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-            document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
-            displayTransactions(); // reload transactions
-        } else {
-            alert(data.message || 'Error refreshing balance');
-        }
-    } catch (err) {
-        console.log('Error refreshing balance:', err);
-    }
-});
-
-document.getElementById('refreshBtn').addEventListener('click', async () => {
-    if (!currentUser) return alert('Not logged in');
+    if (!currentUser) return alert('No user logged in');
 
     try {
-        const res = await fetch('https://payme-update.onrender.com/refresh', {
+        // Fetch latest transactions from backend
+        const res = await fetch('https://payme-update.onrender.com/transactions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser.id })
         });
 
-        const data = await res.json();
+        if (!res.ok) throw new Error('Failed to fetch transactions');
 
-        if (res.ok) {
-            currentUser.balance = data.balance;
-            allTransactions = data.transactions || [];
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-            document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
-            displayTransactions(); 
-        } else {
-            alert(data.message || 'Error refreshing balance');
-        }
+        const tx = await res.json();
+        allTransactions = tx.reverse();
+        displayTransactions();
 
+        // Update balance display from local currentUser
+        document.getElementById('balanceDisplay').innerText = `₦${(currentUser.balance || 0).toFixed(2)}`;
+
+        alert('Refreshed successfully!');
     } catch (err) {
-        console.error('Error refreshing balance:', err);
+        console.error(err);
+        alert('Error fetching balance/transactions');
     }
 });
+
+
 </script>
 
 </body>
