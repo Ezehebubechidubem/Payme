@@ -127,6 +127,7 @@ def login():
         digits = sanitize_phone(number)
         if digits:
             acct_tail = digits[-10:]
+            # try exact account_number first, then last-10 match
             user = User.query.filter(User.account_number.like(f"{acct_tail}%")).first()
             if user and user.password != password:
                 user = None
@@ -136,14 +137,21 @@ def login():
 
     return jsonify({"success": True, "message": "Login successful", "user": user_to_dict(user)}), 200
 
-# Lookup user by account number for preview before send
+# Lookup user by account number for preview before send (POST)
 @app.route("/user-by-account", methods=["POST"])
 def user_by_account():
     data = request.get_json() or {}
     acct = str(data.get("accountNumber") or data.get("account") or data.get("acct") or "")
     if not acct:
         return jsonify({"success": False, "message": "accountNumber required"}), 400
+
+    # try exact match
     user = User.query.filter_by(account_number=acct).first()
+    if not user:
+        # try last-10 suffix match
+        acct_tail = acct[-10:]
+        user = User.query.filter(User.account_number.like(f"{acct_tail}%")).first()
+
     if user:
         return jsonify({"success": True, "username": user.username, "userId": user.id}), 200
     return jsonify({"success": False, "message": "User not found"}), 404
@@ -220,7 +228,13 @@ def transfer():
     sender = User.query.get(sid)
     if not sender:
         return jsonify({"success": False, "message": "Sender not found"}), 404
+
+    # try receiver exact account first, then last-10 fallback
     receiver = User.query.filter_by(account_number=str(to_account)).first()
+    if not receiver:
+        acct_tail = str(to_account)[-10:]
+        receiver = User.query.filter(User.account_number.like(f"{acct_tail}%")).first()
+
     if not receiver:
         return jsonify({"success": False, "message": "Receiver account not found"}), 404
     if amount <= 0:
@@ -235,6 +249,35 @@ def transfer():
     db.session.add_all([tx1, tx2])
     db.session.commit()
     return jsonify({"success": True, "message": f"₦{amount} sent to {receiver.username}", "new_balance": float(sender.balance), "sender": user_to_dict(sender), "receiver": user_to_dict(receiver)}), 200
+
+# Send legacy endpoint (compatibility): accepts sender/receiver usernames
+@app.route("/send-legacy", methods=["POST"])
+def send_legacy():
+    data = request.get_json() or {}
+    sender_name = data.get("sender") or data.get("sender_username")
+    receiver_name = data.get("receiver") or data.get("receiver_username")
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid amount"}), 400
+    if not (sender_name and receiver_name):
+        return jsonify({"success": False, "message": "sender and receiver required"}), 400
+    sender = User.query.filter_by(username=sender_name).first()
+    receiver = User.query.filter_by(username=receiver_name).first()
+    if not sender or not receiver:
+        return jsonify({"success": False, "message": "Invalid sender or receiver"}), 404
+    if amount <= 0:
+        return jsonify({"success": False, "message": "Invalid amount"}), 400
+    if float(sender.balance) < amount:
+        return jsonify({"success": False, "message": "Insufficient funds"}), 400
+    sender.balance = float(sender.balance) - amount
+    receiver.balance = float(receiver.balance) + amount
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tx1 = Transaction(type="Sent", amount=amount, userId=sender.id, sender=sender.username, receiver=receiver.username, date=now, details=f"Sent to {receiver.username}")
+    tx2 = Transaction(type="Received", amount=amount, userId=receiver.id, sender=sender.username, receiver=receiver.username, date=now, details=f"Received from {sender.username}")
+    db.session.add_all([tx1, tx2])
+    db.session.commit()
+    return jsonify({"success": True, "message": f"Sent ₦{amount}", "balance": float(sender.balance), "sender": user_to_dict(sender)}), 200
 
 # Refresh: returns user + transactions
 @app.route("/refresh", methods=["POST"])
@@ -266,6 +309,109 @@ def get_balance():
     if not user:
         return jsonify({"success": False, "message": "User not found"}), 404
     return jsonify({"success": True, "balance": float(user.balance), "username": user.username}), 200
+
+# ------------------- ALIASES / COMPATIBILITY ROUTES -------------------
+# Keep original logic intact, provide extra endpoints the frontends referenced
+
+@app.route("/register", methods=["POST"])
+def register_alias():
+    # alias for /signup
+    return signup()
+
+@app.route("/addMoney", methods=["POST"])
+@app.route("/add-money", methods=["POST"])
+def add_money_alias():
+    # alias for /update-balance
+    return update_balance()
+
+@app.route("/get_user/<account_number>", methods=["GET"])
+def get_user_by_account_number(account_number):
+    # friendly GET route used by some frontends
+    # try exact account first, then last-10 fallback
+    user = User.query.filter_by(account_number=account_number).first()
+    if not user:
+        acct_tail = str(account_number)[-10:]
+        user = User.query.filter(User.account_number.like(f"{acct_tail}%")).first()
+    if user:
+        return jsonify({"success": True, "username": user.username, "userId": user.id, "user": user_to_dict(user)}), 200
+    return jsonify({"success": False, "message": "User not found"}), 404
+
+@app.route("/get_user", methods=["POST"])
+def get_user_post_alias():
+    data = request.get_json() or {}
+    acct = data.get("accountNumber") or data.get("account") or data.get("acct")
+    if not acct:
+        return jsonify({"success": False, "message": "accountNumber required"}), 400
+    return user_by_account()
+
+@app.route("/user", methods=["GET"])
+def user_query_alias():
+    # GET /user?user_id= or ?id= or ?account=...
+    uid = request.args.get("user_id") or request.args.get("id") or request.args.get("userId")
+    if uid:
+        try:
+            return get_user(int(uid))
+        except:
+            pass
+    acct = request.args.get("account")
+    if acct:
+        # return by account number
+        return get_user_by_account_number(acct)
+    return jsonify({"success": False, "message": "user identifier required"}), 400
+
+@app.route("/send", methods=["POST"])
+def send_alias():
+    # if payload contains sender/receiver usernames -> use legacy
+    data = request.get_json() or {}
+    # detect username-style send
+    if data.get("sender") and data.get("receiver"):
+        # call legacy function
+        return send_legacy()
+    # otherwise use transfer by account number
+    # accept either from_id or userId etc
+    if data.get("from_id") or data.get("userId") or data.get("senderId") or data.get("user_id"):
+        return transfer()
+    # last attempt: payload might be { sender_id, receiver_account, amount } used in some frontends
+    if data.get("sender_id") and data.get("receiver_account"):
+        # map to transfer parameters
+        mapped = {
+            "from_id": data.get("sender_id"),
+            "to_account": data.get("receiver_account"),
+            "amount": data.get("amount")
+        }
+        # simulate request body for transfer() by replacing request.get_json temporarily is not trivial,
+        # but we can call transfer() after injecting mapped into flask.request by monkey-patching:
+        # simpler: call transfer() directly with mapped handling by creating a small wrapper response
+        try:
+            sid = int(mapped["from_id"])
+            amount = float(mapped["amount"])
+        except Exception:
+            return jsonify({"success": False, "message": "Invalid data"}), 400
+        # perform same logic as transfer
+        sender = User.query.get(sid)
+        if not sender:
+            return jsonify({"success": False, "message": "Sender not found"}), 404
+        receiver = User.query.filter_by(account_number=str(mapped["to_account"])).first()
+        if not receiver:
+            acct_tail = str(mapped["to_account"])[-10:]
+            receiver = User.query.filter(User.account_number.like(f"{acct_tail}%")).first()
+        if not receiver:
+            return jsonify({"success": False, "message": "Receiver account not found"}), 404
+        if amount <= 0:
+            return jsonify({"success": False, "message": "Amount must be > 0"}), 400
+        if float(sender.balance) < amount:
+            return jsonify({"success": False, "message": "Insufficient funds!"}), 400
+        sender.balance = float(sender.balance) - amount
+        receiver.balance = float(receiver.balance) + amount
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        tx1 = Transaction(type="Sent", amount=amount, userId=sender.id, sender=sender.username, receiver=receiver.username, date=now, details=f"Sent ₦{amount} to {receiver.account_number}")
+        tx2 = Transaction(type="Received", amount=amount, userId=receiver.id, sender=sender.username, receiver=receiver.username, date=now, details=f"Received ₦{amount} from {sender.account_number}")
+        db.session.add_all([tx1, tx2])
+        db.session.commit()
+        return jsonify({"success": True, "message": f"₦{amount} sent to {receiver.username}", "new_balance": float(sender.balance), "sender": user_to_dict(sender), "receiver": user_to_dict(receiver)}), 200
+
+    # fallback - try to call transfer
+    return transfer()
 
 if __name__ == "__main__":
     app.run(debug=True)
