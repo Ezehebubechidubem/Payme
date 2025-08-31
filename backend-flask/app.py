@@ -36,7 +36,6 @@ with app.app_context():
 def find_user_by_phone(phone):
     if not phone:
         return None
-    # match by last 10 digits (frontend sends full phone but compares by last 10)
     tail = phone[-10:]
     return User.query.filter(User.phone.like(f"%{tail}")).first()
 
@@ -64,10 +63,8 @@ def register():
         return jsonify({'message': 'Phone already registered!'}), 400
 
     account_number = phone[-10:]
-    # If account_number uniqueness is violated for some reason, add suffix
     existing = User.query.filter_by(account_number=account_number).first()
     if existing:
-        # rare case: append a small suffix to keep unique (keeps account_number string-like)
         suffix = 1
         while User.query.filter_by(account_number=f"{account_number}{suffix}").first():
             suffix += 1
@@ -159,7 +156,6 @@ def update_balance():
         "balance": user.balance,
         "account_number": user.account_number
     }
-    # return balance and user so front-end can update localStorage and UI
     return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance, 'user': user_copy}), 200
 
 # --- SEND MONEY ---
@@ -182,11 +178,9 @@ def send_money():
     if sender.balance < amount:
         return jsonify({'message': 'Insufficient funds!'}), 400
 
-    # perform transfer
     sender.balance -= amount
     receiver.balance += amount
 
-    # Record transactions
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     tx1 = Transaction(
         type="Sent",
@@ -207,7 +201,6 @@ def send_money():
     db.session.add_all([tx1, tx2])
     db.session.commit()
 
-    # return both updated balances and user info (keeps compatibility with your frontend)
     return jsonify({
         'message': f'₦{amount} sent to {receiver.username}',
         'balance': sender.balance,
@@ -261,6 +254,24 @@ def user_by_account():
     if user:
         return jsonify({'username': user.username, 'userId': user.id}), 200
     return jsonify({'message': 'User not found'}), 404
+
+# --- REFRESH BALANCE (NEW FEATURE) ---
+@app.route('/refresh', methods=['POST'])
+def refresh():
+    data = request.get_json()
+    user_id = data.get('userId')
+    user = find_user_by_id(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user_copy = {
+        "id": user.id,
+        "username": user.username,
+        "phone": user.phone,
+        "balance": user.balance,
+        "account_number": user.account_number
+    }
+    return jsonify({'message': 'Balance refreshed!', 'balance': user.balance, 'user': user_copy}), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
