@@ -1,111 +1,89 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-users = {}  # key: user_id, value: dict
-transactions = {}  # key: user_id, value: list of dicts
-next_id = 1
+# Temporary "database"
+users = {}  # {username: {"password": "...", "balance": 1000, "transactions": []}}
 
+@app.route("/")
+def home():
+    return {"status": "PayGo Backend Running"}
+
+# ---------------- SIGNUP ----------------
 @app.route("/signup", methods=["POST"])
 def signup():
-    global next_id
     data = request.json
-    email = data.get("email")
-    if any(u["email"] == email for u in users.values()):
-        return jsonify({"success": False, "message": "Email already exists"})
-    
-    user = {
-        "id": next_id,
-        "name": data.get("name"),
-        "email": email,
-        "password": data.get("password"),
-        "balance": 0
-    }
-    users[next_id] = user
-    transactions[next_id] = []
-    next_id += 1
-    return jsonify({"success": True, "message": "Signup successful!"})
+    username = data.get("username")
+    password = data.get("password")
 
+    if not username or not password:
+        return jsonify({"error": "Missing username or password"}), 400
+    
+    if username in users:
+        return jsonify({"error": "User already exists"}), 400
+
+    users[username] = {"password": password, "balance": 1000, "transactions": []}
+    return jsonify({"message": "Signup successful", "user": username}), 200
+
+# ---------------- LOGIN ----------------
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
-    email = data.get("email")
+    username = data.get("username")
     password = data.get("password")
-    for uid, user in users.items():
-        if user["email"] == email and user["password"] == password:
-            return jsonify({"success": True, "user": user})
-    return jsonify({"success": False, "message": "Invalid credentials"})
 
+    user = users.get(username)
+    if not user or user["password"] != password:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    return jsonify({"message": "Login successful", "user": username}), 200
+
+# ---------------- BALANCE ----------------
 @app.route("/balance", methods=["GET"])
-def balance():
-    user_id = int(request.args.get("user_id"))
-    return jsonify({"balance": users[user_id]["balance"]})
+def get_balance():
+    username = request.args.get("username")
+    user = users.get(username)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"balance": user["balance"]}), 200
 
-@app.route("/transactions", methods=["GET"])
-def get_transactions():
-    user_id = int(request.args.get("user_id"))
-    return jsonify(transactions[user_id])
-
-@app.route("/add_money", methods=["POST"])
-def add_money():
-    """Add money to user account (fund wallet)."""
-    data = request.json
-    user_id = int(data.get("user_id"))
-    amount = float(data.get("amount", 0))
-    if amount <= 0:
-        return jsonify({"success": False, "message": "Invalid amount"})
-    
-    users[user_id]["balance"] += amount
-    transactions[user_id].append({
-        "type": "Credit",
-        "amount": amount,
-        "description": "Wallet funding"
-    })
-    return jsonify({"success": True, "balance": users[user_id]["balance"]})
-
-@app.route("/send_money", methods=["POST"])
+# ---------------- SEND MONEY ----------------
+@app.route("/send", methods=["POST"])
 def send_money():
-    """Send money from one user to another."""
     data = request.json
-    from_id = int(data.get("from_id"))
-    to_email = data.get("to_email")
-    amount = float(data.get("amount", 0))
+    sender = data.get("sender")
+    receiver = data.get("receiver")
+    amount = int(data.get("amount", 0))
 
-    if amount <= 0:
-        return jsonify({"success": False, "message": "Invalid amount"})
+    if sender not in users or receiver not in users:
+        return jsonify({"error": "Invalid sender or receiver"}), 404
 
-    if users[from_id]["balance"] < amount:
-        return jsonify({"success": False, "message": "Insufficient funds"})
+    if users[sender]["balance"] < amount:
+        return jsonify({"error": "Insufficient funds"}), 400
 
-    # find receiver by email
-    to_id = None
-    for uid, user in users.items():
-        if user["email"] == to_email:
-            to_id = uid
-            break
-    if not to_id:
-        return jsonify({"success": False, "message": "Recipient not found"})
+    # Deduct and add
+    users[sender]["balance"] -= amount
+    users[receiver]["balance"] += amount
 
-    # perform transfer
-    users[from_id]["balance"] -= amount
-    users[to_id]["balance"] += amount
+    # Record transaction
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    users[sender]["transactions"].append({"type": "Sent", "to": receiver, "amount": amount, "time": now})
+    users[receiver]["transactions"].append({"type": "Received", "from": sender, "amount": amount, "time": now})
 
-    # log transaction for sender
-    transactions[from_id].append({
-        "type": "Debit",
-        "amount": amount,
-        "description": f"Sent to {users[to_id]['name']} ({users[to_id]['email']})"
-    })
-    # log transaction for receiver
-    transactions[to_id].append({
-        "type": "Credit",
-        "amount": amount,
-        "description": f"Received from {users[from_id]['name']} ({users[from_id]['email']})"
-    })
+    return jsonify({"message": f"Sent {amount} to {receiver}"}), 200
 
-    return jsonify({"success": True, "balance": users[from_id]["balance"]})
+# ---------------- TRANSACTION HISTORY ----------------
+@app.route("/transactions", methods=["GET"])
+def transactions():
+    username = request.args.get("username")
+    user = users.get(username)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"transactions": user["transactions"]}), 200
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     app.run(debug=True)
