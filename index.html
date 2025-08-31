@@ -518,29 +518,39 @@ showSection('registerSection');
 // --- MANUAL REFRESH BUTTON ---
 document.getElementById('refreshBtn').addEventListener('click', async () => {
     if (!currentUser) return alert('Not logged in');
+
     try {
         const res = await fetch('https://payme-update.onrender.com/refresh', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser.id })
         });
+
         const data = await res.json();
+
         if (res.ok) {
+            // Update current user balance
             currentUser.balance = data.balance;
             localStorage.setItem('paymeUser', JSON.stringify(currentUser));
+
+            // Update balance on dashboard
             document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
-            displayTransactions(); // reload transactions
+
+            // Reload transactions
+            displayTransactions(); 
         } else {
             alert(data.message || 'Error refreshing balance');
         }
+
     } catch (err) {
-        console.log('Error refreshing balance:', err);
+        console.error('Error refreshing balance:', err);
     }
 });
 
-// --- AUTOMATIC BALANCE REFRESH EVERY 10 SECONDS ---
+// --- AUTO REFRESH EVERY 10 SECONDS ---
 setInterval(async () => {
     if (!currentUser) return;
+
     try {
         const res = await fetch('https://payme-update.onrender.com/refresh', {
             method: 'POST',
@@ -557,7 +567,7 @@ setInterval(async () => {
     } catch (err) {
         console.log('Error auto-refreshing balance:', err);
     }
-}, 10000); // every 10 seconds
+}, 10000); // refresh every 10 seconds
 </script>
 
 </body>
