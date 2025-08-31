@@ -369,3 +369,38 @@ try{
     } else { alert(data.message); }
 }catch(err){ alert('Error logging in'); }
 });
+// --- DASHBOARD ---
+async function loadDashboard(){
+if(!currentUser) return;
+document.getElementById('balanceDisplay').innerText = `₦${(currentUser.balance || 0).toFixed(2)}`;
+document.getElementById('profileUsername').innerText = currentUser.username;
+document.getElementById('profilePhone').innerText = currentUser.phone;
+document.getElementById('profileAccount').innerText = currentUser.account_number;
+document.getElementById('profileBalance').innerText = (currentUser.balance || 0).toFixed(2);
+
+// Load transactions    
+try{    
+    const res = await fetch('https://payme-update.onrender.com/transactions',{    
+        method:'POST',    
+        headers:{'Content-Type':'application/json'},    
+        body: JSON.stringify({userId: currentUser.id})    
+    });    
+    const tx = await res.json();    
+    allTransactions = tx.reverse();    
+    displayTransactions();    
+}catch(err){ console.log('Error fetching transactions'); }
+}
+
+// Display limited transactions
+function displayTransactions(limit=lastTxLimit){
+const list = document.getElementById('transactionList');
+list.innerHTML = '';
+if(allTransactions.length === 0){ list.innerHTML='<li>No transactions yet</li>'; return; }
+allTransactions.slice(0,limit).forEach(tx=>{
+const li = document.createElement('li');
+li.className = (tx.type || '').toLowerCase();
+li.innerHTML = `<span class="type">${tx.type}</span> - <span class="amount">₦${tx.amount}</span> <br> <small>${tx.date}</small>`;
+list.appendChild(li);
+});
+document.getElementById('seeMoreBtn').style.display = (allTransactions.length>limit)?'block':'none';
+}
