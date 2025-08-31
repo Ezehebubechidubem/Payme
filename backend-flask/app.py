@@ -258,12 +258,16 @@ def user_by_account():
 @app.route('/refresh', methods=['POST'])
 def refresh():
     data = request.get_json()
-    user_id = data.get('userId')
-    user = find_user_by_id(user_id)
+    try:
+        user_id = int(data.get('userId'))  # ensure it's integer
+    except:
+        return jsonify({'message': 'Invalid userId'}), 400
+
+    user = User.query.filter_by(id=user_id).first()  # make sure this matches your DB
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    # get latest transactions
+    # Fetch transactions
     user_tx = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
     tx_list = [
         {
@@ -273,20 +277,18 @@ def refresh():
             "date": tx.date,
             "sender": tx.sender,
             "receiver": tx.receiver
-        }
-        for tx in user_tx
+        } for tx in user_tx
     ]
 
-    user_copy = {
-        "id": user.id,
-        "username": user.username,
-        "phone": user.phone,
-        "balance": user.balance,
-        "account_number": user.account_number
-    }
     return jsonify({
         'message': 'Balance refreshed!',
         'balance': user.balance,
-        'user': user_copy,
-        'transactions': tx_list
+        'transactions': tx_list,
+        'user': {
+            "id": user.id,
+            "username": user.username,
+            "phone": user.phone,
+            "balance": user.balance,
+            "account_number": user.account_number
+        }
     }), 200
