@@ -513,4 +513,40 @@ const receiverId = e.target.dataset.receiverId;
 if(!receiverId) return alert('Invalid receiver');
 if(amount<=0) return alert('Invalid amount');
 try{
-const res = await fetch('https://payme-update.onrender.
+const res = await fetch('https://payme-update.onrender.com/send',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({userId: currentUser.id, receiverId, amount})
+});
+const data = await res.json();
+if(res.ok){
+    // backend returns sender & receiver objects (see your backend)
+    if (data.sender && typeof data.sender.balance !== 'undefined') {
+        currentUser = data.sender;
+    } else if (typeof data.balance !== 'undefined') {
+        currentUser.balance = data.balance;
+    }
+    localStorage.setItem('paymeUser', JSON.stringify(currentUser));
+
+    // Reload dashboard (transactions + fresh user) so receiver's balance also becomes correct when they next open dashboard
+    await loadDashboard();
+
+    alert('Money sent successfully');
+    showSection('dashboardSection');
+
+} else { alert(data.message); }
+}catch(err){ alert('Error sending money'); }
+});
+
+// --- PERSIST LOGIN ---
+if(localStorage.getItem('paymeUser')){
+currentUser = JSON.parse(localStorage.getItem('paymeUser'));
+loadDashboard();
+showSection('dashboardSection');
+} else {
+showSection('registerSection');
+}
+</script>  
+
+</body>
+</html>
