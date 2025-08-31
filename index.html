@@ -404,3 +404,57 @@ list.appendChild(li);
 });
 document.getElementById('seeMoreBtn').style.display = (allTransactions.length>limit)?'block':'none';
 }
+
+// --- SEE MORE TRANSACTIONS ---
+document.getElementById('seeMoreBtn').addEventListener('click', ()=>{
+displayTransactions(allTransactions.length);
+});
+
+// --- HAMBURGER MENU / PROFILE ---
+document.getElementById('hamburgerBtn').addEventListener('click', ()=>{
+const menu = document.getElementById('profileMenu');
+menu.style.display = (menu.style.display==='block')?'none':'block';
+});
+document.getElementById('profileMenuBtn').addEventListener('click', ()=>{
+document.getElementById('profileModal').style.display='flex';
+});
+document.getElementById('closeProfile').addEventListener('click', ()=>{
+document.getElementById('profileModal').style.display='none';
+});
+document.getElementById('logoutMenuBtn').addEventListener('click', ()=>{
+currentUser=null;
+localStorage.removeItem('paymeUser'); 
+showSection('loginSection');
+});
+
+// --- ADD MONEY ---
+document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
+const amount = parseFloat(prompt("Enter amount to add:"));
+if(!amount || amount <= 0) return alert('Invalid amount');
+
+try{    
+    const res = await fetch('https://payme-update.onrender.com/update-balance', {    
+        method: 'POST',    
+        headers: { 'Content-Type': 'application/json' },    
+        body: JSON.stringify({    
+            userId: currentUser.id,    
+            amount: amount    
+        })    
+    });    
+    const data = await res.json();    
+   if(res.ok){    
+    currentUser.balance = data.balance;    
+    localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
+
+    // Reload transactions immediately
+    await loadDashboard();    
+
+    alert('Balance updated successfully');    
+
+    } else {    
+        alert(data.message || 'Error updating balance');    
+    }    
+} catch(err){    
+    alert('Error updating balance');    
+}
+});
