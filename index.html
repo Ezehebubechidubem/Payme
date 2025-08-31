@@ -506,3 +506,34 @@ if(res.ok){
 } else { alert(data.message); }
 }catch(err){ alert('Error sending money'); }
 });
+// --- PERSIST LOGIN ---
+if(localStorage.getItem('paymeUser')){
+currentUser = JSON.parse(localStorage.getItem('paymeUser'));
+loadDashboard();
+showSection('dashboardSection');
+} else {
+showSection('registerSection');
+}
+
+// --- MANUAL REFRESH BUTTON ---
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+    if (!currentUser) return alert('Not logged in');
+    try {
+        const res = await fetch('https://payme-update.onrender.com/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentUser.id })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            currentUser.balance = data.balance;
+            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
+            document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
+            displayTransactions(); // reload transactions
+        } else {
+            alert(data.message || 'Error refreshing balance');
+        }
+    } catch (err) {
+        console.log('Error refreshing balance:', err);
+    }
+});
