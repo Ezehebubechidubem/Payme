@@ -117,11 +117,26 @@ def update_balance():
         return jsonify({'message': 'User not found'}), 404
 
     user.balance += amount
-    tx = Transaction(type="Deposit", amount=amount, userId=user.id, sender="System", receiver=user.username, date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    tx = Transaction(
+        type="Deposit",
+        amount=amount,
+        userId=user.id,
+        sender="System",
+        receiver=user.username,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
     db.session.add(tx)
     db.session.commit()
 
-    return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance}), 200
+    # Return full user object for frontend dashboard
+    user_copy = {
+        "id": user.id,
+        "username": user.username,
+        "phone": user.phone,
+        "balance": user.balance,
+        "account_number": user.account_number
+    }
+    return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance, 'user': user_copy}), 200
 
 # --- SEND MONEY ---
 @app.route('/send', methods=['POST'])
@@ -152,17 +167,21 @@ def send_money():
     db.session.add_all([tx1, tx2])
     db.session.commit()
 
+    # Return full sender object for dashboard refresh
+    sender_copy = {
+        "id": sender.id, "username": sender.username, "phone": sender.phone,
+        "balance": sender.balance, "account_number": sender.account_number
+    }
+    receiver_copy = {
+        "id": receiver.id, "username": receiver.username, "phone": receiver.phone,
+        "balance": receiver.balance, "account_number": receiver.account_number
+    }
+
     return jsonify({
         'message': f'₦{amount} sent to {receiver.username}',
         'balance': sender.balance,
-        'sender': {
-            "id": sender.id, "username": sender.username, "phone": sender.phone,
-            "balance": sender.balance, "account_number": sender.account_number
-        },
-        'receiver': {
-            "id": receiver.id, "username": receiver.username, "phone": receiver.phone,
-            "balance": receiver.balance, "account_number": receiver.account_number
-        }
+        'sender': sender_copy,
+        'receiver': receiver_copy
     }), 200
 
 # --- GET USER TRANSACTIONS ---
