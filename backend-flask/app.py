@@ -23,7 +23,7 @@ class User(db.Model):
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     userId = db.Column(db.Integer, db.ForeignKey("user.id"))
-    type = db.Column(db.String(100))  # e.g. Deposit, Sent, Received
+    type = db.Column(db.String(100))  # Deposit, Sent, Received
     amount = db.Column(db.Float)
     date = db.Column(db.String(50))
     sender = db.Column(db.String(100))
@@ -70,13 +70,7 @@ def register():
             suffix += 1
         account_number = f"{account_number}{suffix}"
 
-    new_user = User(
-        username=username,
-        phone=phone,
-        password=password,
-        balance=0.0,
-        account_number=account_number
-    )
+    new_user = User(username=username, phone=phone, password=password, balance=0.0, account_number=account_number)
     db.session.add(new_user)
     db.session.commit()
 
@@ -109,21 +103,6 @@ def login():
     }
     return jsonify({'message': 'Login successful!', 'user': user_copy}), 200
 
-# --- ALL USERS ---
-@app.route('/all-users', methods=['GET'])
-def all_users():
-    all_users = User.query.all()
-    clean_users = []
-    for u in all_users:
-        clean_users.append({
-            "id": u.id,
-            "username": u.username,
-            "phone": u.phone,
-            "balance": u.balance,
-            "account_number": u.account_number
-        })
-    return jsonify(clean_users), 200
-
 # --- UPDATE BALANCE (Deposit) ---
 @app.route('/update-balance', methods=['POST'])
 def update_balance():
@@ -138,25 +117,11 @@ def update_balance():
         return jsonify({'message': 'User not found'}), 404
 
     user.balance += amount
-    tx = Transaction(
-        type="Deposit",
-        amount=amount,
-        userId=user.id,
-        sender="System",
-        receiver=user.username,
-        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    )
+    tx = Transaction(type="Deposit", amount=amount, userId=user.id, sender="System", receiver=user.username, date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     db.session.add(tx)
     db.session.commit()
 
-    user_copy = {
-        "id": user.id,
-        "username": user.username,
-        "phone": user.phone,
-        "balance": user.balance,
-        "account_number": user.account_number
-    }
-    return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance, 'user': user_copy}), 200
+    return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance}), 200
 
 # --- SEND MONEY ---
 @app.route('/send', methods=['POST'])
@@ -182,22 +147,8 @@ def send_money():
     receiver.balance += amount
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    tx1 = Transaction(
-        type="Sent",
-        amount=amount,
-        userId=sender.id,
-        sender=sender.username,
-        receiver=receiver.username,
-        date=now
-    )
-    tx2 = Transaction(
-        type="Received",
-        amount=amount,
-        userId=receiver.id,
-        sender=sender.username,
-        receiver=receiver.username,
-        date=now
-    )
+    tx1 = Transaction(type="Sent", amount=amount, userId=sender.id, sender=sender.username, receiver=receiver.username, date=now)
+    tx2 = Transaction(type="Received", amount=amount, userId=receiver.id, sender=sender.username, receiver=receiver.username, date=now)
     db.session.add_all([tx1, tx2])
     db.session.commit()
 
@@ -205,18 +156,12 @@ def send_money():
         'message': f'₦{amount} sent to {receiver.username}',
         'balance': sender.balance,
         'sender': {
-            "id": sender.id,
-            "username": sender.username,
-            "phone": sender.phone,
-            "balance": sender.balance,
-            "account_number": sender.account_number
+            "id": sender.id, "username": sender.username, "phone": sender.phone,
+            "balance": sender.balance, "account_number": sender.account_number
         },
         'receiver': {
-            "id": receiver.id,
-            "username": receiver.username,
-            "phone": receiver.phone,
-            "balance": receiver.balance,
-            "account_number": receiver.account_number
+            "id": receiver.id, "username": receiver.username, "phone": receiver.phone,
+            "balance": receiver.balance, "account_number": receiver.account_number
         }
     }), 200
 
@@ -224,23 +169,12 @@ def send_money():
 @app.route('/transactions', methods=['POST'])
 def get_transactions():
     data = request.get_json()
-    user_id = data.get('userId')
-    user = find_user_by_id(user_id)
+    user = find_user_by_id(data.get('userId'))
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    user_tx = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
-    result = [
-        {
-            "id": tx.id,
-            "type": tx.type,
-            "amount": tx.amount,
-            "date": tx.date,
-            "sender": tx.sender,
-            "receiver": tx.receiver
-        }
-        for tx in user_tx
-    ]
+    txs = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
+    result = [{"id": t.id, "type": t.type, "amount": t.amount, "date": t.date, "sender": t.sender, "receiver": t.receiver} for t in txs]
     return jsonify(result), 200
 
 # --- USER BY ACCOUNT ---
@@ -259,39 +193,18 @@ def user_by_account():
 @app.route('/refresh', methods=['POST'])
 def refresh():
     data = request.get_json()
-    user_id = data.get('userId')
-    user = find_user_by_id(user_id)
+    user = find_user_by_id(data.get('userId'))
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    # Latest transactions
-    user_tx = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
-    tx_list = [
-        {
-            "id": tx.id,
-            "type": tx.type,
-            "amount": tx.amount,
-            "date": tx.date,
-            "sender": tx.sender,
-            "receiver": tx.receiver
-        }
-        for tx in user_tx
-    ]
+    txs = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
+    tx_list = [{"id": t.id, "type": t.type, "amount": t.amount, "date": t.date, "sender": t.sender, "receiver": t.receiver} for t in txs]
 
     user_copy = {
-        "id": user.id,
-        "username": user.username,
-        "phone": user.phone,
-        "balance": user.balance,
-        "account_number": user.account_number
+        "id": user.id, "username": user.username, "phone": user.phone,
+        "balance": user.balance, "account_number": user.account_number
     }
-
-    return jsonify({
-        'message': 'Balance refreshed!',
-        'balance': user.balance,
-        'user': user_copy,
-        'transactions': tx_list
-    }), 200
+    return jsonify({'message': 'Balance refreshed!', 'balance': user.balance, 'user': user_copy, 'transactions': tx_list}), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
