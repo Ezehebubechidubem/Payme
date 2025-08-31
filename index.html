@@ -324,3 +324,48 @@ if(sec!=='dashboardSection'){
 document.getElementById('toLogin').addEventListener('click', ()=>{ showSection('loginSection'); });
 document.getElementById('toRegister').addEventListener('click', ()=>{ showSection('registerSection'); });
 document.getElementById('backDashboard').addEventListener('click', ()=>{ showSection('dashboardSection'); });
+// --- REGISTER ---
+document.getElementById('registerForm').addEventListener('submit', async (e)=>{
+e.preventDefault();
+const username = document.getElementById('regUsername').value;
+const phone = document.getElementById('regPhone').value;
+const password = document.getElementById('regPassword').value;
+
+try{    
+    const res = await fetch('https://payme-update.onrender.com/register',{    
+        method:'POST',    
+        headers:{'Content-Type':'application/json'},    
+        body: JSON.stringify({username, phone, password})    
+    });    
+    const data = await res.json();    
+    alert(data.message);    
+    if(res.ok){    
+        currentUser = data.user;    
+        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
+        loadDashboard();    
+        showSection('dashboardSection');
+    }
+}catch(err){ alert('Error registering user'); }
+});
+
+// --- LOGIN ---
+document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+e.preventDefault();
+const phone = document.getElementById('loginPhone').value;
+const password = document.getElementById('loginPassword').value;
+
+try{    
+    const res = await fetch('https://payme-update.onrender.com/login',{    
+        method:'POST',    
+        headers:{'Content-Type':'application/json'},    
+        body: JSON.stringify({phone, password})    
+    });    
+    const data = await res.json();    
+    if(res.ok){    
+        currentUser = data.user;    
+        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
+        loadDashboard();    
+        showSection('dashboardSection');
+    } else { alert(data.message); }
+}catch(err){ alert('Error logging in'); }
+});
