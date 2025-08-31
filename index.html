@@ -1,551 +1,280 @@
-<!DOCTYPE html>  
-<html lang="en">  
-<head>    
-<meta charset="UTF-8">    
-<meta name="viewport" content="width=device-width, initial-scale=1.0">    
-<title>PayMe App</title>    
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">    
-<style> 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from datetime import datetime
+from flask_sqlalchemy import SQLAlchemy
 
-    h2 {
-      margin: 15px;
-      font-size: 18px;
+app = Flask(__name__)
+CORS(app)
+
+# --- Database setup ---
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///payme.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
+
+# --- Models ---
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False)
+    phone = db.Column(db.String(20), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    balance = db.Column(db.Float, default=0.0)
+    account_number = db.Column(db.String(20), unique=True, nullable=False)
+
+class Transaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    userId = db.Column(db.Integer, db.ForeignKey("user.id"))
+    type = db.Column(db.String(100))  # Deposit, Sent, Received
+    amount = db.Column(db.Float)
+    date = db.Column(db.String(50))
+    sender = db.Column(db.String(100))
+    receiver = db.Column(db.String(100))
+
+with app.app_context():
+    db.create_all()
+
+# --- Helpers ---
+def find_user_by_phone(phone):
+    if not phone:
+        return None
+    tail = phone[-10:]
+    return User.query.filter(User.phone.like(f"%{tail}")).first()
+
+def find_user_by_id(user_id):
+    if user_id is None:
+        return None
+    try:
+        uid = int(user_id)
+    except (ValueError, TypeError):
+        return None
+    return User.query.get(uid)
+
+# --- REGISTER ---
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username')
+    phone = data.get('phone')
+    password = data.get('password')
+
+    if not username or not phone or not password:
+        return jsonify({'message': 'All fields are required!'}), 400
+
+    if find_user_by_phone(phone):
+        return jsonify({'message': 'Phone already registered!'}), 400
+
+    account_number = phone[-10:]
+    existing = User.query.filter_by(account_number=account_number).first()
+    if existing:
+        suffix = 1
+        while User.query.filter_by(account_number=f"{account_number}{suffix}").first():
+            suffix += 1
+        account_number = f"{account_number}{suffix}"
+
+    new_user = User(
+        username=username,
+        phone=phone,
+        password=password,
+        balance=0.0,
+        account_number=account_number
+    )
+    db.session.add(new_user)
+    db.session.commit()
+
+    user_copy = {
+        "id": new_user.id,
+        "username": new_user.username,
+        "phone": new_user.phone,
+        "balance": new_user.balance,
+        "account_number": new_user.account_number
     }
-    .services-section {
-      margin: 15px;
-      background: #fff;
-      padding: 15px;
-      border-radius: 12px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    return jsonify({'message': 'User registered successfully!', 'user': user_copy}), 200
+
+# --- LOGIN ---
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    phone = data.get('phone')
+    password = data.get('password')
+    user = find_user_by_phone(phone)
+
+    if not user or user.password != password:
+        return jsonify({'message': 'Invalid credentials!'}), 401
+
+    user_copy = {
+        "id": user.id,
+        "username": user.username,
+        "phone": user.phone,
+        "balance": user.balance,
+        "account_number": user.account_number
     }
-    .services-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 15px;
-      text-align: center;
+    return jsonify({'message': 'Login successful!', 'user': user_copy}), 200
+
+# --- UPDATE BALANCE / DEPOSIT ---
+@app.route('/update-balance', methods=['POST'])
+def update_balance():
+    data = request.get_json()
+    user = find_user_by_id(data.get('userId'))
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'message': 'Invalid amount'}), 400
+
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user.balance += amount
+    tx = Transaction(
+        type="Deposit",
+        amount=amount,
+        userId=user.id,
+        sender="System",
+        receiver=user.username,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    db.session.add(tx)
+    db.session.commit()
+
+    user_copy = {
+        "id": user.id,
+        "username": user.username,
+        "phone": user.phone,
+        "balance": user.balance,
+        "account_number": user.account_number
     }
-    .service-item {
-      padding: 10px;
-      font-size: 13px;
-      color: #333;
-      cursor: pointer;
-    }
-    .service-item i {
-      font-size: 22px;
-      margin-bottom: 5px;
-      color: purple;
-    }
-body {
-      font-family: Arial, sans-serif;
-      background-color:skyblue;
-      margin: 0;
-      padding: 0;
-    }
-    h2 {
-      margin: 15px;
-      font-size: 18px;
-    }
-    .services-section {
-      margin: 15px;
-      background: #fff;
-      padding: 15px;
-      border-radius: 12px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    }
-    .services-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 15px;
-      text-align: center;
-    }
-    .service-item {
-      padding: 10px;
-      font-size: 13px;
-      color: #333;
-      cursor: pointer;
-    }
-    .service-item i {
-      font-size: 22px;
-      margin-bottom: 5px;
-      color: purple;
-    }    
-/* --- GENERAL --- */    
+    return jsonify({'message': f'Added ₦{amount}', 'balance': user.balance, 'user': user_copy}), 200
 
-.hidden { display: none; }    
-button { cursor: pointer; }  
+# --- SEND MONEY ---
+@app.route('/send', methods=['POST'])
+def send_money():
+    data = request.get_json()
+    sender = find_user_by_id(data.get('userId'))
+    receiver = find_user_by_id(data.get('receiverId'))
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'message': 'Invalid amount'}), 400
 
-/* --- FORMS --- */  
-form {  
-max-width: 400px;  
-margin: 50px auto;  
-padding: 20px;  
-background: #fff;  
-border-radius: 10px;  
-box-shadow: 0 5px 15px rgba(0,0,0,0.1);  
-}  
-form h2 { text-align:center; margin-bottom:20px; }  
-form input { width:100%; padding:10px; margin:10px 0; border-radius:6px; border:1px solid #ccc; }  
-form button { width:100%; padding:10px; background:#5b4dff; color:white; border:none; border-radius:6px; font-size:16px; }  
-form small { display:block; text-align:center; margin-top:10px; color:gray; cursor:pointer; }  
+    if not sender or not receiver:
+        return jsonify({'message': 'User not found'}), 404
+    if sender.id == receiver.id:
+        return jsonify({'message': 'Cannot send to yourself'}), 400
+    if amount <= 0:
+        return jsonify({'message': 'Invalid amount'}), 400
+    if sender.balance < amount:
+        return jsonify({'message': 'Insufficient funds!'}), 400
 
-/* --- NAVBAR --- */
-.navbar {
-display:flex;
-justify-content:space-between;
-align-items:center;
-background:#222;
-padding:10px 20px;
-}
-.navbar .logo { color:#fff; font-size:20px; font-weight:bold; }
+    sender.balance -= amount
+    receiver.balance += amount
 
-/* --- CARDS / DASHBOARD --- */
-.balance-card, .history-card, .quick-actions, .services {
-margin:20px 15px;
-padding:20px;
-border-radius:12px;
-background:white;
-}
-.balance-card h1 { margin:10px 0; }
-.quick-actions, .services { display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px; }
-.quick-actions div, .services div { text-align:center; font-size:14px; cursor:pointer; }
-.quick-actions div i, .services div i { font-size:24px; color:purple; }
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tx1 = Transaction(
+        type="Sent",
+        amount=amount,
+        userId=sender.id,
+        sender=sender.username,
+        receiver=receiver.username,
+        date=now
+    )
+    tx2 = Transaction(
+        type="Received",
+        amount=amount,
+        userId=receiver.id,
+        sender=sender.username,
+        receiver=receiver.username,
+        date=now
+    )
+    db.session.add_all([tx1, tx2])
+    db.session.commit()
 
-/* --- TRANSACTIONS --- */
-#transactionList { list-style:none; padding:0; margin:0; max-height:250px; overflow-y:auto; }
-#transactionList li { border-bottom:1px solid #eee; padding:10px 0; font-size:14px; }
-#transactionList li.deposit { background:#e0ffe0; }
-#transactionList li.withdraw { background:#ffe0e0; }
-#transactionList li span.amount { font-weight:bold; }
-#transactionList li span.type { font-style:italic; color:gray; }
-
-/* --- PROFILE MENU / HAMBURGER --- */
-#profileMenu { display:none; position:absolute; top:50px; right:10px; background:white; border-radius:8px; padding:10px; box-shadow:0 5px 15px rgba(0,0,0,0.2); z-index:100; }
-#profileMenu div { padding:5px; cursor:pointer; }
-
-/* --- PROFILE MODAL --- */
-#profileModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; }
-#profileModal .modal-content { background:white; padding:20px; border-radius:10px; width:90%; max-width:400px; }
-
-/* --- BOTTOM BAR --- */
-#bottomBar { position:fixed; bottom:0; left:0; width:100%; background:#fff; display:flex; justify-content:space-around; padding:10px 0; border-top:1px solid #ccc; z-index:200; }
-#bottomBar div { text-align:center; font-size:12px; cursor:pointer; }
-#bottomBar div i { font-size:20px; color:purple; }
-
-/* --- SCROLLABLE DASHBOARD CONTENT --- */
-#dashboardContent { overflow-y:auto; max-height:calc(100vh - 60px); padding-bottom:80px; }
-</style>
-</head>    
-
-<body>  
-
-<!-- REGISTER -->  
-<section id="registerSection">    
-<form id="registerForm">    
-<h2>Register</h2>    
-<input type="text" placeholder="Username" id="regUsername" required>    
-<input type="tel" placeholder="Phone (11 digits)" id="regPhone" minlength="11" maxlength="11" required>    
-<input type="password" placeholder="Password" id="regPassword" required>    
-<button type="submit">Register</button>    
-<small id="toLogin">Already have account? <strong>Login</strong></small>    
-</form>    
-</section>  
-
-<!-- LOGIN -->  
-<section id="loginSection" class="hidden">    
-<form id="loginForm">    
-<h2>Login</h2>    
-<input type="tel" placeholder="Phone (11 digits)" id="loginPhone" minlength="11" max="11" required>    
-<input type="password" placeholder="Password" id="loginPassword" required>    
-<button type="submit">Login</button>    
-<small id="toRegister">Don't have account?<strong>Register</strong></small>    
-</form>    
-</section>  
-
-<!-- DASHBOARD -->  
-<section id="dashboardSection" class="hidden">    
-<nav class="navbar">    
-<div class="logo">PAYME</div>    
-<div>    
-<button id="hamburgerBtn">&#9776;</button>    
-</div>    
-</nav>  
-
-<div id="profileMenu">    
-<div id="profileMenuBtn">Profile</div>    
-<div id="logoutMenuBtn">Logout</div>    
-</div>  
-
-<div id="dashboardContent">    
-<div class="balance-card">    
-    <h3>Available Balance</h3> 
-<h1 id="balanceDisplay">₦0.00</h1>    
-<button id="addMoneyBtn">Add Money</button>   
-  <button id="refreshBtn" >🔄</button>
-</div> 
-</div>  
-
-<div class="history-card">    
-<h3>Transaction History</h3>    
-<ul id="transactionList"><li>No transactions yet</li></ul>    
-<button id="seeMoreBtn" style="display:none; margin-top:10px;">See More</button>  
-</div>  
-
-<div class="quick-actions">    
-<div id="toBankBtn"><i class="fas fa-university"></i><br>To Bank</div>    
-<div id="toWalletBtn"><i class="fas fa-wallet"></i><br>To Wallet</div>    
-<div id="atmBtn"><i class="fas fa-credit-card"></i><br>ATM Card</div>    
-</div>   
-
-<section>    
-<div id="tvBtn"><i class="fas fa-tv"></i><br>TV</div>    
-<div id="loanBtn"><i class="fas fa-hand-holding-usd"></i><br>Loan</div>    
-<div id="businessBtn"><i class="fas fa-briefcase"></i><br>Business</div>    
-<div id="earnBtn"><i class="fas fa-users"></i><br>Refer & Earn</div>    
-</section>    
-  <!-- Recommend -->
-  <div class="services-section">
-    <h2>Quick Services</h2>
-    <div class="services-grid">
-      <div class="service-item" id="airtimeBtn"><i class="fas fa-phone"></i><br>Airtime</div>    
-      <div class="service-item" id="dataBtn"><i class="fas fa-wifi"></i><br>Data</div>    
-      <div class="service-item" id="electricBtn"><i class="fas fa-bolt"></i><br>Electricity</div>    
-      <div class="service-item" id="bettingBtn"><i class="fas fa-futbol"></i><br>Betting</div>  
-      <div class="service-item" id="withdrawBtn"><i class="fas fa-money-bill-wave"></i><br>Withdraw</div>
-      <div class="service-item" id="businessBtn"><i class="fas fa-store"></i><br>My Business Hub</div>
-    </div>
-  </div>
-
-  <!-- Wealth -->
-  <div class="services-section">
-    <h2>Wealth</h2>
-    <div class="services-grid">
-      <div class="service-item"><i class="fas fa-piggy-bank"></i><br>CashBox</div>
-      <div class="service-item"><i class="fas fa-coins"></i><br>SmartEarn</div>
-      <div class="service-item"><i class="fas fa-hand-holding-usd"></i><br>Fixed Savings</div>
-      <div class="service-item"><i class="fas fa-bullseye"></i><br>Target Savings</div>
-      <div class="service-item"><i class="fas fa-shield-alt"></i><br>Insurance</div>
-      <div class="service-item"><i class="fas fa-chart-line"></i><br>Mutual Funds</div>
-      <div class="service-item"><i class="fas fa-gift"></i><br>Trial Cash</div>
-      <div class="service-item"><i class="fas fa-credit-card"></i><br>Loan</div>
-    </div>
-  </div>
-
-  <!-- Bill Payments -->
-  <div class="services-section">
-    <h2>Bill Payments</h2>
-    <div class="services-grid">
-      <div class="service-item" id="airtimeBtn"><i class="fas fa-phone"></i><br>Airtime</div>
-      <div class="service-item" id="dataBtn"><i class="fas fa-wifi"></i><br>Data</div>
-      <div class="service-item"><i class="fas fa-futbol"></i><br>Betting</div>
-      <div class="service-item" id="electricBtn"><i class="fas fa-bolt"></i><br>Electricity</div>
-      <div class="service-item"><i class="fas fa-tv"></i><br>TV</div>
-      <div class="service-item"><i class="fas fa-gift"></i><br>Gift Card</div>
-      <div class="service-item"><i class="fas fa-gamepad"></i><br>Gaming</div>
-      <div class="service-item"><i class="fas fa-globe"></i><br>Internet</div>
-      <div class="service-item"><i class="fas fa-book"></i><br>JAMB</div>
-      <div class="service-item"><i class="fas fa-book-open"></i><br>WAEC</div>
-      <div class="service-item"><i class="fas fa-graduation-cap"></i><br>Education</div>
-      <div class="service-item"><i class="fas fa-id-card"></i><br>Cowry Card</div>
-      <div class="service-item"><i class="fas fa-bus"></i><br>Transport</div>
-      <div class="service-item"><i class="fas fa-tint"></i><br>Water</div>
-      <div class="service-item"><i class="fas fa-university"></i><br>Government Payments</div>
-      <div class="service-item"><i class="fas fa-hotel"></i><br>Travel & Hotel</div>
-      <div class="service-item"><i class="fas fa-road"></i><br>Transport & Toll</div>
-    </div>
-  </div>
-
-  <!-- Transfer -->
-  <div class="services-section">
-    <h2>Transfer</h2>
-    <div class="services-grid">   
-      <div class="service-item"><i class="fas fa-university"></i><br>To Bank</div>
-      <div class="service-item"><i class="fas fa-qrcode"></i><br>QR Code</div>
-      <div class="service-item"><i class="fas fa-receipt"></i><br>Pay Me</div>
-      <div class="service-item"><i class="fas fa-store"></i><br>Pay Shop</div>
-    </div>
-  </div>
-      <!-- Recommend -->
-  <div class="services-section">
-    <h2>Recommend</h2>
-    <div class="services-grid">
-      <div class="service-item" id="withdrawBtn"><i class="fas fa-money-bill-wave"></i><br>Withdraw</div>
-      <div class="service-item" id="businessBtn"><i class="fas fa-store"></i><br>My Business Hub</div>
-    </div>  
-  </div>
-
-<div id="bottomBar">    
-<div id="homeBtn"><i class="fas fa-home"></i><br>Home</div>    
-<div id="loanBtn2"><i class="fas fa-hand-holding-usd"></i><br>Loan</div>    
-<div id="earnBtn2"><i class="fas fa-users"></i><br>Refer & Earn</div>    
-</div>  
-
-<div id="profileModal">    
-<div class="modal-content">    
-<h2>My Profile</h2>    
-<p><b>Username:</b> <span id="profileUsername"></span></p>    
-<p><b>Phone:</b> <span id="profilePhone"></span></p>    
-<p><b>Account No:</b> <span id="profileAccount"></span></p>    
-<p><b>Balance:</b> ₦<span id="profileBalance"></span></p>    
-<button id="closeProfile">Close</button>    
-</div>    
-</div>
-</section>  
-
-<!-- TO BANK -->  
-<section id="toBankSection" class="hidden">    
-<form id="toBankForm">    
-<h2>Send Money</h2>    
-<input type="text" placeholder="Receiver Phone (11 digits)" id="receiverPhone" required width="11">    
-<p id="receiverName" style="margin:5px 0;color:green;"></p>    
-<input type="number" placeholder="Amount" id="sendAmount" required>    
-<button type="submit">Send</button>    
-<small id="backDashboard" style="display:block; text-align:center; margin-top:10px; cursor:pointer;">Back to Dashboard</small>    
-</form>    
-</section>
-<script>
-let currentUser = null;    
-let allTransactions = [];    
-let lastTxLimit = 5;    
-
-// Section navigation
-function showSection(sec){
-document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));
-document.getElementById(sec).classList.remove('hidden');
-if(sec!=='dashboardSection'){ 
-    document.getElementById('profileMenu').style.display='none'; 
-    document.getElementById('profileModal').style.display='none'; 
-    document.getElementById('bottomBar').style.display='none'; 
-} else { 
-    document.getElementById('bottomBar').style.display='flex'; 
-}
-}
-
-// --- Form switches ---
-document.getElementById('toLogin').addEventListener('click', ()=>{ showSection('loginSection'); });
-document.getElementById('toRegister').addEventListener('click', ()=>{ showSection('registerSection'); });
-document.getElementById('backDashboard').addEventListener('click', ()=>{ showSection('dashboardSection'); });
-// --- REGISTER ---
-document.getElementById('registerForm').addEventListener('submit', async (e)=>{
-e.preventDefault();
-const username = document.getElementById('regUsername').value;
-const phone = document.getElementById('regPhone').value;
-const password = document.getElementById('regPassword').value;
-
-try{    
-    const res = await fetch('https://payme-update.onrender.com/register',{    
-        method:'POST',    
-        headers:{'Content-Type':'application/json'},    
-        body: JSON.stringify({username, phone, password})    
-    });    
-    const data = await res.json();    
-    alert(data.message);    
-    if(res.ok){    
-        currentUser = data.user;    
-        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
-        loadDashboard();    
-        showSection('dashboardSection');
-    }
-}catch(err){ alert('Error registering user'); }
-});
-
-// --- LOGIN ---
-document.getElementById('loginForm').addEventListener('submit', async (e)=>{
-e.preventDefault();
-const phone = document.getElementById('loginPhone').value;
-const password = document.getElementById('loginPassword').value;
-
-try{    
-    const res = await fetch('https://payme-update.onrender.com/login',{    
-        method:'POST',    
-        headers:{'Content-Type':'application/json'},    
-        body: JSON.stringify({phone, password})    
-    });    
-    const data = await res.json();    
-    if(res.ok){    
-        currentUser = data.user;    
-        localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
-        loadDashboard();    
-        showSection('dashboardSection');
-    } else { alert(data.message); }
-}catch(err){ alert('Error logging in'); }
-});
-// --- DASHBOARD ---
-async function loadDashboard(){
-if(!currentUser) return;
-document.getElementById('balanceDisplay').innerText = `₦${(currentUser.balance || 0).toFixed(2)}`;
-document.getElementById('profileUsername').innerText = currentUser.username;
-document.getElementById('profilePhone').innerText = currentUser.phone;
-document.getElementById('profileAccount').innerText = currentUser.account_number;
-document.getElementById('profileBalance').innerText = (currentUser.balance || 0).toFixed(2);
-
-// Load transactions    
-try{    
-    const res = await fetch('https://payme-update.onrender.com/transactions',{    
-        method:'POST',    
-        headers:{'Content-Type':'application/json'},    
-        body: JSON.stringify({userId: currentUser.id})    
-    });    
-    const tx = await res.json();    
-    allTransactions = tx.reverse();    
-    displayTransactions();    
-}catch(err){ console.log('Error fetching transactions'); }
-}
-
-// Display limited transactions
-function displayTransactions(limit=lastTxLimit){
-const list = document.getElementById('transactionList');
-list.innerHTML = '';
-if(allTransactions.length === 0){ list.innerHTML='<li>No transactions yet</li>'; return; }
-allTransactions.slice(0,limit).forEach(tx=>{
-const li = document.createElement('li');
-li.className = (tx.type || '').toLowerCase();
-li.innerHTML = `<span class="type">${tx.type}</span> - <span class="amount">₦${tx.amount}</span> <br> <small>${tx.date}</small>`;
-list.appendChild(li);
-});
-document.getElementById('seeMoreBtn').style.display = (allTransactions.length>limit)?'block':'none';
-}
-
-// --- SEE MORE TRANSACTIONS ---
-document.getElementById('seeMoreBtn').addEventListener('click', ()=>{
-displayTransactions(allTransactions.length);
-});
-
-// --- HAMBURGER MENU / PROFILE ---
-document.getElementById('hamburgerBtn').addEventListener('click', ()=>{
-const menu = document.getElementById('profileMenu');
-menu.style.display = (menu.style.display==='block')?'none':'block';
-});
-document.getElementById('profileMenuBtn').addEventListener('click', ()=>{
-document.getElementById('profileModal').style.display='flex';
-});
-document.getElementById('closeProfile').addEventListener('click', ()=>{
-document.getElementById('profileModal').style.display='none';
-});
-document.getElementById('logoutMenuBtn').addEventListener('click', ()=>{
-currentUser=null;
-localStorage.removeItem('paymeUser'); 
-showSection('loginSection');
-});
-
-// --- ADD MONEY ---
-document.getElementById('addMoneyBtn').addEventListener('click', async ()=>{
-const amount = parseFloat(prompt("Enter amount to add:"));
-if(!amount || amount <= 0) return alert('Invalid amount');
-
-try{    
-    const res = await fetch('https://payme-update.onrender.com/update-balance', {    
-        method: 'POST',    
-        headers: { 'Content-Type': 'application/json' },    
-        body: JSON.stringify({    
-            userId: currentUser.id,    
-            amount: amount    
-        })    
-    });    
-    const data = await res.json();    
-   if(res.ok){    
-    currentUser.balance = data.balance;    
-    localStorage.setItem('paymeUser', JSON.stringify(currentUser));    
-
-    // Reload transactions immediately
-    await loadDashboard();    
-
-    alert('Balance updated successfully');    
-
-    } else {    
-        alert(data.message || 'Error updating balance');    
-    }    
-} catch(err){    
-    alert('Error updating balance');    
-}
-});
-
-// --- SEND MONEY / TO BANK ---
-document.getElementById('toBankBtn').addEventListener('click', ()=>{ showSection('toBankSection'); });
-document.getElementById('receiverPhone').addEventListener('input', async ()=>{
-const phone = document.getElementById('receiverPhone').value;
-if(phone.length<10) return;
-try{
-const res = await fetch('https://payme-update.onrender.com/user-by-account',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({accountNumber: phone.slice(-10)})
-});
-const data = await res.json();
-document.getElementById('receiverName').innerText = data.username ? `Receiver: ${data.username}` : 'User not found';
-document.getElementById('toBankForm').dataset.receiverId = data.userId || '';
-}catch(err){ console.log('Error finding user'); }
-});
-
-document.getElementById('toBankForm').addEventListener('submit', async (e)=>{
-e.preventDefault();
-const amount = parseFloat(document.getElementById('sendAmount').value);
-const receiverId = e.target.dataset.receiverId;
-if(!receiverId) return alert('Invalid receiver');
-if(amount<=0) return alert('Invalid amount');
-try{
-const res = await fetch('https://payme-update.onrender.com/send',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body: JSON.stringify({userId: currentUser.id, receiverId, amount})
-});
-const data = await res.json();
-if(res.ok){
-    if (data.sender && typeof data.sender.balance !== 'undefined') {
-        currentUser.balance = data.sender.balance;
-    } else if (typeof data.balance !== 'undefined') {
-        currentUser.balance = data.balance;
-    }
-    localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-
-    // Reload transactions immediately
-    await loadDashboard();
-
-    alert('Money sent successfully');
-    showSection('dashboardSection');
-
-} else { alert(data.message); }
-}catch(err){ alert('Error sending money'); }
-});
-// --- PERSIST LOGIN ---
-if(localStorage.getItem('paymeUser')){
-currentUser = JSON.parse(localStorage.getItem('paymeUser'));
-loadDashboard();
-showSection('dashboardSection');
-} else {
-showSection('registerSection');
-}
-// Refresh Button
-document.getElementById('refreshBtn').addEventListener('click', async () => {
-    if (!currentUser) return alert('Not logged in');
-
-    try {
-        const res = await fetch('https://payme-update.onrender.com/refresh', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id })
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-            // Update currentUser balance and transactions
-            if (typeof data.balance !== 'undefined') currentUser.balance = data.balance;
-            if (Array.isArray(data.transactions)) allTransactions = data.transactions.reverse();
-
-            localStorage.setItem('paymeUser', JSON.stringify(currentUser));
-
-            // Update dashboard display
-            document.getElementById('balanceDisplay').innerText = `₦${currentUser.balance.toFixed(2)}`;
-            displayTransactions(); 
-        } else {
-            alert(data.message || 'Error refreshing balance');
+    return jsonify({
+        'message': f'₦{amount} sent to {receiver.username}',
+        'balance': sender.balance,
+        'sender': {
+            "id": sender.id,
+            "username": sender.username,
+            "phone": sender.phone,
+            "balance": sender.balance,
+            "account_number": sender.account_number
+        },
+        'receiver': {
+            "id": receiver.id,
+            "username": receiver.username,
+            "phone": receiver.phone,
+            "balance": receiver.balance,
+            "account_number": receiver.account_number
         }
+    }), 200
 
-    } catch (err) {
-        console.error('Error refreshing balance:', err);
+# --- TRANSACTIONS ---
+@app.route('/transactions', methods=['POST'])
+def get_transactions():
+    data = request.get_json()
+    user_id = data.get('userId')
+    user = find_user_by_id(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user_tx = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
+    result = [
+        {
+            "id": tx.id,
+            "type": tx.type,
+            "amount": tx.amount,
+            "date": tx.date,
+            "sender": tx.sender,
+            "receiver": tx.receiver
+        }
+        for tx in user_tx
+    ]
+    return jsonify(result), 200
+
+# --- USER BY ACCOUNT NUMBER ---
+@app.route('/user-by-account', methods=['POST'])
+def user_by_account():
+    data = request.get_json()
+    acct = data.get('accountNumber')
+    if not acct:
+        return jsonify({'message': 'Account number required'}), 400
+    user = User.query.filter_by(account_number=acct).first()
+    if user:
+        return jsonify({'username': user.username, 'userId': user.id}), 200
+    return jsonify({'message': 'User not found'}), 404
+
+# --- REFRESH BALANCE & TRANSACTIONS ---
+@app.route('/refresh', methods=['POST'])
+def refresh():
+    data = request.get_json()
+    user_id = data.get('userId')
+    user = find_user_by_id(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user_tx = Transaction.query.filter_by(userId=user.id).order_by(Transaction.id.desc()).all()
+    tx_list = [
+        {
+            "id": tx.id,
+            "type": tx.type,
+            "amount": tx.amount,
+            "date": tx.date,
+            "sender": tx.sender,
+            "receiver": tx.receiver
+        }
+        for tx in user_tx
+    ]
+
+    user_copy = {
+        "id": user.id,
+        "username": user.username,
+        "phone": user.phone,
+        "balance": user.balance,
+        "account_number": user.account_number
     }
-});
-</script>
+    return jsonify({
+        'message': 'Balance refreshed!',
+        'balance': user.balance,
+        'user': user_copy,
+        'transactions': tx_list
+    }), 200
 
-</body>
-</html>
+if __name__ == "__main__":
+    app.run(debug=True)
