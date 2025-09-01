@@ -543,7 +543,7 @@ async function sendMoney(){
 //////////////////////////
 async function addMoney(){
   if(!getUserId()){ alert("Please login."); return; }
-  const v = prompt("Enter amount to deposit (₦):", "1000");
+  const v = prompt("Enter amount to deposit (₦):", "");
   if(v === null) return;
   const amt = parseFloat(v);
   if(!amt || amt <= 0){ alert("Invalid amount"); return; }
