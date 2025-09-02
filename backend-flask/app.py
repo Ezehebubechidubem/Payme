@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+import sqlite3, os
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import jwt
@@ -10,7 +10,7 @@ from functools import wraps
 app = Flask(__name__)
 CORS(app)
 
-DB_PATH = "paygo.db"
+DB_PATH = os.path.join(os.path.dirname(__file__), "paygo.db")
 app.config["SECRET_KEY"] = "super-secret-key"  # change to something secure
 
 def _conn():
@@ -20,7 +20,6 @@ def _conn():
 def init_db():
     conn = _conn()
     c = conn.cursor()
-    # Users table
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +30,6 @@ def init_db():
             created_at TEXT
         )
     """)
-    # Transactions table
     c.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +42,8 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Call this on startup (important for Render!)
+init_db()
 # ---------------- HELPERS ----------------
 def token_required(f):
     """Decorator to protect routes with JWT"""
