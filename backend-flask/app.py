@@ -81,12 +81,13 @@ def create_token(username):
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json or {}
+    # Match frontend form IDs: username, password, full_name
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
     full_name = (data.get("full_name") or username).strip()
 
     if not username or not password:
-        return jsonify({"error": "username and password are required"}), 400
+        return jsonify({"success": False, "message": "username and password are required"}), 400
 
     conn = _conn()
     c = conn.cursor()
@@ -98,9 +99,9 @@ def register():
             VALUES (?, ?, ?, ?, ?)
         """, (username, hashed_pw, full_name, 1000.0, created_at))
         conn.commit()
-        return jsonify({"message": "User registered"}), 201
+        return jsonify({"success": True, "message": "User registered"}), 201
     except sqlite3.IntegrityError:
-        return jsonify({"error": "User already exists"}), 400
+        return jsonify({"success": False, "message": "User already exists"}), 400
     finally:
         conn.close()
 
@@ -111,7 +112,7 @@ def login():
     password = (data.get("password") or "").strip()
 
     if not username or not password:
-        return jsonify({"error": "username and password are required"}), 400
+        return jsonify({"success": False, "message": "username and password are required"}), 400
 
     conn = _conn()
     c = conn.cursor()
@@ -120,14 +121,14 @@ def login():
     conn.close()
 
     if not row:
-        return jsonify({"error": "User not found"}), 404
+        return jsonify({"success": False, "message": "User not found"}), 404
 
     hashed_pw = row[0]
     if not check_password_hash(hashed_pw, password):
-        return jsonify({"error": "Invalid password"}), 401
+        return jsonify({"success": False, "message": "Invalid password"}), 401
 
     token = create_token(username)
-    return jsonify({"message": "Login successful", "token": token}), 200
+    return jsonify({"success": True, "message": "Login successful", "token": token}), 200
 
 @app.route("/user/profile", methods=["GET"])
 @token_required
@@ -139,12 +140,13 @@ def profile(current_user):
     conn.close()
     if row:
         return jsonify({
+            "success": True,
             "username": row[0],
             "full_name": row[1],
             "balance": row[2],
             "created_at": row[3]
         })
-    return jsonify({"error": "User not found"}), 404
+    return jsonify({"success": False, "message": "User not found"}), 404
 
 @app.route("/balance", methods=["GET"])
 @token_required
@@ -155,8 +157,8 @@ def balance(current_user):
     row = c.fetchone()
     conn.close()
     if row:
-        return jsonify({"username": current_user, "balance": row[0]})
-    return jsonify({"error": "User not found"}), 404
+        return jsonify({"success": True, "username": current_user, "balance": row[0]})
+    return jsonify({"success": False, "message": "User not found"}), 404
 
 @app.route("/transfer", methods=["POST"])
 @token_required
@@ -166,14 +168,14 @@ def transfer(current_user):
         receiver = (data["receiver"] or "").strip()
         amount = float(data["amount"])
     except Exception:
-        return jsonify({"error": "receiver and numeric amount are required"}), 400
+        return jsonify({"success": False, "message": "receiver and numeric amount are required"}), 400
 
     if not receiver:
-        return jsonify({"error": "receiver is required"}), 400
+        return jsonify({"success": False, "message": "receiver is required"}), 400
     if amount <= 0:
-        return jsonify({"error": "Amount must be greater than 0"}), 400
+        return jsonify({"success": False, "message": "Amount must be greater than 0"}), 400
     if current_user == receiver:
-        return jsonify({"error": "Cannot transfer to self"}), 400
+        return jsonify({"success": False, "message": "Cannot transfer to self"}), 400
 
     conn = _conn()
     c = conn.cursor()
@@ -186,14 +188,14 @@ def transfer(current_user):
 
     if not s_row or not r_row:
         conn.close()
-        return jsonify({"error": "Sender or receiver not found"}), 404
+        return jsonify({"success": False, "message": "Sender or receiver not found"}), 404
 
     s_balance, s_name = s_row[0], s_row[1]
     r_balance, r_name = r_row[0], r_row[1]
 
     if s_balance < amount:
         conn.close()
-        return jsonify({"error": "Insufficient funds"}), 400
+        return jsonify({"success": False, "message": "Insufficient funds"}), 400
 
     try:
         # Perform transfer
@@ -216,6 +218,7 @@ def transfer(current_user):
         conn.close()
 
     return jsonify({
+        "success": True,
         "message": "Transfer successful",
         "sender": {"username": current_user, "full_name": s_name, "balance": new_sender_balance},
         "receiver": {"username": receiver, "full_name": r_name, "balance": new_receiver_balance}
@@ -243,7 +246,7 @@ def transactions(current_user):
             "amount": r[2],
             "timestamp": r[3]
         })
-    return jsonify(txns)
+    return jsonify({"success": True, "transactions": txns})
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
