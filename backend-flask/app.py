@@ -82,13 +82,14 @@ def create_token(username):
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json or {}
-    # Match frontend form IDs: register-username, register-password, register-fullname
-    username = (data.get("registerUsername") or "").strip()
-    password = (data.get("registerPassword") or "").strip()
-    full_name = (data.get("registerFullname") or username).strip()
+    # match frontend: username, password, full_name
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+    full_name = (data.get("full_name") or username).strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "username and password are required"}), 400
+    ...
 
     conn = _conn()
     c = conn.cursor()
@@ -166,10 +167,10 @@ def balance(current_user):
 @token_required
 def transfer(current_user):
     data = request.json or {}
-    # Match frontend IDs: transfer-to, transfer-amount
+    # match frontend: receiver, amount
     try:
-        receiver = (data.get("transferTo") or "").strip()
-        amount = float(data.get("transferAmount"))
+        receiver = (data.get("receiver") or "").strip()
+        amount = float(data.get("amount"))
     except Exception:
         return jsonify({"success": False, "message": "receiver and numeric amount are required"}), 400
 
