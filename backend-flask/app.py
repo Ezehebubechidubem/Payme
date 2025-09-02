@@ -26,6 +26,8 @@ def init_db():
             username TEXT UNIQUE,
             password TEXT,
             full_name TEXT,
+            phone TEXT,
+            email TEXT,
             balance REAL DEFAULT 0,
             created_at TEXT
         )
@@ -82,14 +84,14 @@ def create_token(username):
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json or {}
-    # match frontend: username, password, full_name
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
     full_name = (data.get("full_name") or username).strip()
+    phone = (data.get("phone") or "").strip()
+    email = (data.get("email") or "").strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "username and password are required"}), 400
-    ...
 
     conn = _conn()
     c = conn.cursor()
@@ -97,9 +99,9 @@ def register():
         hashed_pw = generate_password_hash(password)
         created_at = datetime.utcnow().isoformat()
         c.execute("""
-            INSERT INTO users (username, password, full_name, balance, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (username, hashed_pw, full_name, 1000.0, created_at))
+            INSERT INTO users (username, password, full_name, phone, email, balance, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (username, hashed_pw, full_name, phone, email, 1000.0, created_at))
         conn.commit()
         return jsonify({"success": True, "message": "User registered"}), 201
     except sqlite3.IntegrityError:
@@ -110,9 +112,8 @@ def register():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json or {}
-    # Match frontend form IDs: login-username, login-password
-    username = (data.get("loginUsername") or "").strip()
-    password = (data.get("loginPassword") or "").strip()
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "username and password are required"}), 400
@@ -138,7 +139,7 @@ def login():
 def profile(current_user):
     conn = _conn()
     c = conn.cursor()
-    c.execute("SELECT username, full_name, balance, created_at FROM users WHERE username=?", (current_user,))
+    c.execute("SELECT username, full_name, phone, email, balance, created_at FROM users WHERE username=?", (current_user,))
     row = c.fetchone()
     conn.close()
     if row:
@@ -146,28 +147,17 @@ def profile(current_user):
             "success": True,
             "username": row[0],
             "full_name": row[1],
-            "balance": row[2],
-            "created_at": row[3]
+            "phone": row[2],
+            "email": row[3],
+            "balance": row[4],
+            "created_at": row[5]
         })
-    return jsonify({"success": False, "message": "User not found"}), 404
-
-@app.route("/balance", methods=["GET"])
-@token_required
-def balance(current_user):
-    conn = _conn()
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE username=?", (current_user,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return jsonify({"success": True, "username": current_user, "balance": row[0]})
     return jsonify({"success": False, "message": "User not found"}), 404
 
 @app.route("/transfer", methods=["POST"])
 @token_required
 def transfer(current_user):
     data = request.json or {}
-    # match frontend: receiver, amount
     try:
         receiver = (data.get("receiver") or "").strip()
         amount = float(data.get("amount"))
@@ -183,8 +173,6 @@ def transfer(current_user):
 
     conn = _conn()
     c = conn.cursor()
-
-    # Fetch sender and receiver
     c.execute("SELECT balance, full_name FROM users WHERE username=?", (current_user,))
     s_row = c.fetchone()
     c.execute("SELECT balance, full_name FROM users WHERE username=?", (receiver,))
@@ -194,26 +182,20 @@ def transfer(current_user):
         conn.close()
         return jsonify({"success": False, "message": "Sender or receiver not found"}), 404
 
-    s_balance, s_name = s_row[0], s_row[1]
-    r_balance, r_name = r_row[0], r_row[1]
+    s_balance, s_name = s_row
+    r_balance, r_name = r_row
 
     if s_balance < amount:
         conn.close()
         return jsonify({"success": False, "message": "Insufficient funds"}), 400
 
     try:
-        # Perform transfer
         c.execute("UPDATE users SET balance = balance - ? WHERE username=?", (amount, current_user))
         c.execute("UPDATE users SET balance = balance + ? WHERE username=?", (amount, receiver))
-
-        # Save transaction
         timestamp = datetime.utcnow().isoformat()
         c.execute("INSERT INTO transactions (sender, receiver, amount, timestamp) VALUES (?, ?, ?, ?)",
                   (current_user, receiver, amount, timestamp))
-
         conn.commit()
-
-        # Fetch updated balances
         c.execute("SELECT balance FROM users WHERE username=?", (current_user,))
         new_sender_balance = c.fetchone()[0]
         c.execute("SELECT balance FROM users WHERE username=?", (receiver,))
@@ -242,14 +224,7 @@ def transactions(current_user):
     rows = c.fetchall()
     conn.close()
 
-    txns = []
-    for r in rows:
-        txns.append({
-            "sender": r[0],
-            "receiver": r[1],
-            "amount": r[2],
-            "timestamp": r[3]
-        })
+    txns = [{"sender": r[0], "receiver": r[1], "amount": r[2], "timestamp": r[3]} for r in rows]
     return jsonify({"success": True, "transactions": txns})
 
 # ---------------- RUN ----------------
