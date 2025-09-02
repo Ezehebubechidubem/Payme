@@ -42,8 +42,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Call this on startup (important for Render!)
+# Call this on startup
 init_db()
+
 # ---------------- HELPERS ----------------
 def token_required(f):
     """Decorator to protect routes with JWT"""
@@ -81,10 +82,10 @@ def create_token(username):
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json or {}
-    # Match frontend form IDs: username, password, full_name
-    username = (data.get("username") or "").strip()
-    password = (data.get("password") or "").strip()
-    full_name = (data.get("full_name") or username).strip()
+    # Match frontend form IDs: register-username, register-password, register-fullname
+    username = (data.get("registerUsername") or "").strip()
+    password = (data.get("registerPassword") or "").strip()
+    full_name = (data.get("registerFullname") or username).strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "username and password are required"}), 400
@@ -108,8 +109,9 @@ def register():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json or {}
-    username = (data.get("username") or "").strip()
-    password = (data.get("password") or "").strip()
+    # Match frontend form IDs: login-username, login-password
+    username = (data.get("loginUsername") or "").strip()
+    password = (data.get("loginPassword") or "").strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "username and password are required"}), 400
@@ -164,9 +166,10 @@ def balance(current_user):
 @token_required
 def transfer(current_user):
     data = request.json or {}
+    # Match frontend IDs: transfer-to, transfer-amount
     try:
-        receiver = (data["receiver"] or "").strip()
-        amount = float(data["amount"])
+        receiver = (data.get("transferTo") or "").strip()
+        amount = float(data.get("transferAmount"))
     except Exception:
         return jsonify({"success": False, "message": "receiver and numeric amount are required"}), 400
 
