@@ -112,8 +112,8 @@ def register():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json or {}
-    username = (data.get("loginusername") or "").strip()
-    password = (data.get("loginpassword") or "").strip()
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "username and password are required"}), 400
