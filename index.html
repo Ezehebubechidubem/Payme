@@ -6,113 +6,28 @@
   <title>PayGo App</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    /* ---------- BASIC LAYOUT ---------- */
-    :root {
-      --primary: #5b4dff;
-      --accent: #007bff;
-      --bg: #f3f6fa;
-      --card: #ffffff;
-      --muted: #6b7280;
-      --success: #0b6b3a;
-    }
-    * { box-sizing: border-box; }
-    body { font-family: Inter, Arial, sans-serif; margin:0; background:var(--bg); color:#222; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; 
-      .hidden {
-  display: none !important;
-}
-    }
-    header {
-      display:flex; justify-content:space-between; align-items:center;
-      background:var(--accent); color:#fff; padding:14px 16px;
-      box-shadow:0 2px 6px rgba(0,0,0,0.08);
-      position:relative;
-    }
-    header .logo { font-weight:800; font-size:18px; letter-spacing:0.6px; }
-    header .hamburger { font-size:20px; cursor:pointer; }
-
-    /* PROFILE MENU */
-    #profileMenu {
-      position:absolute; right:12px; top:56px;
-      background:var(--card); border-radius:10px; display:none;
-      box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:200;
-      width:200px;
-    }
-    #profileMenu div { padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f4f8; color:#333; }
-    #profileMenu div:last-child { border-bottom:none; }
-    #profileMenu div:hover { background:#f7f8ff; }
-
-    /* WRAP & CARDS */
-    .wrap { max-width:520px; margin:18px auto; padding:12px; }
-    .card { background:var(--card); border-radius:12px; padding:14px; box-shadow:0 6px 20px rgba(0,0,0,0.06); margin-bottom:12px; }
-    h2,h3 { margin:6px 0; font-weight:600; }
-    input, button, textarea, select {
-      width:100%; padding:10px; margin:8px 0; border-radius:8px; border:1px solid #e6eefc; font-size:14px;
-      background: #fff;
-    }
-    button { background:var(--primary); color:#fff; border:none; cursor:pointer; padding:10px 12px; font-weight:600; }
-    .muted { color:var(--muted); font-size:13px; }
-
-    /* TOP ROW */
-    .top-row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-    .greeting { font-size:16px; font-weight:700; color:#213547; }
-    .accountNo { font-size:13px; color:#495057; margin-top:2px; }
-
-    /* TRANSACTIONS (above balance) */
-    .tx-header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-    
-      #transactionList {
-  max-height: 400px;   /* Fixes the visible height */
-  overflow-y: auto;    /* Enables vertical scrollbar */
-  border: 1px solid #eef2ff;
-  padding: 6px;
-  border-radius: 8px;
-  background: #fff;
-}
-    }
-    #transactionList.expanded { max-height:900px; } /* toggled state */
-    .tx { padding:10px; border-bottom:1px solid #f1f4ff; font-size:14px; color:#1f2937; display:flex; justify-content:space-between; align-items:center; gap:8px; }
-    .tx .tx-left { display:flex; flex-direction:column; }
-    .tx .tx-amt { font-weight:700; color:var(--accent); }
-    .tx .tx-type { font-size:13px; color:#6b7280; margin-top:4px; }
-    .tx:last-child { border-bottom:none; }
-
-    /* Balance area */
-    .balance-wrap { display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin-top:12px; }
-    .balance { font-size:28px; color:var(--success); font-weight:800; }
-    #btnAddMoney { width:160px; padding:8px 12px; border-radius:10px; }
-
-    /* SERVICES ROW (3 primary) */
-    .services-row { display:flex; gap:12px; margin-top:14px; }
-    .service { flex:1; background:#fbfbff; border-radius:12px; padding:12px; text-align:center; cursor:pointer; box-shadow: inset 0 -6px 0 rgba(91,77,255,0.03); }
-    .service i { font-size:20px; margin-bottom:8px; color:var(--accent); display:block; }
-    .service small { display:block; font-size:12px; color:#233142; font-weight:600; }
-
-    /* OTHER GRID */
-    .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px; }
-    .grid-item { background:#fbfbff; border-radius:10px; padding:10px; text-align:center; cursor:pointer; font-size:13px; }
-    .grid-item i { font-size:16px; color:var(--accent); margin-bottom:6px; display:block; }
-
-    /* small control for transactions expansion (icon only) */
-    .tx-control { background:transparent; border:none; cursor:pointer; font-size:16px; color:var(--accent); padding:6px; border-radius:8px; }
-    .tx-control:focus { outline:none; box-shadow:0 2px 8px rgba(91,77,255,0.12); }
-
-    /* TO BANK PAGE */
-    .small-muted { font-size:13px; color:#6b7280; margin-top:4px; }
-
-    /* Bottom nav */
-    .bottom-nav {
-      position:fixed; bottom:10px; left:50%; transform:translateX(-50%); background:#fff; width:520px; max-width:96%;
-      border-radius:16px; display:flex; justify-content:space-around; padding:10px; box-shadow:0 10px 30px rgba(0,0,0,0.08); z-index:150;
-    }
-    .bottom-nav .nav-btn { text-align:center; flex:1; cursor:pointer; padding:6px 8px; }
-    .bottom-nav i { font-size:18px; color:var(--accent); }
-    .bottom-nav small { display:block; font-size:11px; color:#334155; margin-top:4px; }
-
-    /* Responsive */
-    @media (max-width:560px) {
-      .wrap { padding:12px; }
-      .bottom-nav { width:calc(100% - 24px); left:12px; transform:none; border-radius:12px; }
-    }
+    /* (same CSS you already provided) */
+    :root { --primary:#5b4dff; --accent:#007bff; --bg:#f3f6fa; --card:#fff; --muted:#6b7280; --success:#0b6b3a; }
+    *{box-sizing:border-box} body{font-family:Inter,Arial,sans-serif;margin:0;background:var(--bg);color:#222;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+    .hidden{display:none!important}
+    header{display:flex;justify-content:space-between;align-items:center;background:var(--accent);color:#fff;padding:14px 16px;box-shadow:0 2px 6px rgba(0,0,0,.08);position:relative}
+    .logo{font-weight:800;font-size:18px;letter-spacing:.6px}.hamburger{font-size:20px;cursor:pointer}
+    #profileMenu{position:absolute;right:12px;top:56px;background:var(--card);border-radius:10px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.12);z-index:200;width:200px}
+    #profileMenu div{padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f4f8;color:#333}#profileMenu div:last-child{border-bottom:none}#profileMenu div:hover{background:#f7f8ff}
+    .wrap{max-width:520px;margin:18px auto;padding:12px}.card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(0,0,0,.06);margin-bottom:12px}
+    h2,h3{margin:6px 0;font-weight:600}input,button,textarea,select{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid #e6eefc;font-size:14px;background:#fff}
+    button{background:var(--primary);color:#fff;border:none;cursor:pointer;padding:10px 12px;font-weight:600}.muted{color:var(--muted);font-size:13px}
+    .top-row{display:flex;justify-content:space-between;align-items:center;gap:10px}.greeting{font-size:16px;font-weight:700;color:#213547}.accountNo{font-size:13px;color:#495057;margin-top:2px}
+    #transactionList{max-height:400px;overflow-y:auto;border:1px solid #eef2ff;padding:6px;border-radius:8px;background:#fff}
+    #transactionList.expanded{max-height:900px}.tx{padding:10px;border-bottom:1px solid #f1f4ff;font-size:14px;color:#1f2937;display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .tx .tx-left{display:flex;flex-direction:column}.tx .tx-amt{font-weight:700}.tx .tx-type{font-size:13px;color:#6b7280;margin-top:4px}.tx:last-child{border-bottom:none}
+    .tx.sent .tx-amt{color:#ef4444}.tx.received .tx-amt{color:#0b6b3a}
+    .balance-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:12px}.balance{font-size:28px;color:var(--success);font-weight:800}#btnAddMoney{width:160px;padding:8px 12px;border-radius:10px}
+    .services-row{display:flex;gap:12px;margin-top:14px}.service{flex:1;background:#fbfbff;border-radius:12px;padding:12px;text-align:center;cursor:pointer;box-shadow:inset 0 -6px 0 rgba(91,77,255,.03)}.service i{font-size:20px;margin-bottom:8px;color:var(--accent);display:block}.service small{display:block;font-size:12px;color:#233142;font-weight:600}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.grid-item{background:#fbfbff;border-radius:10px;padding:10px;text-align:center;cursor:pointer;font-size:13px}.grid-item i{font-size:16px;color:var(--accent);margin-bottom:6px;display:block}
+    .tx-control{background:transparent;border:none;cursor:pointer;font-size:16px;color:var(--accent);padding:6px;border-radius:8px}.tx-control:focus{outline:none;box-shadow:0 2px 8px rgba(91,77,255,.12)}
+    .bottom-nav{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:#fff;width:520px;max-width:96%;border-radius:16px;display:flex;justify-content:space-around;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.08);z-index:150}.bottom-nav .nav-btn{text-align:center;flex:1;cursor:pointer;padding:6px 8px}.bottom-nav i{font-size:18px;color:var(--accent)}.bottom-nav small{display:block;font-size:11px;color:#334155;margin-top:4px}
+    @media (max-width:560px){.wrap{padding:12px}.bottom-nav{width:calc(100% - 24px);left:12px;transform:none;border-radius:12px}}
   </style>
 </head>
 <body>
@@ -134,9 +49,9 @@
     <!-- REGISTER -->
     <div id="registerCard" class="card">
       <h2>Create account</h2>
-      <input id="regUsername" placeholder="Username (required)" />
-      <input id="regName" placeholder="Full name (optional)" />
-      <input id="regNumber" placeholder="Phone number (11 digits)" maxlength="11" type="number"/>
+      <input id="Username" placeholder="Username (required)" />
+      <input id="full_name" placeholder="Full name (optional)" />
+      <input id="regNumber" placeholder="Phone number (11 digits)" maxlength="15" type="tel"/>
       <input id="regEmail" placeholder="Email (optional)" type="email" />
       <input id="regPassword" type="password" placeholder="Password" />
       <button id="btnRegister">Register</button>
@@ -146,7 +61,7 @@
     <!-- LOGIN -->
     <div id="loginCard" class="card hidden">
       <h2>Login</h2>
-      <input id="loginUsername" placeholder="Username or phone" />
+      <input id="loginUsername" placeholder="Username" />
       <input id="loginPassword" type="password" placeholder="Password" />
       <button id="btnLogin">Login</button>
       <p class="muted">Don't have account? <a href="#" id="toRegisterLink">Register</a></p>
@@ -168,11 +83,9 @@
       </div>
       <div class="tx-header" style="margin-top:12px;">
         <h3 style="margin:0">Recent Transactions</h3>
-        <!-- icon-only toggle to expand/collapse tx list (no text "See more") -->
         <button id="txExpandBtn" class="tx-control" title="Expand / Collapse transactions"><i class="fas fa-chevron-down"></i></button>
       </div>
       <div id="transactionList" class="card" style="padding:8px; margin-top:8px;"></div>
-
 
       <!-- Row of 3 primary services -->
       <div class="services-row" style="margin-top:16px;">
@@ -194,459 +107,269 @@
       </div>
     </div>
 
-    <!-- TO BANK PAGE (separate view) -->
+    <!-- TO BANK PAGE -->
     <div id="toBankPage" class="card hidden">
       <h2>Send to Bank</h2>
-      <input id="recipientAccount" placeholder="Recipient account number" />
-      <div class="muted" id="recipientPreview">Enter account number to preview</div>
+      <input id="recipientAccount" placeholder="Recipient username or account number (last 10 digits)" />
+      <div class="muted" id="recipientPreview">Enter recipient username or account number</div>
       <input id="sendAmount" type="number" placeholder="Amount" />
       <button id="btnSend">Send</button>
       <button id="btnCancelSend" style="background:#aaa;margin-top:8px;">Back</button>
-      <p class="small-muted">Note: you will be asked to confirm before the transfer is processed.</p>
     </div>
   </div>
 
-  <!-- Bottom Navigation (fixed) -->
+  <!-- Bottom Navigation -->
   <div class="bottom-nav" role="navigation" aria-label="Bottom navigation">
     <div class="nav-btn" id="navHome"><i class="fas fa-home"></i><small>Home</small></div>
     <div class="nav-btn" id="navLoan"><i class="fas fa-hand-holding-usd"></i><small>Loan</small></div>
     <div class="nav-btn" id="navRefer"><i class="fas fa-users"></i><small>Refer</small></div>
   </div>
 
-  <!-- external JS -->
-  <script>/* paygo.js
-   Frontend logic for PayGo — separate file.
-   Matches backend endpoints (register/login/get_user/user/send/add-money/refresh)
-*/
+<script>
+const API_BASE = "https://payme-update.onrender.com"; // change to your backend URL if needed
 
-//////////////////////////
-// CONFIG — change if needed
-//////////////////////////
-const API_BASE = "https://payme-update.onrender.com"; // ← update if your Flask runs elsewhere
-const API_REGISTER   = `${API_BASE}/register`;   // alias to /signup
-const API_LOGIN      = `${API_BASE}/login`;
-const API_GET_USER   = `${API_BASE}/get_user`;   // GET /get_user/:accountNumber
-const API_USER_BY_ID = id => `${API_BASE}/user/${id}`; // GET user+transactions
-const API_SEND       = `${API_BASE}/send`;       // POST compatibility
-const API_ADD_MONEY  = `${API_BASE}/add-money`;  // alias to update-balance
-const API_REFRESH    = `${API_BASE}/refresh`;
+document.addEventListener("DOMContentLoaded", () => {
+  function saveToken(t) { localStorage.setItem("token", t); }
+  function getToken() { return localStorage.getItem("token"); }
+  function clearToken() { localStorage.removeItem("token"); }
 
-//////////////////////////
-// DOM helpers
-//////////////////////////
-const $ = id => document.getElementById(id);
-const exists = id => !!$(id);
+  const registerCard = document.getElementById("registerCard");
+  const loginCard = document.getElementById("loginCard");
+  const dashboardCard = document.getElementById("dashboardCard");
+  const toBankPage = document.getElementById("toBankPage");
 
-function fmtNGN(n){
-  try {
-    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 2 }).format(Number(n || 0));
-  } catch(e) {
-    return `₦${Number(n || 0).toFixed(2)}`;
+  const regUsername = document.getElementById("Username");
+  const regName = document.getElementById("full_name");
+  const regNumber = document.getElementById("regNumber");
+  const regEmail = document.getElementById("regEmail");
+  const regPassword = document.getElementById("regPassword");
+  const btnRegister = document.getElementById("btnRegister");
+
+  const loginUsername = document.getElementById("loginUsername");
+  const loginPassword = document.getElementById("loginPassword");
+  const btnLogin = document.getElementById("btnLogin");
+
+  const greeting = document.getElementById("greeting");
+  const acctNumberDisplay = document.getElementById("acctNumberDisplay");
+  const balanceDisplay = document.getElementById("balanceDisplay");
+  const transactionList = document.getElementById("transactionList");
+
+  const toBankBtn = document.getElementById("toBankBtn");
+  const toWalletBtn = document.getElementById("toWalletBtn");
+  const savingsBtn = document.getElementById("savingsBtn");
+
+  const btnCancelSend = document.getElementById("btnCancelSend");
+  const recipientAccount = document.getElementById("recipientAccount");
+  const recipientPreview = document.getElementById("recipientPreview");
+  const sendAmount = document.getElementById("sendAmount");
+  const btnSend = document.getElementById("btnSend");
+
+  const toLoginLink = document.getElementById("toLoginLink");
+  const toRegisterLink = document.getElementById("toRegisterLink");
+
+  const profileMenu = document.getElementById("profileMenu");
+  const hamburgerBtn = document.getElementById("hamburgerBtn");
+  const menuLogout = document.getElementById("menuLogout");
+
+  const txExpandBtn = document.getElementById("txExpandBtn");
+  const btnAddMoney = document.getElementById("btnAddMoney");
+
+  let currentUser = null;
+
+  function showCard(card) {
+    [registerCard, loginCard, dashboardCard, toBankPage].forEach(c => c.classList.add("hidden"));
+    card.classList.remove("hidden");
   }
-}
+  function showToast(msg) { alert(msg); }
 
-//////////////////////////
-// Session helpers
-//////////////////////////
-function setUserId(id){ localStorage.setItem("user_id", String(id)); }
-function getUserId(){ return localStorage.getItem("user_id"); }
-function clearSession(){ localStorage.removeItem("user_id"); }
+  // REGISTER
+  btnRegister.addEventListener("click", async () => {
+    const username = (regUsername.value || "").trim();
+    const password = (regPassword.value || "").trim();
+    const full_name = (regName.value || "").trim() || username;
+    const phone = (regNumber.value || "").trim();
+    const email = (regEmail.value || "").trim();
 
-//////////////////////////
-// View switching
-//////////////////////////
-function showCard(cardId){
-  // hide known cards
-  ["registerCard","loginCard","dashboardCard","toBankPage"].forEach(id => {
-    const el = $(id);
-    if(el) el.classList.add("hidden");
-  });
-  const tgt = $(cardId);
-  if(tgt) tgt.classList.remove("hidden");
+    if (!username || !password) { showToast("Username and password required"); return; }
 
-  // hamburger only visible on dashboard
-  const ham = $("hamburgerBtn");
-  if(ham) ham.style.display = (cardId === "dashboardCard") ? "inline-block" : "none";
-
-  // close profile menu
-  const menu = $("profileMenu");
-  if(menu) menu.style.display = "none";
-}
-
-//////////////////////////
-// AUTH: register & login
-//////////////////////////
-async function doRegister(){
-  const username = $("regUsername").value.trim();
-  const name     = $("regName").value.trim();
-  const number   = $("regNumber").value.trim();
-  const email    = $("regEmail").value.trim();
-  const password = $("regPassword").value;
-
-  const phone = (number || "").replace(/\D/g, "");
-  if(!username || !phone || !password){
-    alert("Please fill username, phone and password.");
-    return;
-  }
-  if(phone.length < 10){
-    alert("Phone must be at least 10 digits.");
-    return;
-  }
-
-  try {
-    const res = await fetch(API_REGISTER, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ username, name, email, number: phone, password })
-    });
-    const data = await res.json();
-    if(res.ok && data.success){
-      alert(data.message || "Registered. Please login.");
-      showCard("loginCard");
-    } else {
-      alert(data.message || (data.error || "Registration failed"));
-    }
-  } catch(err){
-    console.error("register error", err);
-    alert("Network error during registration.");
-  }
-}
-
-async function doLogin(){
-  const loginVal = $("loginUsername").value.trim();
-  const password = $("loginPassword").value;
-  if(!loginVal || !password){ alert("Enter username/phone and password."); return; }
-
-  try {
-    const res = await fetch(API_LOGIN, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ username: loginVal, number: loginVal, password })
-    });
-    const data = await res.json();
-    if(res.ok && data.success){
-      const user = data.user;
-      if(!user || !user.id){ alert("Login succeeded but user data missing."); return; }
-      setUserId(user.id);
-      await loadDashboard();
-      showCard("dashboardCard");
-    } else {
-      alert(data.message || "Invalid credentials.");
-    }
-  } catch(err){
-    console.error("login err", err);
-    alert("Network error during login.");
-  }
-}
-
-//////////////////////////
-// DASHBOARD: load user & txs
-//////////////////////////
-async function loadDashboard(){
-  const uid = getUserId();
-  if(!uid) return;
-
-  try {
-    const res = await fetch(API_USER_BY_ID(uid));
-    const json = await res.json();
-    if(!res.ok || !json.success) throw new Error(json.message || "Failed to load user");
-
-    const user = json.user;
-    if(exists("greeting")) $("greeting").textContent = `Hello 👋 ${user.username || ""}`;
-    if(exists("acctNumberDisplay")){
-      const acc10 = (user.account_number || "").slice(-12); // show relevant tail
-      $("acctNumberDisplay").textContent = `ACC: ${acc10}`;
-    }
-    if(exists("balanceDisplay")) $("balanceDisplay").textContent = fmtNGN(user.balance);
-
-    // render first-5 transactions and wire expand control
-    renderTransactionsLimited(json.transactions || []);
-  } catch(err){
-    console.error("loadDashboard", err);
-    // don't interrupt UI drastically
-    alert("Failed to load dashboard.");
-  }
-}
-
-function renderTransactionsLimited(txs){
-  const container = $("transactionList");
-  if(!container) return;
-  container.innerHTML = "";
-
-  if(!txs || txs.length === 0){
-    const no = document.createElement("div");
-    no.className = "tx muted";
-    no.textContent = "No transactions yet.";
-    container.appendChild(no);
-    return;
-  }
-
-  const limit = 3;
-  const truncated = txs.slice(0, limit);
-
-  truncated.forEach(t => {
-    const row = document.createElement("div");
-    row.className = "tx";
-    const left = document.createElement("div");
-    left.className = "tx-left";
-    const amt = document.createElement("div");
-    amt.className = "tx-amt";
-    amt.textContent = fmtNGN(t.amount);
-    const typ = document.createElement("div");
-    typ.className = "tx-type";
-    typ.textContent = `${t.type} • ${t.date || ""}`;
-    left.appendChild(amt);
-    left.appendChild(typ);
-
-    const right = document.createElement("div");
-    right.style.fontSize = "13px";
-    right.style.color = "#475569";
-    right.textContent = t.details || t.receiver || "";
-
-    row.appendChild(left);
-    row.appendChild(right);
-    container.appendChild(row);
-  });
-
-  // store full set on container for expand toggling
-  container._allTx = txs;
-
-  // ensure correct collapsed state (initial)
-  container.classList.remove("expanded");
-  const expandBtn = $("txExpandBtn");
-  if(expandBtn){
-    expandBtn.querySelector("i").className = "fas fa-chevron-down";
-  }
-}
-
-//////////////////////////
-// Transactions expand/collapse (icon only)
-//////////////////////////
-function toggleExpandTx(){
-  const container = $("transactionList");
-  if(!container) return;
-  const isExpanded = container.classList.toggle("expanded");
-  const btn = $("txExpandBtn");
-  if(btn) {
-    const icon = btn.querySelector("i");
-    if(isExpanded){
-      icon.className = "fas fa-chevron-up";
-      // render full list
-      container.innerHTML = "";
-      const all = container._allTx || [];
-      all.forEach(t => {
-        const row = document.createElement("div");
-        row.className = "tx";
-        const left = document.createElement("div");
-        left.className = "tx-left";
-        const amt = document.createElement("div");
-        amt.className = "tx-amt";
-        amt.textContent = fmtNGN(t.amount);
-        const typ = document.createElement("div");
-        typ.className = "tx-type";
-        typ.textContent = `${t.type} • ${t.date || ""}`;
-        left.appendChild(amt);
-        left.appendChild(typ);
-
-        const right = document.createElement("div");
-        right.style.fontSize = "13px";
-        right.style.color = "#475569";
-        right.textContent = t.details || t.receiver || "";
-        row.appendChild(left);
-        row.appendChild(right);
-        container.appendChild(row);
+    try {
+      const res = await fetch(`${API_BASE}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, full_name, phone, email })
       });
-      // scroll to bottom so user can scroll older tx easily
-      setTimeout(()=> { container.scrollTop = container.scrollHeight; }, 80);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast("Registration successful — please login.");
+        showCard(loginCard);
+      } else {
+        showToast(data.message || data.error || "Registration failed");
+      }
+    } catch (err) { console.error(err); showToast("Error connecting to server"); }
+  });
+
+  // LOGIN
+  btnLogin.addEventListener("click", async () => {
+    const username = (loginUsername.value || "").trim();
+    const password = (loginPassword.value || "").trim();
+    if (!username || !password) { showToast("Username and password required"); return; }
+
+    try {
+      const res = await fetch(`${API_BASE}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.token) saveToken(data.token);
+        currentUser = username;
+        await loadProfile();
+      } else {
+        showToast(data.message || data.error || "Login failed");
+      }
+    } catch (err) { console.error(err); showToast("Error connecting to server"); }
+  });
+
+  // LOAD PROFILE
+  async function loadProfile() {
+    const token = getToken();
+    if (!token) { showCard(loginCard); return; }
+    try {
+      const res = await fetch(`${API_BASE}/user/profile`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        currentUser = data.username;
+        greeting.textContent = `Hello 👋 ${data.full_name || data.username}`;
+        const acctText = data.account_number ? `Account: ${data.account_number}` : (data.phone ? `Phone: ${data.phone}` : `Username: ${data.username}`);
+        acctNumberDisplay.textContent = acctText;
+        balanceDisplay.textContent = `₦${(typeof data.balance === "number" ? data.balance : Number(data.balance || 0)).toFixed(2)}`;
+        showCard(dashboardCard);
+        await loadTransactions();
+      } else {
+        clearToken();
+        showCard(loginCard);
+        showToast(data.message || "Session expired, login again");
+      }
+    } catch (err) { console.error(err); showToast("Error loading profile"); }
+  }
+
+  // LOAD TRANSACTIONS
+  async function loadTransactions() {
+    const token = getToken();
+    if (!token) { transactionList.innerHTML = "<p class='muted'>Login to see transactions</p>"; return; }
+    try {
+      const res = await fetch(`${API_BASE}/transactions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      transactionList.innerHTML = "";
+      const txs = (res.ok && data && data.success && Array.isArray(data.transactions)) ? data.transactions : [];
+      if (txs.length === 0) { transactionList.innerHTML = "<p class='muted'>No transactions yet.</p>"; return; }
+      txs.forEach(tx => {
+        const isSent = (tx.sender === currentUser);
+        // prefer full names if provided
+        const receiverLabel = tx.receiver_name || tx.receiver;
+        const senderLabel = tx.sender_name || tx.sender;
+        const typeText = isSent ? `Sent to ${receiverLabel}` : `Received from ${senderLabel}`;
+        const dateText = tx.timestamp ? new Date(tx.timestamp).toLocaleString() : "";
+        const amt = Number(tx.amount || 0);
+        const div = document.createElement("div");
+        div.className = `tx ${isSent ? "sent" : "received"}`;
+        div.innerHTML = `
+          <div class="tx-left">
+            <div class="tx-type">${typeText}</div>
+            <div class="tx-type" style="font-size:12px;color:#94a3b8;margin-top:6px;">${dateText}</div>
+          </div>
+          <div class="tx-amt">${isSent ? "-" : "+"}₦${amt.toFixed(2)}</div>
+        `;
+        transactionList.appendChild(div);
+      });
+    } catch (err) { console.error(err); transactionList.innerHTML = "<p class='muted'>Error loading transactions</p>"; }
+  }
+
+  // TRANSFER
+  btnSend.addEventListener("click", async () => {
+    const receiver = (recipientAccount.value || "").trim();
+    const amount = parseFloat(sendAmount.value);
+    if (!receiver) { showToast("Recipient username required"); return; }
+    if (isNaN(amount) || amount <= 0) { showToast("Enter a valid amount"); return; }
+
+    try {
+      const res = await fetch(`${API_BASE}/transfer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ receiver, amount })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast("Transfer successful");
+        if (data.sender && typeof data.sender.balance !== "undefined") {
+          balanceDisplay.textContent = `₦${Number(data.sender.balance).toFixed(2)}`;
+        } else {
+          await loadProfile();
+        }
+        await loadTransactions();
+        recipientAccount.value = "";
+        sendAmount.value = "";
+        showCard(dashboardCard);
+      } else {
+        showToast(data.message || "Transfer failed");
+      }
+    } catch (err) { console.error(err); showToast("Error sending money"); }
+  });
+
+  // UI & navigation wiring
+  toBankBtn.addEventListener("click", () => showCard(toBankPage));
+  btnCancelSend.addEventListener("click", () => showCard(dashboardCard));
+  toLoginLink.addEventListener("click", (e) => { e.preventDefault(); showCard(loginCard); });
+  toRegisterLink.addEventListener("click", (e) => { e.preventDefault(); showCard(registerCard); });
+
+  hamburgerBtn.addEventListener("click", () => {
+    profileMenu.style.display = profileMenu.style.display === "block" ? "none" : "block";
+  });
+  document.addEventListener("click", (e) => {
+    if (!profileMenu.contains(e.target) && e.target !== hamburgerBtn) profileMenu.style.display = "none";
+  });
+
+  menuLogout.addEventListener("click", () => {
+    clearToken();
+    currentUser = null;
+    showCard(loginCard);
+  });
+
+  txExpandBtn.addEventListener("click", () => {
+    transactionList.classList.toggle("expanded");
+    const icon = txExpandBtn.querySelector("i");
+    if (transactionList.classList.contains("expanded")) icon.className = "fas fa-chevron-up";
+    else icon.className = "fas fa-chevron-down";
+  });
+
+  recipientAccount.addEventListener("input", () => {
+    const v = (recipientAccount.value || "").trim();
+    recipientPreview.textContent = v ? `Sending to: ${v}` : "Enter recipient username or account number";
+  });
+
+  btnAddMoney.addEventListener("click", async () => {
+    const amtStr = prompt("Enter amount to add (UI-only demo):");
+    const amt = parseFloat(amtStr);
+    if (!isNaN(amt) && amt > 0) {
+      showToast(`Demo: +₦${amt.toFixed(2)} added locally (not persisted server-side).`);
+      const curText = balanceDisplay.textContent.replace(/[^0-9.-]+/g,"");
+      const curVal = parseFloat(curText) || 0;
+      balanceDisplay.textContent = `₦${(curVal + amt).toFixed(2)}`;
     } else {
-      // collapse back to first 5
-      icon.className = "fas fa-chevron-down";
-      renderTransactionsLimited(container._allTx || []);
-      setTimeout(()=> { container.scrollTop = 0; }, 80);
+      showToast("Invalid amount");
     }
-  }
-}
+  });
 
-//////////////////////////
-// To-Bank & preview & send
-//////////////////////////
-async function previewRecipient(){
-  if(!exists("recipientAccount") || !exists("recipientPreview")) return;
-  const acctRaw = $("recipientAccount").value.trim();
-  const acct = acctRaw.replace(/\s+/g, '');
-  if(!acct || acct.length < 4){ // being forgiving — backend accepts last-10
-    $("recipientPreview").textContent = "Enter account number to preview";
-    return;
-  }
+  toWalletBtn.addEventListener("click", () => showToast("Wallet transfer screen - feature placeholder"));
+  savingsBtn.addEventListener("click", () => showToast("Savings feature placeholder"));
 
-  try {
-    // GET /get_user/<acct>
-    const res = await fetch(`${API_GET_USER}/${encodeURIComponent(acct)}`);
-    const json = await res.json();
-    if(res.ok && json.success){
-      $("recipientPreview").textContent = `Receiver: ${json.username} (ID: ${json.userId})`;
-    } else {
-      $("recipientPreview").textContent = "❌ Account not found";
-    }
-  } catch(err){
-    console.error("previewRecipient", err);
-    $("recipientPreview").textContent = "❌ Error checking account";
-  }
-}
-
-async function sendMoney(){
-  if(!getUserId()){
-    alert("Please login first.");
-    return;
-  }
-  const acct = $("recipientAccount").value.trim();
-  const amt = parseFloat($("sendAmount").value);
-  if(!acct || acct.length < 4){
-    alert("Enter a valid account number.");
-    return;
-  }
-  if(!amt || amt <= 0){
-    alert("Enter a valid amount.");
-    return;
-  }
-
-  const ok = confirm(`Send ${fmtNGN(amt)} to ${acct}?`);
-  if(!ok) return;
-
-  try {
-    const res = await fetch(API_SEND, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ sender_id: getUserId(), receiver_account: acct, amount: amt })
-    });
-    const json = await res.json();
-    if(res.ok && json.success){
-      alert(json.message || "Sent successfully");
-      // refresh dashboard
-      await loadDashboard();
-      showCard("dashboardCard");
-      // clear 
-  if(exists("recipientAccount")) $("recipientAccount").value = "";
-      if(exists("sendAmount")) $("sendAmount").value = "";
-      if(exists("recipientPreview")) $("recipientPreview").textContent = "Enter account number to preview";
-    } else {
-      alert(json.message || "Send failed");
-    }
-  } catch(err){
-    console.error("sendMoney", err);
-    alert("Network error while sending.");
-  }
-}
-
-//////////////////////////
-// Add money (update)
-//////////////////////////
-async function addMoney(){
-  if(!getUserId()){ alert("Please login."); return; }
-  const v = prompt("Enter amount to deposit (₦):", "");
-  if(v === null) return;
-  const amt = parseFloat(v);
-  if(!amt || amt <= 0){ alert("Invalid amount"); return; }
-
-  try {
-    const res = await fetch(API_ADD_MONEY, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ userId: getUserId(), amount: amt })
-    });
-    const json = await res.json();
-    if(res.ok && json.success){
-      alert(json.message || "Balance updated");
-      await loadDashboard();
-} else {
-      alert(json.message || "Failed to add money");
-    }
-  } catch(err){
-    console.error("addMoney", err);
-    alert("Network error while adding money.");
-  }
-}
-
-//////////////////////////
-// Refresh (explicit)
-//////////////////////////
-async function doRefresh(){
-  if(!getUserId()) return;
-  try {
-    const res = await fetch(API_REFRESH, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ userId: getUserId() })
-    });
-    const json = await res.json();
-    if(res.ok && json.success){
-      if(exists("balanceDisplay")) $("balanceDisplay").textContent = fmtNGN(json.balance);
-      renderTransactionsLimited(json.transactions || []);
-    } else {
-      alert(json.message || "Refresh failed");
-    }
-  } catch(err){
-    console.error("doRefresh", err);
-    alert("Network error during refresh");
-  }
-}
-//////////////////////////
-// Profile menu & logout
-//////////////////////////
-function toggleMenu(){
-  const m = $("profileMenu");
-  if(!m) return;
-  m.style.display = (m.style.display === "block") ? "none" : "block";
-}
-
-function doLogout(){
-  clearSession();
-  showCard("loginCard");
-}
-
-//////////////////////////
-// Wire up events
-//////////////////////////
-document.addEventListener("DOMContentLoaded", function(){
-  // nav links
-  if(exists("toLoginLink")) $("toLoginLink").addEventListener("click", e => { e.preventDefault(); showCard("loginCard"); });
-  if(exists("toRegisterLink")) $("toRegisterLink").addEventListener("click", e => { e.preventDefault(); showCard("registerCard"); });
-
-  // register / login
-  if(exists("btnRegister")) $("btnRegister").addEventListener("click", doRegister);
-  if(exists("btnLogin")) $("btnLogin").addEventListener("click", doLogin);
-
-  // to bank navigation (separate page)
-  if(exists("toBankBtn")) $("toBankBtn").addEventListener("click", () => showCard("toBankPage"));
-  if(exists("btnCancelSend")) $("btnCancelSend").addEventListener("click", () => showCard("dashboardCard"));
-  // preview + send
-  if(exists("recipientAccount")) $("recipientAccount").addEventListener("input", previewRecipient);
-  if(exists("btnSend")) $("btnSend").addEventListener("click", sendMoney);
-
-  // add money
-  if(exists("btnAddMoney")) $("btnAddMoney").addEventListener("click", addMoney);
-
-  // tx expand control
-  if(exists("txExpandBtn")) $("txExpandBtn").addEventListener("click", toggleExpandTx);
-
-  // hamburger + menu
-  if(exists("hamburgerBtn")) $("hamburgerBtn").addEventListener("click", toggleMenu);
-  if(exists("menuLogout")) $("menuLogout").addEventListener("click", () => { toggleMenu(); doLogout(); });
-  if(exists("menuProfile")) $("menuProfile").addEventListener("click", () => { toggleMenu(); alert("Open profile (not implemented)"); });
-
-  // bottom nav
-  if(exists("navHome")) $("navHome").addEventListener("click", () => { showCard("dashboardCard"); });
-  if(exists("navLoan")) $("navLoan").addEventListener("click", () => alert("Loan screen (not implemented)"));
-  if(exists("navRefer")) $("navRefer").addEventListener("click", () => alert("Refer & Earn (not implemented)"));
-  // Startup: session check
-  if(getUserId()){
-    showCard("dashboardCard");
-    loadDashboard().catch(()=>{});
-  } else {
-    // default to register as you had
-    showCard("registerCard");
-  }
+  if (getToken()) loadProfile(); else showCard(loginCard);
 });
-  </script>
+</script>
 </body>
 </html>
