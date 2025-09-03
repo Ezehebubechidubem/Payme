@@ -216,5 +216,220 @@
   
   <script>
 
+// dashboard.js
 
+const registerCard = document.getElementById("registerCard");
+const loginCard = document.getElementById("loginCard");
+const dashboardCard = document.getElementById("dashboardCard");
+const toBankPage = document.getElementById("toBankPage");
+
+const btnRegister = document.getElementById("btnRegister");
+const btnLogin = document.getElementById("btnLogin");
+const toLoginLink = document.getElementById("toLoginLink");
+const toRegisterLink = document.getElementById("toRegisterLink");
+
+const greetingEl = document.getElementById("greeting");
+const balanceEl = document.getElementById("balanceDisplay");
+const transactionList = document.getElementById("transactionList");
+const txExpandBtn = document.getElementById("txExpandBtn");
+
+const profileMenu = document.getElementById("profileMenu");
+const hamburgerBtn = document.getElementById("hamburgerBtn");
+const menuLogout = document.getElementById("menuLogout");
+
+const toBankBtn = document.getElementById("toBankBtn");
+const recipientAccount = document.getElementById("recipientAccount");
+const recipientPreview = document.getElementById("recipientPreview");
+const sendAmount = document.getElementById("sendAmount");
+const btnSend = document.getElementById("btnSend");
+const btnCancelSend = document.getElementById("btnCancelSend");
+
+let currentUserId = null;
+
+// ------------------ Toggle Register/Login ------------------
+toLoginLink.addEventListener("click", () => {
+  registerCard.classList.add("hidden");
+  loginCard.classList.remove("hidden");
+});
+
+toRegisterLink.addEventListener("click", () => {
+  loginCard.classList.add("hidden");
+  registerCard.classList.remove("hidden");
+});
+
+// ------------------ Register ------------------
+btnRegister.addEventListener("click", async () => {
+  const username = document.getElementById("regUsername").value;
+  const full_name = document.getElementById("regName").value;
+  const password = document.getElementById("regPassword").value;
+
+  if (!username || !password || !full_name) {
+    alert("Please fill all required fields");
+    return;
+  }
+
+  const res = await fetch("http://127.0.0.1:5000/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password, full_name })
+  });
+  const data = await res.json();
+  if (data.success) {
+    alert(data.message);
+    registerCard.classList.add("hidden");
+    loginCard.classList.remove("hidden");
+  } else {
+    alert(data.message);
+  }
+});
+
+// ------------------ Login ------------------
+btnLogin.addEventListener("click", async () => {
+  const username = document.getElementById("loginUsername").value;
+  const password = document.getElementById("loginPassword").value;
+
+  if (!username || !password) {
+    alert("Enter username and password");
+    return;
+  }
+
+  const res = await fetch("http://127.0.0.1:5000/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+  const data = await res.json();
+  if (data.success) {
+    currentUserId = data.user_id;
+    loginCard.classList.add("hidden");
+    dashboardCard.classList.remove("hidden");
+    loadDashboard();
+  } else {
+    alert(data.message);
+  }
+});
+
+// ------------------ Load Dashboard ------------------
+async function loadDashboard() {
+  const res = await fetch(`http://127.0.0.1:5000/dashboard/${currentUserId}`);
+  const data = await res.json();
+  if (data.success) {
+    greetingEl.innerText = `Hello ${data.full_name} 👋`;
+    balanceEl.innerText = `₦${data.balance.toFixed(2)}`;
+    renderTransactions(data.transactions);
+  } else {
+    alert(data.message);
+  }
+}
+
+// ------------------ Render Transactions ------------------
+function renderTransactions(transactions) {
+  transactionList.innerHTML = "";
+  if (transactions.length === 0) {
+    transactionList.innerHTML = "<p class='muted'>No transactions yet</p>";
+    return;
+  }
+
+  transactions.slice().reverse().forEach(tx => {
+    const div = document.createElement("div");
+    div.classList.add("tx");
+    div.innerHTML = `
+      <div class="tx-left">
+        <div class="tx-type">${tx.type}</div>
+        <div class="tx-fromto">${tx.to || tx.from || ""}</div>
+        <div class="tx-time">${tx.timestamp}</div>
+      </div>
+      <div class="tx-amt">₦${tx.amount.toFixed(2)}</div>
+    `;
+    transactionList.appendChild(div);
+  });
+}
+
+// ------------------ Transaction Expansion ------------------
+txExpandBtn.addEventListener("click", () => {
+  transactionList.classList.toggle("expanded");
+});
+
+// ------------------ Profile Menu Toggle ------------------
+hamburgerBtn.addEventListener("click", () => {
+  profileMenu.style.display = profileMenu.style.display === "block" ? "none" : "block";
+});
+
+menuLogout.addEventListener("click", () => {
+  currentUserId = null;
+  dashboardCard.classList.add("hidden");
+  loginCard.classList.remove("hidden");
+  profileMenu.style.display = "none";
+});
+
+// ------------------ Navigate To Bank Page ------------------
+toBankBtn.addEventListener("click", () => {
+  dashboardCard.classList.add("hidden");
+  toBankPage.classList.remove("hidden");
+});
+
+// ------------------ Preview Receiver Name ------------------
+recipientAccount.addEventListener("input", async () => {
+  const username = recipientAccount.value.trim();
+  if (username.length === 0) {
+    recipientPreview.innerText = "Enter account number to preview";
+    return;
+  }
+
+  try {
+    const res = await fetch("http://127.0.0.1:5000/get_receiver", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username })
+    });
+    const data = await res.json();
+    if (data.success) {
+      recipientPreview.innerText = `Receiver: ${data.full_name}`;
+    } else {
+      recipientPreview.innerText = "User not found";
+    }
+  } catch (err) {
+    recipientPreview.innerText = "Error fetching receiver";
+  }
+});
+
+// ------------------ Send Money ------------------
+btnSend.addEventListener("click", async () => {
+  const receiver_username = recipientAccount.value.trim();
+  const amount = parseFloat(sendAmount.value);
+  if (!receiver_username || !amount || amount <= 0) {
+    alert("Enter valid recipient and amount");
+    return;
+  }
+
+  try {
+    const res = await fetch("http://127.0.0.1:5000/send_money", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender_id: currentUserId, receiver_username, amount })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert(data.message);
+      sendAmount.value = "";
+      recipientAccount.value = "";
+      recipientPreview.innerText = "Enter account number to preview";
+      toBankPage.classList.add("hidden");
+      dashboardCard.classList.remove("hidden");
+      loadDashboard();
+    } else {
+      alert(data.message);
+    }
+  } catch (err) {
+    alert("Error sending money");
+  }
+});
+
+// ------------------ Cancel Send ------------------
+btnCancelSend.addEventListener("click", () => {
+  toBankPage.classList.add("hidden");
+  dashboardCard.classList.remove("hidden");
+});
 </script>
+</body>
+</html>
