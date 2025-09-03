@@ -268,7 +268,7 @@ btnRegister.addEventListener("click", async () => {
     return;
   }
 
-  const res = await fetch("http://127.0.0.1:5000/register", {
+  const res = await fetch(" https://payme-update.onrender.com/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password, full_name })
@@ -293,7 +293,7 @@ btnLogin.addEventListener("click", async () => {
     return;
   }
 
-  const res = await fetch("http://127.0.0.1:5000/login", {
+  const res = await fetch("https://payme-update.onrender.com/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password })
@@ -311,7 +311,8 @@ btnLogin.addEventListener("click", async () => {
 
 // ------------------ Load Dashboard ------------------
 async function loadDashboard() {
-  const res = await fetch(`http://127.0.0.1:5000/dashboard/${currentUserId}`);
+  const res = await fetch(`
+https://payme-update.onrender.com/dashboard/${currentUserId}`);
   const data = await res.json();
   if (data.success) {
     greetingEl.innerText = `Hello ${data.full_name} 👋`;
@@ -377,7 +378,7 @@ recipientAccount.addEventListener("input", async () => {
   }
 
   try {
-    const res = await fetch("http://127.0.0.1:5000/get_receiver", {
+    const res = await fetch(" https://payme-update.onrender.com /get_receiver", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username })
@@ -403,7 +404,7 @@ btnSend.addEventListener("click", async () => {
   }
 
   try {
-    const res = await fetch("http://127.0.0.1:5000/send_money", {
+    const res = await fetch(" https://payme-update.onrender.com /send_money", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sender_id: currentUserId, receiver_username, amount })
