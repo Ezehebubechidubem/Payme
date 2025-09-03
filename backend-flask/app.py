@@ -11,15 +11,17 @@ app = Flask(__name__)
 CORS(app)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "paygo.db")
-app.config["SECRET_KEY"] = "super-secret-key"  # change to something secure
+app.config["SECRET_KEY"] = "super-secret-key"  # change to something secure in production
 
 def _conn():
+    # new connection per request; keep default check_same_thread (safe if each request opens its own conn)
     return sqlite3.connect(DB_PATH)
 
 # ---------------- DB INIT ----------------
 def init_db():
     conn = _conn()
     c = conn.cursor()
+    # Add phone and email to match frontend
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +46,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Call this on startup
+# ensure DB exists on startup
 init_db()
 
 # ---------------- HELPERS ----------------
@@ -53,37 +55,43 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        if "Authorization" in request.headers:
-            auth_header = request.headers["Authorization"]
-            if auth_header.startswith("Bearer "):
-                token = auth_header.split(" ")[1]
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header:
+            parts = auth_header.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
 
         if not token:
-            return jsonify({"error": "Token is missing"}), 401
+            return jsonify({"success": False, "message": "Token is missing"}), 401
 
         try:
             data = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
-            current_user = data["username"]
+            current_user = data.get("username")
         except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Token expired"}), 401
+            return jsonify({"success": False, "message": "Token expired"}), 401
         except jwt.InvalidTokenError:
-            return jsonify({"error": "Invalid token"}), 401
+            return jsonify({"success": False, "message": "Invalid token"}), 401
 
         return f(current_user, *args, **kwargs)
     return decorated
 
 def create_token(username):
-    """Generate JWT with 1h expiry"""
+    """Generate JWT with 1h expiry and ensure string result"""
     payload = {
         "username": username,
         "exp": datetime.utcnow() + timedelta(hours=1)
     }
-    return jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+    token = jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+    # PyJWT may return bytes depending on version — ensure str
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+    return token
 
 # ---------------- ROUTES ----------------
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json or {}
+    # match frontend: username, password, full_name, phone, email
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
     full_name = (data.get("full_name") or username).strip()
@@ -112,6 +120,7 @@ def register():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json or {}
+    # frontend sends { username, password }
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
 
@@ -154,12 +163,25 @@ def profile(current_user):
         })
     return jsonify({"success": False, "message": "User not found"}), 404
 
+@app.route("/balance", methods=["GET"])
+@token_required
+def balance(current_user):
+    conn = _conn()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE username=?", (current_user,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return jsonify({"success": True, "username": current_user, "balance": row[0]})
+    return jsonify({"success": False, "message": "User not found"}), 404
+
 @app.route("/transfer", methods=["POST"])
 @token_required
 def transfer(current_user):
     data = request.json or {}
+    # frontend sends { receiver, amount }
+    receiver = (data.get("receiver") or "").strip()
     try:
-        receiver = (data.get("receiver") or "").strip()
         amount = float(data.get("amount"))
     except Exception:
         return jsonify({"success": False, "message": "receiver and numeric amount are required"}), 400
@@ -173,6 +195,7 @@ def transfer(current_user):
 
     conn = _conn()
     c = conn.cursor()
+    # Fetch sender and receiver
     c.execute("SELECT balance, full_name FROM users WHERE username=?", (current_user,))
     s_row = c.fetchone()
     c.execute("SELECT balance, full_name FROM users WHERE username=?", (receiver,))
@@ -182,20 +205,26 @@ def transfer(current_user):
         conn.close()
         return jsonify({"success": False, "message": "Sender or receiver not found"}), 404
 
-    s_balance, s_name = s_row
-    r_balance, r_name = r_row
+    s_balance, s_name = s_row[0], s_row[1]
+    r_balance, r_name = r_row[0], r_row[1]
 
     if s_balance < amount:
         conn.close()
         return jsonify({"success": False, "message": "Insufficient funds"}), 400
 
     try:
+        # Perform transfer
         c.execute("UPDATE users SET balance = balance - ? WHERE username=?", (amount, current_user))
         c.execute("UPDATE users SET balance = balance + ? WHERE username=?", (amount, receiver))
+
+        # Save transaction
         timestamp = datetime.utcnow().isoformat()
         c.execute("INSERT INTO transactions (sender, receiver, amount, timestamp) VALUES (?, ?, ?, ?)",
                   (current_user, receiver, amount, timestamp))
+
         conn.commit()
+
+        # Fetch updated balances
         c.execute("SELECT balance FROM users WHERE username=?", (current_user,))
         new_sender_balance = c.fetchone()[0]
         c.execute("SELECT balance FROM users WHERE username=?", (receiver,))
@@ -224,10 +253,17 @@ def transactions(current_user):
     rows = c.fetchall()
     conn.close()
 
-    txns = [{"sender": r[0], "receiver": r[1], "amount": r[2], "timestamp": r[3]} for r in rows]
-    return jsonify({"success": True, "transactions": txns})
+    txns = []
+    for r in rows:
+        txns.append({
+            "sender": r[0],
+            "receiver": r[1],
+            "amount": r[2],
+            "timestamp": r[3]
+        })
+    return jsonify({"success": True, "transactions": txns}), 200
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
