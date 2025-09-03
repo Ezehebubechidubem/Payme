@@ -125,15 +125,17 @@
     <div class="nav-btn" id="navRefer"><i class="fas fa-users"></i><small>Refer</small></div>
   </div>
 
+
 <script>
-const API_BASE = "https://payme-update.onrender.com"; // change to your backend URL if needed
+const API_BASE = "https://payme-update.onrender.com"; // <<--- change to your backend URL
+
 document.addEventListener("DOMContentLoaded", () => {
-  // token helpers
+  // storage helpers
   function saveToken(t){ localStorage.setItem("token", t); }
   function getToken(){ return localStorage.getItem("token"); }
   function clearToken(){ localStorage.removeItem("token"); }
 
-  // element lookups (IDs must match your HTML exactly)
+  // elements
   const registerCard = document.getElementById("registerCard");
   const loginCard = document.getElementById("loginCard");
   const dashboardCard = document.getElementById("dashboardCard");
@@ -175,7 +177,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const txExpandBtn = document.getElementById("txExpandBtn");
   const btnAddMoney = document.getElementById("btnAddMoney");
 
-  let currentUser = null;
+  let currentUser = null;        // username
+  let currentAccount = null;     // account number (last 10 digits) for current user
+  let lookupTimeout = null;
 
   function showCard(card){
     [registerCard, loginCard, dashboardCard, toBankPage].forEach(c => c.classList.add("hidden"));
@@ -183,48 +187,46 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function showToast(msg){ alert(msg); }
 
-  // register (sends username, password, full_name, phone, email)
+  // register
   btnRegister.addEventListener("click", async () => {
     const username = (regUsername.value||"").trim();
     const password = (regPassword.value||"").trim();
     const full_name = (regName.value||"").trim() || username;
     const phone = (regNumber.value||"").trim();
     const email = (regEmail.value||"").trim();
-    if(!username || !password){ showToast("Username and password required"); return; }
+    if(!username || !password || !phone){ showToast("username, password and phone are required"); return; }
 
     try {
       const res = await fetch(`${API_BASE}/register`, {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ username, password, full_name, phone, email })
       });
       const data = await res.json();
-      if(res.ok && data.success){ showToast("Registered — please login"); showCard(loginCard); }
+      if(res.ok && data.success){ showToast("Registration successful — please login."); showCard(loginCard); }
       else showToast(data.message || "Registration failed");
     } catch(e){ console.error(e); showToast("Error connecting to server"); }
   });
 
-  // login (sends username, password)
+  // login
   btnLogin.addEventListener("click", async () => {
     const username = (loginUsername.value||"").trim();
     const password = (loginPassword.value||"").trim();
     if(!username || !password){ showToast("Username and password required"); return; }
-
     try {
       const res = await fetch(`${API_BASE}/login`, {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ username, password })
       });
       const data = await res.json();
-      if(res.ok && data.success){
-        if(data.token) saveToken(data.token);
+      if(res.ok && data.success && data.token){
+        saveToken(data.token);
         currentUser = username;
         await loadProfile();
       } else showToast(data.message || "Login failed");
     } catch(e){ console.error(e); showToast("Error connecting to server"); }
   });
 
+  // load profile
   async function loadProfile(){
     const token = getToken();
     if(!token){ showCard(loginCard); return; }
@@ -233,9 +235,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       if(res.ok && data.success){
         currentUser = data.username;
+        currentAccount = data.account_number || null;
         greeting.textContent = `Hello 👋 ${data.full_name || data.username}`;
-        const acctText = data.account_number ? `Account: ${data.account_number}` : (data.phone ? `Phone: ${data.phone}` : `Username: ${data.username}`);
-        acctNumberDisplay.textContent = acctText;
+        acctNumberDisplay.textContent = currentAccount ? `Account: ${currentAccount}` : `Username: ${data.username}`;
         balanceDisplay.textContent = `₦${(typeof data.balance === 'number' ? data.balance : Number(data.balance||0)).toFixed(2)}`;
         showCard(dashboardCard);
         await loadTransactions();
@@ -247,21 +249,24 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch(e){ console.error(e); showToast("Error loading profile"); }
   }
 
+  // load transactions
   async function loadTransactions(){
     const token = getToken();
     if(!token){ transactionList.innerHTML = "<p class='muted'>Login to see transactions</p>"; return; }
     try {
-      const res = await fetch(`${API_BASE}/transactions`, { headers:{ Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/transactions`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       transactionList.innerHTML = "";
       const txs = (res.ok && data && data.success && Array.isArray(data.transactions)) ? data.transactions : [];
       if(txs.length === 0){ transactionList.innerHTML = "<p class='muted'>No transactions yet.</p>"; return; }
       txs.forEach(tx => {
-        const isSent = tx.sender === currentUser;
-        // prefer friendly names if present
-        const receiverLabel = tx.receiver_name || tx.receiver;
-        const senderLabel = tx.sender_name || tx.sender;
-        const typeText = isSent ? `Sent to ${receiverLabel}` : `Received from ${senderLabel}`;
+        // modern shape uses sender_account / receiver_account
+        const senderAcct = tx.sender_account || tx.sender;
+        const receiverAcct = tx.receiver_account || tx.receiver;
+        const senderName = tx.sender_name || tx.sender_name || (tx.sender_name?tx.sender_name:tx.sender) || senderAcct;
+        const receiverName = tx.receiver_name || tx.receiver_name || (tx.receiver_name?tx.receiver_name:tx.receiver) || receiverAcct;
+        const isSent = (currentAccount && senderAcct === currentAccount);
+        const typeText = isSent ? `Sent to ${receiverName}` : `Received from ${senderName}`;
         const dateText = tx.timestamp ? new Date(tx.timestamp).toLocaleString() : "";
         const amt = Number(tx.amount || 0);
         const div = document.createElement("div");
@@ -278,18 +283,18 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch(e){ console.error(e); transactionList.innerHTML = "<p class='muted'>Error loading transactions</p>"; }
   }
 
-  // transfer: receiver can be username or account number (last 10 digits)
+  // transfer (by account number only)
   btnSend.addEventListener("click", async () => {
-    const receiver = (recipientAccount.value||"").trim();
+    const receiverRaw = (recipientAccount.value||"").trim();
     const amount = parseFloat(sendAmount.value);
-    if(!receiver){ showToast("Recipient username required"); return; }
+    if(!receiverRaw){ showToast("Recipient account required"); return; }
     if(isNaN(amount) || amount <= 0){ showToast("Enter a valid amount"); return; }
-
+    // send the raw receiver; backend normalizes digits and uses last 10
     try {
       const res = await fetch(`${API_BASE}/transfer`, {
         method:"POST",
         headers:{"Content-Type":"application/json", Authorization: `Bearer ${getToken()}`},
-        body: JSON.stringify({ receiver, amount })
+        body: JSON.stringify({ receiver: receiverRaw, amount })
       });
       const data = await res.json();
       if(res.ok && data.success){
@@ -300,8 +305,7 @@ document.addEventListener("DOMContentLoaded", () => {
           await loadProfile();
         }
         await loadTransactions();
-        recipientAccount.value = "";
-        sendAmount.value = "";
+        recipientAccount.value = ""; sendAmount.value = "";
         showCard(dashboardCard);
       } else {
         showToast(data.message || "Transfer failed");
@@ -309,51 +313,71 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch(e){ console.error(e); showToast("Error sending money"); }
   });
 
-  // UI & misc wiring
+  // recipient lookup (debounced) — auto show receiver name when user types account number
+  recipientAccount.addEventListener("input", () => {
+    const raw = (recipientAccount.value||"").trim();
+    clearTimeout(lookupTimeout);
+    recipientPreview.textContent = raw ? "Searching..." : "Enter recipient account number";
+    if(!raw){
+      recipientPreview.textContent = "Enter recipient account number";
+      return;
+    }
+    lookupTimeout = setTimeout(async () => {
+      try {
+        const digits = (raw.match(/\d/g) || []).join("");
+        if(digits.length < 6){
+          recipientPreview.textContent = "Enter last 10 digits";
+          return;
+        }
+        // query backend lookup
+        const res = await fetch(`${API_BASE}/user/lookup?account=${encodeURIComponent(digits)}`);
+        const data = await res.json();
+        if(res.ok && data.success){
+          recipientPreview.textContent = `Sending to: ${data.full_name || data.username} (${data.account_number})`;
+        } else {
+          recipientPreview.textContent = "Account not found";
+        }
+      } catch(e){
+        console.error(e);
+        recipientPreview.textContent = "Error looking up account";
+      }
+    }, 350);
+  });
+
+  // UI wiring
   toBankBtn.addEventListener("click", () => showCard(toBankPage));
   btnCancelSend.addEventListener("click", () => showCard(dashboardCard));
   toLoginLink.addEventListener("click", (e)=>{ e.preventDefault(); showCard(loginCard); });
   toRegisterLink.addEventListener("click", (e)=>{ e.preventDefault(); showCard(registerCard); });
 
-  hamburgerBtn.addEventListener("click", ()=> {
-    profileMenu.style.display = profileMenu.style.display === "block" ? "none" : "block";
-  });
-  document.addEventListener("click", (e) => {
-    if(!profileMenu.contains(e.target) && e.target !== hamburgerBtn) profileMenu.style.display = "none";
-  });
-  menuLogout.addEventListener("click", () => {
-    clearToken(); currentUser = null; showCard(loginCard);
-  });
+  hamburgerBtn.addEventListener("click", ()=>{ profileMenu.style.display = profileMenu.style.display === "block" ? "none" : "block"; });
+  document.addEventListener("click", (e)=>{ if(!profileMenu.contains(e.target) && e.target !== hamburgerBtn) profileMenu.style.display = "none"; });
+  menuLogout.addEventListener("click", ()=>{ clearToken(); currentUser = null; currentAccount = null; showCard(loginCard); });
 
   txExpandBtn.addEventListener("click", () => {
     transactionList.classList.toggle("expanded");
     const icon = txExpandBtn.querySelector("i");
-    if(transactionList.classList.contains("expanded")) icon.className = "fas fa-chevron-up";
-    else icon.className = "fas fa-chevron-down";
-  });
-
-  recipientAccount.addEventListener("input", () => {
-    const v = (recipientAccount.value||"").trim();
-    recipientPreview.textContent = v ? `Sending to: ${v}` : "Enter recipient username";
+    if(transactionList.classList.contains("expanded")) icon.className = "fas fa-chevron-up"; else icon.className = "fas fa-chevron-down";
   });
 
   btnAddMoney.addEventListener("click", async () => {
-    const amtStr = prompt("Enter amount to add (this is UI-only demo):");
+    const amtStr = prompt("Enter amount to add (UI-only demo):");
     const amt = parseFloat(amtStr);
     if(!isNaN(amt) && amt > 0){
-      showToast(`Demo: +₦${amt.toFixed(2)} added locally (not persisted).`);
+      showToast(`Demo: +₦${amt.toFixed(2)} added locally (not persisted on server).`);
       const curText = balanceDisplay.textContent.replace(/[^0-9.-]+/g,"");
       const curVal = parseFloat(curText) || 0;
       balanceDisplay.textContent = `₦${(curVal + amt).toFixed(2)}`;
     } else showToast("Invalid amount");
   });
 
-  toWalletBtn.addEventListener("click", () => showToast("Wallet transfer placeholder"));
+  toWalletBtn.addEventListener("click", () => showToast("Wallet placeholder"));
   savingsBtn.addEventListener("click", () => showToast("Savings placeholder"));
 
-  // auto-login if token present
+  // auto-login
   if(getToken()) loadProfile(); else showCard(loginCard);
 });
 </script>
 </body>
 </html>
+
