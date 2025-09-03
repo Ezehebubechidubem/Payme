@@ -11,17 +11,20 @@ app = Flask(__name__)
 CORS(app)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "paygo.db")
-app.config["SECRET_KEY"] = "super-secret-key"  # change to something secure in production
+app.config["SECRET_KEY"] = "super-secret-key"  # change to something secure
 
 def _conn():
-    return sqlite3.connect(DB_PATH)
+    # Use a fresh connection per request
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    # return rows as tuples (we use indices)
+    return conn
 
-# ---------------- DB INIT / MIGRATE ----------------
+# ---------------- DB INIT / MIGRATION ----------------
 def init_db():
     conn = _conn()
     c = conn.cursor()
 
-    # create users table with columns we need
+    # Create users table with the fields we need (if not exists)
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +39,7 @@ def init_db():
         )
     """)
 
-    # create transactions table
+    # Create transactions table
     c.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,29 +50,32 @@ def init_db():
         )
     """)
 
-    # Ensure columns exist if upgrading from older DB
-    # (SQLite ignores ALTER TABLE ADD COLUMN if it already exists — but we'll check)
-    existing_cols = {row[1] for row in c.execute("PRAGMA table_info(users)").fetchall()}
-    if "account_number" not in existing_cols:
-        try:
+    # Attempt to add missing columns for older DBs (safe)
+    existing = {row[1] for row in c.execute("PRAGMA table_info(users)").fetchall()}
+    try:
+        if "account_number" not in existing:
             c.execute("ALTER TABLE users ADD COLUMN account_number TEXT")
-        except Exception:
-            pass
-    if "phone" not in existing_cols:
-        try:
+    except Exception:
+        pass
+    try:
+        if "phone" not in existing:
             c.execute("ALTER TABLE users ADD COLUMN phone TEXT")
-        except Exception:
-            pass
-    if "email" not in existing_cols:
-        try:
+    except Exception:
+        pass
+    try:
+        if "email" not in existing:
             c.execute("ALTER TABLE users ADD COLUMN email TEXT")
-        except Exception:
-            pass
+    except Exception:
+        pass
+    try:
+        if "balance" not in existing:
+            c.execute("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
 
-# Call on startup
 init_db()
 
 # ---------------- HELPERS ----------------
@@ -103,16 +109,15 @@ def create_token(username):
         "exp": datetime.utcnow() + timedelta(hours=1)
     }
     token = jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+    # PyJWT may return bytes on some installs; ensure string
     if isinstance(token, bytes):
         token = token.decode("utf-8")
     return token
 
-def normalize_phone(phone_str):
-    """Return only digits string"""
-    if not phone_str:
+def normalize_phone(s):
+    if not s:
         return ""
-    digits = "".join(ch for ch in phone_str if ch.isdigit())
-    return digits
+    return "".join(ch for ch in s if ch.isdigit())
 
 def last_n(s, n):
     if not s:
@@ -120,6 +125,7 @@ def last_n(s, n):
     return s[-n:]
 
 # ---------------- ROUTES ----------------
+
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json or {}
@@ -141,7 +147,7 @@ def register():
     try:
         hashed_pw = generate_password_hash(password)
         created_at = datetime.utcnow().isoformat()
-        # New accounts start with 0 balance by default (user requested)
+        # START BALANCE = 0.0 (fix for the 1000 issue)
         c.execute("""
             INSERT INTO users (username, password, full_name, phone, account_number, email, balance, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -156,7 +162,7 @@ def register():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json or {}
-    # frontend posts { username, password }
+    # frontend sends { username, password }
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
 
@@ -219,7 +225,6 @@ def balance(current_user):
 @token_required
 def transfer(current_user):
     data = request.json or {}
-    # frontend sends { receiver, amount } where receiver can be username or account_number (phone last 10)
     receiver_raw = (data.get("receiver") or "").strip()
     if receiver_raw == "":
         return jsonify({"success": False, "message": "receiver is required"}), 400
@@ -234,18 +239,19 @@ def transfer(current_user):
     conn = _conn()
     c = conn.cursor()
 
-    # Resolve receiver: if numeric and length >=10, try account_number lookup first
+    # Resolve receiver: try account_number (last 10 digits) if numeric-ish, otherwise username
     receiver = None
-    if receiver_raw.isdigit() and len(receiver_raw) >= 6:
-        # allow partial or last 10 — try exact match on account_number (we store last10)
-        rn = last_n(normalize_phone(receiver_raw), 10)
+    digits = normalize_phone(receiver_raw)
+    if digits and len(digits) >= 6:
+        # try last 10 match
+        rn = last_n(digits, 10)
         c.execute("SELECT username FROM users WHERE account_number=?", (rn,))
         rr = c.fetchone()
         if rr:
             receiver = rr[0]
 
-    # fallback: treat as username
     if not receiver:
+        # fallback to username lookup
         c.execute("SELECT username FROM users WHERE username=?", (receiver_raw,))
         rr = c.fetchone()
         if rr:
@@ -259,7 +265,7 @@ def transfer(current_user):
         conn.close()
         return jsonify({"success": False, "message": "Cannot transfer to self"}), 400
 
-    # Fetch balances and full names
+    # Fetch balances and names
     c.execute("SELECT balance, full_name FROM users WHERE username=?", (current_user,))
     s_row = c.fetchone()
     c.execute("SELECT balance, full_name FROM users WHERE username=?", (receiver,))
@@ -277,18 +283,14 @@ def transfer(current_user):
         return jsonify({"success": False, "message": "Insufficient funds"}), 400
 
     try:
-        # Update balances
+        # perform transfer and save transaction in one connection
         c.execute("UPDATE users SET balance = balance - ? WHERE username=?", (amount, current_user))
         c.execute("UPDATE users SET balance = balance + ? WHERE username=?", (amount, receiver))
-
-        # Save transaction
         timestamp = datetime.utcnow().isoformat()
         c.execute("INSERT INTO transactions (sender, receiver, amount, timestamp) VALUES (?, ?, ?, ?)",
                   (current_user, receiver, amount, timestamp))
-
         conn.commit()
 
-        # Fetch updated balances
         c.execute("SELECT balance FROM users WHERE username=?", (current_user,))
         new_sender_balance = c.fetchone()[0]
         c.execute("SELECT balance FROM users WHERE username=?", (receiver,))
@@ -308,7 +310,7 @@ def transfer(current_user):
 def transactions(current_user):
     conn = _conn()
     c = conn.cursor()
-    # join to retrieve full names for display
+    # Return friendly names, amount and timestamp
     c.execute("""
         SELECT t.sender,
                COALESCE(su.full_name, t.sender) AS sender_name,
