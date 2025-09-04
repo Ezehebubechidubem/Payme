@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Profile</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --primary:#00c853;
+      --primary-dark:#009624;
+      --bg:#f9f9f9;
+      --card:#fff;
+      --text:#1b1b1b;
+      --muted:#666;
+      --line:#e0e0e0;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      min-height:100vh;
+    }
+    .app{max-width:440px;margin:0 auto}
+
+    /* Topbar */
+    .topbar{
+      display:flex;align-items:center;gap:10px;
+      padding:14px;border-bottom:1px solid var(--line);
+      background:var(--card);position:sticky;top:0;z-index:10;
+    }
+    .topbar .back{font-size:18px;color:var(--text);cursor:pointer}
+    .topbar h2{font-size:16px;font-weight:600;margin-left:6px}
+
+    /* Profile header */
+    .profile-header{
+      text-align:center;padding:30px 14px 20px;
+      background:var(--card);margin-bottom:12px;
+    }
+    .profile-header .avatar{
+      width:80px;height:80px;border-radius:50%;
+      background:linear-gradient(135deg,#222,#666);
+      margin:0 auto 10px;
+    }
+    .profile-header h3{font-size:18px;font-weight:700}
+    .profile-header p{font-size:13px;color:var(--muted)}
+
+    /* Menu */
+    .menu{background:var(--card);margin:12px;border-radius:14px;overflow:hidden}
+    .menu a{text-decoration:none;color:inherit;display:block}
+    .menu-item{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 16px;border-bottom:1px solid var(--line);
+      cursor:pointer;font-size:14px;color:var(--text);
+    }
+    .menu-item:last-child{border-bottom:none}
+    .menu-item i{color:var(--primary);margin-right:10px}
+    .menu-item span{flex:1}
+    .menu-item .fa-angle-right{color:var(--muted)}
+    .logout{color:#d32f2f !important}
+    .logout a{text-decoration:none;color:inherit;display:flex;align-items:center;justify-content:space-between}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <a href="index.html" class="back"><i class="fa-solid fa-arrow-left"></i></a>
+      <h2>My Profile</h2>
+    </header>
+
+    <!-- Profile header -->
+    <div class="profile-header">
+      <div class="avatar"></div>
+      <h3>Ebube</h3>
+      
+    </div>
+
+    <!-- Menu items -->
+    <div class="menu">
+      <a href="pro.html">
+        <div class="menu-item">
+          <i class="fa-solid fa-user"></i>
+          <span>Profile</span>
+          <i class="fa-solid fa-angle-right"></i>
+        </div>
+      </a>
+      <div class="menu-item">
+        <i class="fa-solid fa-star"></i>
+        <span>Tier</span>
+        <i class="fa-solid fa-angle-right"></i>
+      </div>
+      <div class="menu-item">
+        <i class="fa-solid fa-id-card"></i>
+        <span>KYC</span>
+        <i class="fa-solid fa-angle-right"></i>
+      </div>
+      <a href="settings.html">
+        <div class="menu-item">
+          <i class="fa-solid fa-gear"></i>
+          <span>Settings</span>
+          <i class="fa-solid fa-angle-right"></i>
+        </div>
+      </a>
+      <div class="menu-item logout">
+        <a href="paymelogin.html">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span>Log Out</span>
+          <i class="fa-solid fa-angle-right"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
