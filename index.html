@@ -1,436 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .form-container {
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 320px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      color: #444;
+      display: block;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    input:focus {
+      border-color: #00c853;
+      outline: none;
+    }
+    button {
+      width: 100%;
+      background: #00c853;
+      border: none;
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #009624;
+    }
+    .switch {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    .switch a {
+      color: #00c853;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <h2>Login</h2>
+    <form>
+      <label for="login">Username or Phone</label>
+      <input type="text" id="login" placeholder="Enter username or phone" required>
 
-<!DOCTYPE html>  
-<html lang="en">  
-<head>  
-  <meta charset="UTF-8" />  
-  <meta name="viewport" content="width=device-width,initial-scale=1" />  
-  <title>PayGo App</title>  
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">  
-  <style>  
-    /* ---------- BASIC LAYOUT ---------- */  
-    :root {  
-      --primary: #5b4dff;  
-      --accent: #007bff;  
-      --bg: #f3f6fa;  
-      --card: #ffffff;  
-      --muted: #6b7280;  
-      --success: #0b6b3a;  
-    }  
-    * { box-sizing: border-box; }  
-    body { font-family: Inter, Arial, sans-serif; margin:0; background:var(--bg); color:#222; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;   
-      .hidden {  
-  display: none !important;  
-}  
-    }  
-    header {  
-      display:flex; justify-content:space-between; align-items:center;  
-      background:var(--accent); color:#fff; padding:14px 16px;  
-      box-shadow:0 2px 6px rgba(0,0,0,0.08);  
-      position:relative;  
-    }  
-    header .logo { font-weight:800; font-size:18px; letter-spacing:0.6px; }  
-    header .hamburger { font-size:20px; cursor:pointer; }  
-  
-    /* PROFILE MENU */  
-    #profileMenu {  
-      position:absolute; right:12px; top:56px;  
-      background:var(--card); border-radius:10px; display:none;  
-      box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:200;  
-      width:200px;  
-    }  
-    #profileMenu div { padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f4f8; color:#333; }  
-    #profileMenu div:last-child { border-bottom:none; }  
-    #profileMenu div:hover { background:#f7f8ff; }  
-  
-    /* WRAP & CARDS */  
-    .wrap { max-width:520px; margin:18px auto; padding:12px; }  
-    .card { background:var(--card); border-radius:12px; padding:14px; box-shadow:0 6px 20px rgba(0,0,0,0.06); margin-bottom:12px; }  
-    h2,h3 { margin:6px 0; font-weight:600; }  
-    input, button, textarea, select {  
-      width:100%; padding:10px; margin:8px 0; border-radius:8px; border:1px solid #e6eefc; font-size:14px;  
-      background: #fff;  
-    }  
-    button { background:var(--primary); color:#fff; border:none; cursor:pointer; padding:10px 12px; font-weight:600; }  
-    .muted { color:var(--muted); font-size:13px; }  
-  
-    /* TOP ROW */  
-    .top-row { display:flex; justify-content:space-between; align-items:center; gap:10px; }  
-    .greeting { font-size:16px; font-weight:700; color:#213547; }  
-    .accountNo { font-size:13px; color:#495057; margin-top:2px; }  
-  
-    /* TRANSACTIONS (above balance) */  
-    .tx-header { display:flex; justify-content:space-between; align-items:center; gap:8px; }  
-  
-      #transactionList {  
-  max-height: 400px;   /* Fixes the visible height */  
-  overflow-y: auto;    /* Enables vertical scrollbar */  
-  border: 1px solid #eef2ff;  
-  padding: 6px;  
-  border-radius: 8px;  
-  background: #fff;  
-}  
-    }  
-    #transactionList.expanded { max-height:900px; } /* toggled state */  
-    .tx { padding:10px; border-bottom:1px solid #f1f4ff; font-size:14px; color:#1f2937; display:flex; justify-content:space-between; align-items:center; gap:8px; }  
-    .tx .tx-left { display:flex; flex-direction:column; }  
-    .tx .tx-amt { font-weight:700; color:var(--accent); }  
-    .tx .tx-type { font-size:13px; color:#6b7280; margin-top:4px; }  
-    .tx:last-child { border-bottom:none; }  
-  
-    /* Balance area */  
-    .balance-wrap { display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin-top:12px; }  
-    .balance { font-size:28px; color:var(--success); font-weight:800; }  
-    #btnAddMoney { width:160px; padding:8px 12px; border-radius:10px; }  
-  
-    /* SERVICES ROW (3 primary) */  
-    .services-row { display:flex; gap:12px; margin-top:14px; }  
-    .service { flex:1; background:#fbfbff; border-radius:12px; padding:12px; text-align:center; cursor:pointer; box-shadow: inset 0 -6px 0 rgba(91,77,255,0.03); }  
-    .service i { font-size:20px; margin-bottom:8px; color:var(--accent); display:block; }  
-    .service small { display:block; font-size:12px; color:#233142; font-weight:600; }  
-  
-    /* OTHER GRID */  
-    .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px; }  
-    .grid-item { background:#fbfbff; border-radius:10px; padding:10px; text-align:center; cursor:pointer; font-size:13px; }  
-    .grid-item i { font-size:16px; color:var(--accent); margin-bottom:6px; display:block; }  
-  
-    /* small control for transactions expansion (icon only) */  
-    .tx-control { background:transparent; border:none; cursor:pointer; font-size:16px; color:var(--accent); padding:6px; border-radius:8px; }  
-    .tx-control:focus { outline:none; box-shadow:0 2px 8px rgba(91,77,255,0.12); }  
-  
-    /* TO BANK PAGE */  
-    .small-muted { font-size:13px; color:#6b7280; margin-top:4px; }  
-  
-    /* Bottom nav */  
-    .bottom-nav {  
-      position:fixed; bottom:10px; left:50%; transform:translateX(-50%); background:#fff; width:520px; max-width:96%;  
-      border-radius:16px; display:flex; justify-content:space-around; padding:10px; box-shadow:0 10px 30px rgba(0,0,0,0.08); z-index:150;  
-    }  
-    .bottom-nav .nav-btn { text-align:center; flex:1; cursor:pointer; padding:6px 8px; }  
-    .bottom-nav i { font-size:18px; color:var(--accent); }  
-    .bottom-nav small { display:block; font-size:11px; color:#334155; margin-top:4px; }  
-  
-    /* Responsive */  
-    @media (max-width:560px) {  
-      .wrap { padding:12px; }  
-      .bottom-nav { width:calc(100% - 24px); left:12px; transform:none; border-radius:12px; }  
-    }  
-  </style>  
-</head>  
-<body>  
-  
-  <header>  
-    <div class="logo">PAYGO</div>  
-    <i id="hamburgerBtn" class="fas fa-bars hamburger" title="Menu"></i>  
-    <div id="profileMenu">  
-      <div id="menuProfile">Profile</div>  
-      <div id="menuKYC">KYC</div>  
-      <div id="menuTier">Tier</div>  
-      <div id="menuSettings">Settings</div>  
-      <div id="menuLogout">Logout</div>  
-    </div>  
-  </header>  
-  
-  <div class="wrap">  
-  
-    <!-- REGISTER -->  
-    <div id="registerCard" class="card">  
-      <h2>Create account</h2>  
-      <input id="regUsername" placeholder="Username (required)" />  
-      <input id="regName" placeholder="Full name (optional)" />  
-      <input id="regNumber" placeholder="Phone number (11 digits)" maxlength="11" type="number"/>  
-      <input id="regEmail" placeholder="Email (optional)" type="email" />  
-      <input id="regPassword" type="password" placeholder="Password" />  
-      <button id="btnRegister">Register</button>  
-      <p class="muted">Already have account? <a href="#" id="toLoginLink">Login</a></p>  
-    </div>  
-  
-    <!-- LOGIN -->  
-    <div id="loginCard" class="card hidden">  
-      <h2>Login</h2>  
-      <input id="loginUsername" placeholder="Username or phone" />  
-      <input id="loginPassword" type="password" placeholder="Password" />  
-      <button id="btnLogin">Login</button>  
-      <p class="muted">Don't have account? <a href="#" id="toRegisterLink">Register</a></p>  
-    </div>  
-  
-    <!-- DASHBOARD -->  
-    <div id="dashboardCard" class="card hidden">  
-      <div class="top-row">  
-        <div>  
-          <div class="greeting" id="greeting">Hello 👋</div>  
-          <div class="accountNo" id="acctNumberDisplay"></div>  
-        </div>  
-      </div>  
-  
-      <div class="balance-wrap">  
-        <h3 style="margin:8px 0 0 0">Available Balance</h3>  
-        <div class="balance" id="balanceDisplay">₦0.00</div>  
-        <button id="btnAddMoney">Add Money</button>  
-      </div>  
-      <div class="tx-header" style="margin-top:12px;">  
-        <h3 style="margin:0">Recent Transactions</h3>  
-        <!-- icon-only toggle to expand/collapse tx list (no text "See more") -->  
-        <button id="txExpandBtn" class="tx-control" title="Expand / Collapse transactions"><i class="fas fa-chevron-down"></i></button>  
-      </div>  
-      <div id="transactionList" class="card" style="padding:8px; margin-top:8px;"></div>  
-  
-  
-      <!-- Row of 3 primary services -->  
-      <div class="services-row" style="margin-top:16px;">  
-        <div class="service" id="toBankBtn"><i class="fas fa-university"></i><small>To Bank</small></div>  
-        <div class="service" id="toWalletBtn"><i class="fas fa-wallet"></i><small>Wallet</small></div>  
-        <div class="service" id="savingsBtn"><i class="fas fa-piggy-bank"></i><small>Savings</small></div>  
-      </div>  
-  
-      <!-- Other services grid -->  
-      <div class="grid" style="margin-top:14px;">  
-        <div class="grid-item"><i class="fas fa-phone"></i><small>Airtime</small></div>  
-        <div class="grid-item"><i class="fas fa-wifi"></i><small>Data</small></div>  
-        <div class="grid-item"><i class="fas fa-tv"></i><small>TV</small></div>  
-        <div class="grid-item"><i class="fas fa-bolt"></i><small>Electricity</small></div>  
-        <div class="grid-item"><i class="fas fa-futbol"></i><small>Betting</small></div>  
-        <div class="grid-item"><i class="fas fa-gift"></i><small>Gift Card</small></div>  
-        <div class="grid-item"><i class="fas fa-store"></i><small>Business</small></div>  
-        <div class="grid-item"><i class="fas fa-cog"></i><small>More</small></div>  
-      </div>  
-    </div>  
-  
-    <!-- TO BANK PAGE (separate view) -->  
-    <div id="toBankPage" class="card hidden">  
-      <h2>Send to Bank</h2>  
-      <input id="recipientAccount" placeholder="Recipient account number" />  
-      <div class="muted" id="recipientPreview">Enter account number to preview</div>  
-      <input id="sendAmount" type="number" placeholder="Amount" />  
-      <button id="btnSend">Send</button>  
-      <button id="btnCancelSend" style="background:#aaa;margin-top:8px;">Back</button>  
-      <p class="small-muted">Note: you will be asked to confirm before the transfer is processed.</p>  
-    </div>  
-  </div>  
-  
-  <!-- Bottom Navigation (fixed) -->  
-  <div class="bottom-nav" role="navigation" aria-label="Bottom navigation">  
-    <div class="nav-btn" id="navHome"><i class="fas fa-home"></i><small>Home</small></div>  
-    <div class="nav-btn" id="navLoan"><i class="fas fa-hand-holding-usd"></i><small>Loan</small></div>  
-    <div class="nav-btn" id="navRefer"><i class="fas fa-users"></i><small>Refer</small></div>  
-  </div>  
-  
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="Enter password" required>
+
+      <button type="submit">Login</button>
+    </form>
+    <div class="switch">
+      Don’t have an account? <a href="paymeregister.html">Register</a>
+    </div>
+  </div>
+
   <script>
+  document.querySelector("form").addEventListener("submit", function(e) {
+    e.preventDefault();
 
-// dashboard.js
+    const login = document.getElementById("login").value.trim();
+    const password = document.getElementById("password").value;
 
-const registerCard = document.getElementById("registerCard");
-const loginCard = document.getElementById("loginCard");
-const dashboardCard = document.getElementById("dashboardCard");
-const toBankPage = document.getElementById("toBankPage");
+    // Fetch user data from localStorage
+    const storedUser = JSON.parse(localStorage.getItem("user"));
 
-const btnRegister = document.getElementById("btnRegister");
-const btnLogin = document.getElementById("btnLogin");
-const toLoginLink = document.getElementById("toLoginLink");
-const toRegisterLink = document.getElementById("toRegisterLink");
-
-const greetingEl = document.getElementById("greeting");
-const balanceEl = document.getElementById("balanceDisplay");
-const transactionList = document.getElementById("transactionList");
-const txExpandBtn = document.getElementById("txExpandBtn");
-
-const profileMenu = document.getElementById("profileMenu");
-const hamburgerBtn = document.getElementById("hamburgerBtn");
-const menuLogout = document.getElementById("menuLogout");
-
-const toBankBtn = document.getElementById("toBankBtn");
-const recipientAccount = document.getElementById("recipientAccount");
-const recipientPreview = document.getElementById("recipientPreview");
-const sendAmount = document.getElementById("sendAmount");
-const btnSend = document.getElementById("btnSend");
-const btnCancelSend = document.getElementById("btnCancelSend");
-
-let currentUserId = null;
-
-// ------------------ Toggle Register/Login ------------------
-toLoginLink.addEventListener("click", () => {
-  registerCard.classList.add("hidden");
-  loginCard.classList.remove("hidden");
-});
-
-toRegisterLink.addEventListener("click", () => {
-  loginCard.classList.add("hidden");
-  registerCard.classList.remove("hidden");
-});
-
-// ------------------ Register ------------------
-btnRegister.addEventListener("click", async () => {
-  const username = document.getElementById("regUsername").value;
-  const full_name = document.getElementById("regName").value;
-  const password = document.getElementById("regPassword").value;
-
-  if (!username || !password || !full_name) {
-    alert("Please fill all required fields");
-    return;
-  }
-
-  const res = await fetch(" https://payme-update.onrender.com/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password, full_name })
-  });
-  const data = await res.json();
-  if (data.success) {
-    alert(data.message);
-    registerCard.classList.add("hidden");
-    loginCard.classList.remove("hidden");
-  } else {
-    alert(data.message);
-  }
-});
-
-// ------------------ Login ------------------
-btnLogin.addEventListener("click", async () => {
-  const username = document.getElementById("loginUsername").value;
-  const password = document.getElementById("loginPassword").value;
-
-  if (!username || !password) {
-    alert("Enter username and password");
-    return;
-  }
-
-  const res = await fetch("https://payme-update.onrender.com/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  });
-  const data = await res.json();
-  if (data.success) {
-    currentUserId = data.user_id;
-    loginCard.classList.add("hidden");
-    dashboardCard.classList.remove("hidden");
-    loadDashboard();
-  } else {
-    alert(data.message);
-  }
-});
-
-// ------------------ Load Dashboard ------------------
-async function loadDashboard() {
-  const res = await fetch(`
-https://payme-update.onrender.com/dashboard/${currentUserId}`);
-  const data = await res.json();
-  if (data.success) {
-    greetingEl.innerText = `Hello ${data.full_name} 👋`;
-    balanceEl.innerText = `₦${data.balance.toFixed(2)}`;
-    renderTransactions(data.transactions);
-  } else {
-    alert(data.message);
-  }
-}
-
-// ------------------ Render Transactions ------------------
-function renderTransactions(transactions) {
-  transactionList.innerHTML = "";
-  if (transactions.length === 0) {
-    transactionList.innerHTML = "<p class='muted'>No transactions yet</p>";
-    return;
-  }
-
-  transactions.slice().reverse().forEach(tx => {
-    const div = document.createElement("div");
-    div.classList.add("tx");
-    div.innerHTML = `
-      <div class="tx-left">
-        <div class="tx-type">${tx.type}</div>
-        <div class="tx-fromto">${tx.to || tx.from || ""}</div>
-        <div class="tx-time">${tx.timestamp}</div>
-      </div>
-      <div class="tx-amt">₦${tx.amount.toFixed(2)}</div>
-    `;
-    transactionList.appendChild(div);
-  });
-}
-
-// ------------------ Transaction Expansion ------------------
-txExpandBtn.addEventListener("click", () => {
-  transactionList.classList.toggle("expanded");
-});
-
-// ------------------ Profile Menu Toggle ------------------
-hamburgerBtn.addEventListener("click", () => {
-  profileMenu.style.display = profileMenu.style.display === "block" ? "none" : "block";
-});
-
-menuLogout.addEventListener("click", () => {
-  currentUserId = null;
-  dashboardCard.classList.add("hidden");
-  loginCard.classList.remove("hidden");
-  profileMenu.style.display = "none";
-});
-
-// ------------------ Navigate To Bank Page ------------------
-toBankBtn.addEventListener("click", () => {
-  dashboardCard.classList.add("hidden");
-  toBankPage.classList.remove("hidden");
-});
-
-// ------------------ Preview Receiver Name ------------------
-recipientAccount.addEventListener("input", async () => {
-  const username = recipientAccount.value.trim();
-  if (username.length === 0) {
-    recipientPreview.innerText = "Enter account number to preview";
-    return;
-  }
-
-  try {
-    const res = await fetch(" https://payme-update.onrender.com /get_receiver", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username })
-    });
-    const data = await res.json();
-    if (data.success) {
-      recipientPreview.innerText = `Receiver: ${data.full_name}`;
-    } else {
-      recipientPreview.innerText = "User not found";
+    if (!storedUser) {
+      alert("❌ No user found. Please register first.");
+      window.location.href = "paymeregister.html";
+      return;
     }
-  } catch (err) {
-    recipientPreview.innerText = "Error fetching receiver";
-  }
-});
 
-// ------------------ Send Money ------------------
-btnSend.addEventListener("click", async () => {
-  const receiver_username = recipientAccount.value.trim();
-  const amount = parseFloat(sendAmount.value);
-  if (!receiver_username || !amount || amount <= 0) {
-    alert("Enter valid recipient and amount");
-    return;
-  }
-
-  try {
-    const res = await fetch(" https://payme-update.onrender.com /send_money", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender_id: currentUserId, receiver_username, amount })
-    });
-    const data = await res.json();
-    if (data.success) {
-      alert(data.message);
-      sendAmount.value = "";
-      recipientAccount.value = "";
-      recipientPreview.innerText = "Enter account number to preview";
-      toBankPage.classList.add("hidden");
-      dashboardCard.classList.remove("hidden");
-      loadDashboard();
+    // Allow login by username OR phone
+    if (
+      (login === storedUser.username || login === storedUser.phone) &&
+      password === storedUser.password
+    ) {
+      alert("✅ Login successful!");
+      // save session
+      localStorage.setItem("loggedInUser", JSON.stringify(storedUser));
+      window.location.href = "index.html"; // go to dashboard
     } else {
-      alert(data.message);
+      alert("❌ Invalid username/phone or password.");
     }
-  } catch (err) {
-    alert("Error sending money");
-  }
-});
-
-// ------------------ Cancel Send ------------------
-btnCancelSend.addEventListener("click", () => {
-  toBankPage.classList.add("hidden");
-  dashboardCard.classList.remove("hidden");
-});
-</script>
+  });
+  </script>
 </body>
 </html>
