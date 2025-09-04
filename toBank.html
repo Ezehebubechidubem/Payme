@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Send to Wallet</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --primary:#00c853;
+      --primary-dark:#009624;
+      --bg:#f9f9f9;
+      --card:#fff;
+      --text:#1b1b1b;
+      --muted:#666;
+      --line:#e0e0e0;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body {
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+    }
+    .app { max-width:440px; margin:0 auto; padding-bottom:40px; }
+
+    /* Top bar */
+    .topbar {
+      display:flex; align-items:center; gap:10px;
+      padding:14px; border-bottom:1px solid var(--line);
+      background:var(--card); position:sticky; top:0; z-index:10;
+    }
+    .topbar .back { font-size:18px; color:var(--text); cursor:pointer; }
+    .topbar h2 { font-size:16px; font-weight:600; }
+
+    /* Card */
+    .card {
+      background:var(--card);
+      margin:20px 12px;
+      border-radius:14px;
+      padding:20px;
+      box-shadow:0 1px 3px rgba(0,0,0,.08);
+    }
+    .card h3 { font-size:15px; font-weight:700; margin-bottom:16px; }
+    label { font-size:13px; font-weight:600; margin-bottom:6px; display:block; color:var(--muted); }
+    input {
+      width:100%; padding:12px; border:1px solid var(--line);
+      border-radius:10px; font-size:14px; margin-bottom:16px;
+    }
+    input:focus { border-color:var(--primary); outline:none; }
+    .btn {
+      width:100%; padding:12px; background:var(--primary); border:0;
+      color:#fff; font-weight:700; font-size:15px; border-radius:12px; cursor:pointer;
+    }
+    .btn:hover { background:var(--primary-dark); }
+    .receiver-info {
+      font-size:14px; color:var(--primary-dark); margin-bottom:12px; font-weight:600;
+      display:none;
+    }
+    .error { color:red; font-size:13px; margin-bottom:12px; display:none; }
+    .success { color:green; font-size:13px; margin-bottom:12px; display:none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <a class="back" href="index.html"><i class="fa-solid fa-arrow-left"></i></a>
+      <h2>Send to Wallet</h2>
+    </header>
+
+    <!-- Form -->
+    <section class="card">
+      <h3>Transfer Money</h3>
+      <form id="transferForm">
+        <label for="account">Recipient Account (10 digits)</label>
+        <input type="text" id="account" name="account" maxlength="10" placeholder="Enter 10-digit account number" required>
+        <div id="receiverName" class="receiver-info"></div>
+
+        <label for="amount">Amount (₦)</label>
+        <input type="number" id="amount" name="amount" placeholder="Enter amount" required>
+
+        <div id="error" class="error"></div>
+        <div id="success" class="success"></div>
+
+        <button type="submit" class="btn">Send Money</button>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    // Current user and balance
+    const currentUser = JSON.parse(localStorage.getItem("user"));
+    let balance = parseFloat(localStorage.getItem("balance")) || 0;
+
+    // All users (simulate DB)
+    let users = JSON.parse(localStorage.getItem("users")) || [];
+
+    const accountInput = document.getElementById("account");
+    const receiverNameDiv = document.getElementById("receiverName");
+    const form = document.getElementById("transferForm");
+    const errorDiv = document.getElementById("error");
+    const successDiv = document.getElementById("success");
+
+    // Show receiver name when account is typed
+    accountInput.addEventListener("input", () => {
+      const acct = accountInput.value.trim();
+      if (acct.length === 10) {
+        const receiver = users.find(u => u.account === acct);
+        if (receiver) {
+          receiverNameDiv.style.display = "block";
+          receiverNameDiv.textContent = "Receiver: " + receiver.username;
+        } else {
+          receiverNameDiv.style.display = "block";
+          receiverNameDiv.textContent = "❌ Account not found!";
+        }
+      } else {
+        receiverNameDiv.style.display = "none";
+      }
+    });
+
+    // Handle transfer
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      errorDiv.style.display = "none";
+      successDiv.style.display = "none";
+
+      const acct = accountInput.value.trim();
+      const amount = parseFloat(document.getElementById("amount").value);
+
+      if (acct.length !== 10) {
+        errorDiv.textContent = "Invalid account number.";
+        errorDiv.style.display = "block";
+        return;
+      }
+      if (isNaN(amount) || amount <= 0) {
+        errorDiv.textContent = "Enter a valid amount.";
+        errorDiv.style.display = "block";
+        return;
+      }
+      if (amount > balance) {
+        errorDiv.textContent = "Insufficient balance.";
+        errorDiv.style.display = "block";
+        return;
+      }
+
+      const receiver = users.find(u => u.account === acct);
+      if (!receiver) {
+        errorDiv.textContent = "Recipient account not found.";
+        errorDiv.style.display = "block";
+        return;
+      }
+
+      // Deduct sender balance
+      balance -= amount;
+      localStorage.setItem("balance", balance);
+
+      // Add to receiver's balance
+      let receiverBalance = parseFloat(localStorage.getItem(`balance_${receiver.username}`)) || 0;
+      receiverBalance += amount;
+      localStorage.setItem(`balance_${receiver.username}`, receiverBalance);
+
+      // Record transaction
+      let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+      transactions.push({
+        from: currentUser.username,
+        to: receiver.username,
+        amount: amount,
+        date: new Date().toLocaleString()
+      });
+      localStorage.setItem("transactions", JSON.stringify(transactions));
+
+      // Success
+      successDiv.textContent = `₦${amount.toFixed(2)} sent to ${receiver.username}`;
+      successDiv.style.display = "block";
+      form.reset();
+      receiverNameDiv.style.display = "none";
+    });
+  </script>
+</body>
+  </html>
