@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Service – Green Theme</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --primary:#00c853;       /* Green */
+      --primary-dark:#009624;
+      --bg:#f9f9f9;
+      --card:#fff;
+      --text:#1b1b1b;
+      --muted:#666;
+      --line:#e0e0e0;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+    }
+    .app { max-width:440px; margin:0 auto; padding-bottom:40px; }
+
+    /* Top bar */
+    .topbar {
+      display:flex; align-items:center; gap:10px;
+      padding:14px; border-bottom:1px solid var(--line);
+      background:var(--card); position:sticky; top:0; z-index:10;
+    }
+    .topbar .back { font-size:18px; color:var(--text); cursor:pointer; text-decoration:none; }
+    .topbar h2 { font-size:16px; font-weight:600; }
+
+    /* Section */
+    .section {
+      margin:12px; background:var(--card); border-radius:14px; padding:14px;
+    }
+    .section h3 { font-size:14px; font-weight:700; margin-bottom:12px; }
+
+    .grid {
+      display:grid; grid-template-columns:repeat(4,1fr); gap:20px 12px;
+    }
+    .item {
+      text-align:center; font-size:12px; color:var(--muted); cursor:pointer;
+    }
+    .item i {
+      display:block; margin:0 auto 6px;
+      font-size:20px; color:var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <a href="index.html" class="back"><i class="fa-solid fa-arrow-left"></i></a>
+      <h2>My Service</h2>
+    </header>
+
+    <!-- Wealth -->
+    <section class="section">
+      <h3>Wealth</h3>
+      <div class="grid">
+        <div class="item"><i class="fa-solid fa-box"></i>CashBox</div>
+        <div class="item"><i class="fa-solid fa-lightbulb"></i>SmartEarn</div>
+        <div class="item"><i class="fa-solid fa-piggy-bank"></i>Fixed Savings</div>
+        <div class="item"><i class="fa-solid fa-bullseye"></i>Target Savings</div>
+        <div class="item"><i class="fa-solid fa-shield-halved"></i>Insurance</div>
+        <div class="item"><i class="fa-solid fa-chart-line"></i>Mutual Funds</div>
+        <div class="item"><i class="fa-solid fa-coins"></i>Trial Cash</div>
+        <div class="item"><i class="fa-solid fa-credit-card"></i>Loan</div>
+      </div>
+    </section>
+
+    <!-- Bill Payments -->
+    <section class="section">
+      <h3>Bill Payments</h3>
+      <div class="grid">
+        <div class="item"><i class="fa-solid fa-phone"></i>Airtime</div>
+        <div class="item"><i class="fa-solid fa-signal"></i>Data</div>
+        <div class="item"><i class="fa-solid fa-dice"></i>Betting</div>
+        <div class="item"><i class="fa-solid fa-bolt"></i>Electricity</div>
+
+        <div class="item"><i class="fa-solid fa-tv"></i>TV</div>
+        <div class="item"><i class="fa-solid fa-gift"></i>Gift Card</div>
+        <div class="item"><i class="fa-solid fa-gamepad"></i>Gaming</div>
+        <div class="item"><i class="fa-solid fa-globe"></i>Internet</div>
+
+        <div class="item"><i class="fa-solid fa-book"></i>JAMB</div>
+        <div class="item"><i class="fa-solid fa-file-lines"></i>WAEC</div>
+        <div class="item"><i class="fa-solid fa-graduation-cap"></i>Education</div>
+        <div class="item"><i class="fa-solid fa-id-card"></i>Cowry Card</div>
+
+        <div class="item"><i class="fa-solid fa-bus"></i>Transport</div>
+        <div class="item"><i class="fa-solid fa-droplet"></i>Water</div>
+        <div class="item"><i class="fa-solid fa-landmark"></i>Government</div>
+        <div class="item"><i class="fa-solid fa-hotel"></i>Travel & Hotel</div>
+      </div>
+    </section>
+
+    <!-- Transfer -->
+    <section class="section">
+      <h3>Transfer</h3>
+      <div class="grid">
+        <div class="item"><i class="fa-solid fa-user"></i>To PalmPay</div>
+        <div class="item"><i class="fa-solid fa-building-columns"></i>To Bank</div>
+        <div class="item"><i class="fa-solid fa-qrcode"></i>QR Code</div>
+        <div class="item"><i class="fa-solid fa-money-bill"></i>Pay Me</div>
+        <div class="item"><i class="fa-solid fa-shop"></i>Pay Shop</div>
+      </div>
+    </section>
+
+    <!-- Rewards -->
+    <section class="section">
+      <h3>Rewards</h3>
+      <div class="grid">
+        <div class="item"><i class="fa-solid fa-gift"></i>Refer & Earn</div>
+        <div class="item"><i class="fa-solid fa-envelope"></i>Invitation</div>
+      </div>
+    </section>
+  </div>
+</body>
+          </html>
