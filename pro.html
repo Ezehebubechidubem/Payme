@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profile</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --primary:#00c853;
+      --primary-dark:#009624;
+      --bg:#f9f9f9;
+      --card:#fff;
+      --text:#1b1b1b;
+      --muted:#666;
+      --line:#e0e0e0;
+    }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);margin:0}
+    .app{max-width:440px;margin:auto}
+
+    .topbar{display:flex;align-items:center;padding:14px;background:var(--card);border-bottom:1px solid var(--line)}
+    .topbar a{color:var(--text);font-size:18px;margin-right:10px}
+    .topbar h2{font-size:16px;font-weight:600}
+
+    .profile-header{text-align:center;padding:30px 14px;background:var(--card);margin-bottom:12px}
+    .avatar{width:90px;height:90px;border-radius:50%;background:#eee center/cover no-repeat;margin:0 auto 12px;border:3px solid var(--primary);cursor:pointer}
+    input[type=file]{display:none}
+    h3{font-size:18px;margin-bottom:6px}
+    p{font-size:14px;color:var(--muted)}
+
+    .details{background:var(--card);margin:12px;padding:16px;border-radius:14px}
+    .details h4{margin-bottom:10px;font-size:15px}
+    .details p{margin:6px 0}
+    .details strong{color:var(--primary-dark)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a href="index.html"><i class="fa-solid fa-arrow-left"></i></a>
+      <h2>My Profile</h2>
+    </header>
+
+    <div class="profile-header">
+      <label for="uploadImg">
+        <div class="avatar" id="avatar"></div>
+      </label>
+      <input type="file" id="uploadImg" accept="image/*" />
+      <h3 id="profileUsername">User</h3>
+      <p id="profilePhone"></p>
+    </div>
+
+    <div class="details">
+      <h4>Account Details</h4>
+      <p><strong>Username:</strong> <span id="detailUsername"></span></p>
+      <p><strong>Phone Number:</strong> <span id="detailPhone"></span></p>
+      <p><strong>Account Number:</strong> <span id="detailAccount"></span></p>
+    </div>
+  </div>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (user) {
+      document.getElementById("profileUsername").innerText = user.username;
+      document.getElementById("profilePhone").innerText = "Phone: " + user.phone;
+      document.getElementById("detailUsername").innerText = user.username;
+      document.getElementById("detailPhone").innerText = user.phone;
+      document.getElementById("detailAccount").innerText = user.phone.slice(-10);
+
+      if (user.image) {
+        document.getElementById("avatar").style.backgroundImage = `url(${user.image})`;
+      }
+    } else {
+      alert("⚠️ Please log in again.");
+      window.location.href = "paymelogin.html";
+    }
+
+    // upload image
+    document.getElementById("uploadImg").addEventListener("change", function(){
+      const file = this.files[0];
+      if (file && file.size <= 2 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = function(e){
+          document.getElementById("avatar").style.backgroundImage = `url(${e.target.result})`;
+          user.image = e.target.result;
+          localStorage.setItem("user", JSON.stringify(user));
+        }
+        reader.readAsDataURL(file);
+      } else {
+        alert("❌ File too large! Max 2MB allowed.");
+      }
+    });
+  </script>
+</body>
+</html>
