@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Settings</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <style>
+    :root {--primary:#00c853;--primary-dark:#009624;--bg:#f9f9f9;--card:#fff;--line:#e0e0e0}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);margin:0}
+    .app{max-width:440px;margin:auto}
+    .topbar{display:flex;align-items:center;padding:14px;background:var(--card);border-bottom:1px solid var(--line)}
+    .topbar a{color:#000;font-size:18px;margin-right:10px}
+    .topbar h2{font-size:16px;font-weight:600}
+    .settings{background:var(--card);margin:12px;padding:16px;border-radius:14px}
+    .settings label{display:block;margin:8px 0 4px}
+    .settings input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:10px}
+    .settings button{width:100%;padding:10px;background:var(--primary);color:#fff;font-weight:600;border:none;border-radius:8px;cursor:pointer}
+    .settings button:hover{background:var(--primary-dark)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a href="profile.html"><i class="fa-solid fa-arrow-left"></i></a>
+      <h2>Settings</h2>
+    </header>
+
+    <div class="settings">
+      <label for="newPhone">Change Phone Number</label>
+      <input type="text" id="newPhone" placeholder="Enter new 11-digit phone">
+      
+      <label for="newPassword">Change Password</label>
+      <input type="password" id="newPassword" placeholder="Enter new password">
+      
+      <button onclick="updateSettings()">Update</button>
+    </div>
+  </div>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem("user"));
+
+    function updateSettings(){
+      const newPhone = document.getElementById("newPhone").value.trim();
+      const newPassword = document.getElementById("newPassword").value.trim();
+
+      if (newPhone && (isNaN(newPhone) || newPhone.length !== 11)) {
+        alert("❌ Phone number must be exactly 11 digits!");
+        return;
+      }
+      if (newPhone) user.phone = newPhone;
+      if (newPassword) user.password = newPassword;
+
+      localStorage.setItem("user", JSON.stringify(user));
+      alert("✅ Settings updated!");
+      window.location.href = "profile.html";
+    }
+  </script>
+</body>
+</html>
