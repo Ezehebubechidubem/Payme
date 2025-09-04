@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create Account</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .form-container {
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 320px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      color: #444;
+      display: block;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    input:focus {
+      border-color: #00c853;
+      outline: none;
+    }
+    button {
+      width: 100%;
+      background: #00c853;
+      border: none;
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #009624;
+    }
+    .switch {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    .switch a {
+      color: #00c853;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <h2>Create Account</h2>
+    <form>
+      <label for="username">Username</label>
+      <input type="text" id="username" placeholder="Enter username" required>
+
+      <label for="phone">Phone Number</label>
+      <input type="text" id="phone" maxlength="11" placeholder="Enter phone number" required>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="Enter password" required>
+
+      <button type="submit">Register</button>
+    </form>
+    <div class="switch">
+      Already have an account? <a href="paymelogin.html">Login</a>
+    </div>
+  </div>
+
+  <script>
+  document.querySelector("form").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    const username = document.getElementById("username").value.trim();
+    const phone = document.getElementById("phone").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (phone.length !== 11 || isNaN(phone)) {
+      alert("❌ Phone number must be exactly 11 digits!");
+      return;
+    }
+
+    // Create account number (last 10 digits of phone)
+    const accountNumber = phone.slice(-10);
+
+    // Save user in localStorage
+    const user = { username, phone, password, accountNumber };
+    localStorage.setItem("user", JSON.stringify(user));
+
+    alert("✅ Registration successful! Your account number is: " + accountNumber);
+
+    // Redirect to login page
+    window.location.href = "paymelogin.html";
+  });
+  </script>
+</body>
+                                 </html>
