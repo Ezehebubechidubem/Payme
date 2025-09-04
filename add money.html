@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Add Money</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 400px;
+      margin: auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #00c853;
+    }
+    .tabs {
+      display: flex;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #ddd;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      color: #555;
+    }
+    .tab.active {
+      color: #00c853;
+      border-bottom: 2px solid #00c853;
+    }
+    .tab-content {
+      display: none;
+      margin-top: 20px;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      display: block;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    button {
+      width: 100%;
+      background: #00c853;
+      border: none;
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    button:hover {
+      background: #009624;
+    }
+    .info-box {
+      background: #e8f5e9;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    .copy-btn {
+      background: #009624;
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-left: 6px;
+    }
+    .back-btn {
+      background: #555;
+    }
+    .back-btn:hover {
+      background: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Add Money</h2>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-tab="demo">Demo</div>
+      <div class="tab" data-tab="real">Real</div>
+    </div>
+
+    <!-- Demo Add Money -->
+    <div class="tab-content active" id="demo">
+      <label for="demoAmount">Enter Amount</label>
+      <input type="number" id="demoAmount" placeholder="₦0.00" />
+      <button onclick="simulateAddMoney()">Simulate Add Money</button>
+    </div>
+
+    <!-- Real Add Money -->
+    <div class="tab-content" id="real">
+      <div class="info-box">
+        <p><strong>Account Number:</strong> 
+          <span id="accountNumber"></span>
+          <span class="copy-btn" onclick="copyAccount()">Copy</span>
+        </p>
+        <p><strong>Username:</strong> <span id="displayUsername"></span></p>
+      </div>
+      <button onclick="alert('Please transfer to the account number above.')">Proceed</button>
+    </div>
+
+    <!-- Back button -->
+    <button class="back-btn" onclick="window.location.href='index.html'">⬅ Back to Dashboard</button>
+  </div>
+
+  <script>
+    // Switch tabs
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    // Load user
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (user) {
+      const accNumber = user.phone.slice(-10);
+      document.getElementById("accountNumber").innerText = accNumber;
+      document.getElementById("displayUsername").innerText = user.username;
+    } else {
+      alert("⚠️ No user found. Please register first.");
+      window.location.href = "paymeregister.html";
+    }
+
+    // Copy account number
+    function copyAccount() {
+      const accNumber = document.getElementById("accountNumber").innerText;
+      navigator.clipboard.writeText(accNumber).then(() => {
+        alert("✅ Account number copied!");
+      });
+    }
+
+    // Simulate add money
+    function simulateAddMoney() {
+      const amount = parseFloat(document.getElementById("demoAmount").value);
+      if (!amount || amount <= 0) {
+        alert("Please enter a valid amount.");
+        return;
+      }
+
+      // Update balance
+      let balance = parseFloat(localStorage.getItem("balance")) || 0;
+      balance += amount;
+      localStorage.setItem("balance", balance);
+
+      // Save transaction
+      let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+      const newTransaction = {
+        type: "Deposit",
+        amount: amount,
+        date: new Date().toLocaleString()
+      };
+      transactions.push(newTransaction);
+      localStorage.setItem("transactions", JSON.stringify(transactions));
+
+      alert("✅ ₦" + amount + " added successfully!");
+      window.location.href = "index.html"; // redirect to dashboard
+    }
+  </script>
+</body>
+</html>
