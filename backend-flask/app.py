@@ -8,7 +8,7 @@ import traceback
 import requests
 
 # Nubapi config
-NUBAPI_URL = "https://nubapi.com/verify"
+NUBAPI_URL = "https://nubapi.com/api/verify"
 NUBAPI_KEY = "EmOh5qt0KyfrI8KEoNDdQEmcMb5WpLDVIMuCcAzS4ca6c749"
 
 # Accept both names and NIP codes (extend as you need)
@@ -327,20 +327,16 @@ def resolve_account():
         account_number = data.get("account_number")
         bank_code = data.get("bank_code")
 
-    if not account_number:
-        return jsonify({"status": "error", "message": "Missing account_number"}), 400
+    if not account_number or not bank_code:
+        return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
 
     try:
-        url = "https://nubapi.com/verify"
-        params = {"account_number": account_number}
-        if bank_code:
-            params["bank_code"] = bank_code
-
-        resp = requests.get(url, params=params, timeout=10)
-        raw = resp.text
-        status = resp.status_code
-
-        return jsonify({"status": "upstream", "code": status, "raw": raw}), status
+        resp = requests.get(
+            NUBAPI_URL,
+            params={"account_number": account_number, "bank_code": bank_code, "api_key": NUBAPI_KEY},
+            timeout=10
+        )
+        return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 # -------------------------------------------------
