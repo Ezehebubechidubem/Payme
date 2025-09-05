@@ -20,7 +20,6 @@
       --badge:#ff3b30;
       --text:#1b1b1b;
     }
-
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%}
     body{
@@ -28,12 +27,9 @@
       background:var(--bg);
       color:var(--text);
       -webkit-font-smoothing:antialiased;
-      padding-bottom:84px; /* space for bottom nav */
+      padding-bottom:84px;
     }
-
     .app{max-width:440px;margin:0 auto}
-
-    /* ---------- top app bar ---------- */
     .topbar{
       background:var(--card);
       padding:14px 16px 12px;
@@ -41,121 +37,63 @@
       border-bottom:1px solid var(--line);
       position:sticky;top:0;z-index:10;
     }
-    .avatar{
-      width:34px;height:34px;border-radius:50%;
-      background:linear-gradient(135deg,#222,#666);
-      flex:0 0 auto;
-    }
+    .avatar{width:34px;height:34px;border-radius:50%;
+      background:linear-gradient(135deg,#222,#666);flex:0 0 auto;}
     .hello{line-height:1.1}
     .hello .hi{font-weight:700;font-size:15px}
     .hello .sub{font-size:12px;color:var(--muted);margin-top:2px}
     .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:14px}
     .icon-btn{position:relative;font-size:18px;color:var(--muted);cursor:pointer}
-    .badge{
-      position:absolute;top:-6px;right:-8px;
-      background:var(--badge);color:#fff;font-size:10px;font-weight:700;
-      line-height:1;padding:3px 5px;border-radius:10px;
-    }
-
-    /* ---------- balance card ---------- */
-    .card{
-      background:var(--soft);
-      margin:12px; padding:14px; border-radius:14px;
-      box-shadow:0 1px 0 rgba(0,0,0,.02) inset;
-    }
+    .badge{position:absolute;top:-6px;right:-8px;background:var(--badge);color:#fff;
+      font-size:10px;font-weight:700;line-height:1;padding:3px 5px;border-radius:10px;}
+    .card{background:var(--soft);margin:12px; padding:14px; border-radius:14px;
+      box-shadow:0 1px 0 rgba(0,0,0,.02) inset;}
     .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-    .label{
-      font-size:12px;color:#555;display:flex;align-items:center;gap:6px
-    }
+    .label{font-size:12px;color:#555;display:flex;align-items:center;gap:6px}
     .label i{font-size:12px}
-    .amount{
-      margin-top:4px;font-weight:800;font-size:26px;color:var(--primary-dark);
-      display:flex;align-items:center;gap:6px
-    }
-    .chip-link{
-      font-size:12px;color:#555;display:flex;align-items:center;gap:6px
-    }
+    .amount{margin-top:4px;font-weight:800;font-size:26px;color:var(--primary-dark);
+      display:flex;align-items:center;gap:6px}
+    .chip-link{font-size:12px;color:#555;display:flex;align-items:center;gap:6px}
     .ghost-link{font-weight:600;color:var(--primary-dark)}
-    .btn{
-      background:var(--primary);color:#fff;border:0;cursor:pointer;
-      padding:10px 16px;border-radius:22px;font-weight:700;font-size:13px
-    }
+    .btn{background:var(--primary);color:#fff;border:0;cursor:pointer;
+      padding:10px 16px;border-radius:22px;font-weight:700;font-size:13px}
     .btn:hover{background:var(--primary-dark)}
-
-    /* small inline promo inside card */
-    .inline-promo{
-      margin-top:12px;background:#fff;border-radius:10px;
-      padding:10px 12px;display:flex;align-items:center;gap:10px
-    }
-    .inline-promo .dot{
-      flex:0 0 auto;width:18px;height:18px;border-radius:50%;
-      background:#c8e6c9;display:grid;place-items:center;color:var(--primary);font-size:11px
-    }
+    .inline-promo{margin-top:12px;background:#fff;border-radius:10px;
+      padding:10px 12px;display:flex;align-items:center;gap:10px}
+    .inline-promo .dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;
+      background:#c8e6c9;display:grid;place-items:center;color:var(--primary);font-size:11px}
     .inline-promo .text{font-size:13px;color:#333}
     .inline-promo .link{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--primary);font-weight:700}
-
-    /* ---------- quick actions row ---------- */
-    .quick{
-      background:var(--card);margin:0 12px;border-radius:14px;padding:14px 8px;
-      display:grid;grid-template-columns:repeat(3,1fr);text-align:center
-    }
-    .qa{
-      display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:#333
-    }
+    .quick{background:var(--card);margin:0 12px;border-radius:14px;padding:14px 8px;
+      display:grid;grid-template-columns:repeat(3,1fr);text-align:center}
+    .qa{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:#333}
     .qa i{font-size:20px;color:var(--primary)}
     .fee{font-size:10px;background:#fff3cd;color:#8a6d3b;border:1px solid #ffe49d;padding:1px 5px;border-radius:7px;margin-left:4px}
     .qr{font-size:11px;background:#c8e6c9;color:#2e7d32;padding:2px 6px;border-radius:7px;margin-left:6px}
-
-    /* ---------- verve promo card ---------- */
-    .promo-card{
-      margin:12px;background:var(--card);border-radius:14px;padding:14px;
-      display:flex;align-items:center;justify-content:space-between;gap:10px
-    }
+    .promo-card{margin:12px;background:var(--card);border-radius:14px;padding:14px;
+      display:flex;align-items:center;justify-content:space-between;gap:10px}
     .promo-card .title{font-weight:800;color:#2e7d32}
     .promo-card .sub{font-size:12px;color:#666;margin-top:2px}
     .outline{border:1px solid var(--primary);background:#fff;color:var(--primary);padding:8px 14px;border-radius:18px;font-weight:700;cursor:pointer}
-
-    /* ---------- services ---------- */
-    .services{
-      margin:12px;background:var(--card);border-radius:14px;padding:14px
-    }
+    .services{margin:12px;background:var(--card);border-radius:14px;padding:14px}
     .services .head{display:flex;align-items:center;justify-content:space-between}
     .services .head h3{font-size:16px}
     .services .more{color:#666;display:flex;align-items:center;gap:6px;font-size:13px}
-    .grid{
-      margin-top:12px;
-      display:grid;grid-template-columns:repeat(4,1fr);gap:18px 12px
-    }
-    .svc{
-      text-align:center;font-size:12.5px;color:#333;cursor:pointer
-    }
+    .grid{margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:18px 12px}
+    .svc{text-align:center;font-size:12.5px;color:#333;cursor:pointer}
     .svc i{display:block;margin:0 auto 6px;font-size:20px;color:var(--primary)}
-
-    /* big green banner */
-    .big-banner{
-      margin:12px;background:linear-gradient(135deg,#00c853,#43a047);
-      color:#fff;border-radius:14px;padding:16px;text-align:center
-    }
+    .big-banner{margin:12px;background:linear-gradient(135deg,#00c853,#43a047);
+      color:#fff;border-radius:14px;padding:16px;text-align:center}
     .big-banner h2{font-size:18px;font-weight:900;letter-spacing:.2px}
     .tag{display:inline-block;background:#ffec66;color:#2e2e2e;border-radius:16px;padding:7px 12px;font-weight:800;margin-top:10px}
-
-    /* refer & earn card */
-    .refer{
-      margin:12px;background:var(--card);border-radius:14px;padding:14px;
-      display:flex;align-items:center;justify-content:space-between
-    }
+    .refer{margin:12px;background:var(--card);border-radius:14px;padding:14px;
+      display:flex;align-items:center;justify-content:space-between}
     .refer h4{font-size:15px}
     .refer p{font-size:13px;color:#666;margin-top:3px}
     .refer .go{background:var(--primary);color:#fff;border:0;border-radius:18px;padding:8px 16px;font-weight:700}
-
-    /* ---------- bottom nav ---------- */
-    .bottom{
-      position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
-      display:grid;grid-template-columns:repeat(5,1fr);padding:8px 0;z-index:20
-    }
-    .nav-item{
-      text-align:center;font-size:11px;color:#666
-    }
+    .bottom{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+      display:grid;grid-template-columns:repeat(5,1fr);padding:8px 0;z-index:20}
+    .nav-item{text-align:center;font-size:11px;color:#666}
     .nav-item i{display:block;font-size:18px;margin-bottom:2px;color:#666}
     .nav-item.active, .nav-item.active i{color:#000}
     a{text-decoration:none;color:inherit}
@@ -166,7 +104,7 @@
   <div class="app">
     <!-- Top bar -->
     <header class="topbar">
-       <div class="avatar" aria-hidden="true"></div>
+      <div class="avatar" aria-hidden="true"></div>
       <div class="hello">
         <div class="hi"><a href="profile.html" id="hiUser">Hi, User</a></div>
         <div class="sub">Welcome, let's make payments!</div>
@@ -210,7 +148,7 @@
       </div>
       <div class="qa">
         <i class="fa-solid fa-user"></i>
-        <a href="toBank.html"> <div>To Wallet</div></a>
+        <a href="toBank.html"><div>To Wallet</div></a>
       </div>
       <div class="qa">
         <i class="fa-solid fa-qrcode"></i>
@@ -218,7 +156,7 @@
       </div>
     </section>
 
-    <!-- Verve promo card -->
+    <!-- Promo -->
     <section class="promo-card">
       <div>
         <div class="title">Verve Virtual Card 50% Off today</div>
@@ -238,12 +176,10 @@
         <div class="svc"><i class="fa-solid fa-signal"></i>Data</div>
         <div class="svc"><i class="fa-solid fa-dice"></i>Betting</div>
         <div class="svc"><i class="fa-solid fa-bolt"></i>Electricity</div>
-
         <div class="svc"><i class="fa-solid fa-shield-halved"></i>Insurance</div>
         <div class="svc"><i class="fa-solid fa-coins"></i>Loan</div>
         <div class="svc"><i class="fa-solid fa-tv"></i>TV</div>
         <div class="svc"><i class="fa-solid fa-gift"></i>Refer &amp; Earn</div>
-
         <div class="svc"><i class="fa-solid fa-money-bill"></i>Withdraw</div>
         <div class="svc"><i class="fa-solid fa-box"></i>CashBox</div>
         <div class="svc"><i class="fa-solid fa-lightbulb"></i>SmartEarn</div>
@@ -276,16 +212,31 @@
     <a class="nav-item" href="profile.html"><i class="fa-solid fa-user"></i>Me</a>
   </nav>
 
-  <script>
-    // Load user info
-    const user = JSON.parse(localStorage.getItem("user"));
-    if (user) {
-      document.getElementById("hiUser").innerText = "Hi, " + user.username;
+<script>
+  async function loadDashboard() {
+    let user = JSON.parse(localStorage.getItem("loggedInUser"));
+
+    if (!user) return;
+
+    try {
+      // Get latest balance from backend
+      const response = await fetch(`https://payme-update.onrender.com/balance/${user.phone}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        user.balance = data.balance;
+        localStorage.setItem("loggedInUser", JSON.stringify(user));
+      }
+    } catch (err) {
+      console.warn("Backend not reachable, using local data.");
     }
 
-    // Load balance
-    let balance = parseFloat(localStorage.getItem("balance")) || 0;
-    document.getElementById("balance").innerText = "₦" + balance.toFixed(2);
-  </script>
+    document.getElementById("hiUser").innerText = "Hi, " + user.username;
+    document.getElementById("balance").innerText = "₦" + (user.balance || 0).toFixed(2);
+  }
+
+  // ✅ Run when dashboard loads
+  window.onload = loadDashboard;
+</script>
 </body>
-  </html>
+</html>
