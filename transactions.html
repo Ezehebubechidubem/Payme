@@ -39,7 +39,7 @@
 </head>
 <body>
   <header>
-    <a href="index.html"><i class="fa-solid fa-arrow-left" style="cursor:pointer"></i></a>
+    <a href="javascript:void(0);" onclick="goBack()"><i class="fa-solid fa-arrow-left"></i></a>
     <h2>Transaction History</h2>
     <span style="width:20px"></span>
   </header>
@@ -93,6 +93,14 @@
     }
 
     renderTransactions();
+
+function goBack() {
+  if (document.referrer && document.referrer !== "") {
+    window.history.back(); // go to previous page in history
+  } else {
+    window.location.replace("profile.html"); // fallback if no history
+  }
+}
   </script>
 </body>
 </html>
