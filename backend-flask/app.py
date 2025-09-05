@@ -317,84 +317,36 @@ def user_by_account(account_number: str):
         "phone": row["phone"]
     }), 200
 
-@app.route("/resolve_account", methods=["GET"])
+@app.route("/resolve_account", methods=["POST"])
 def resolve_account():
-    account_number = (request.args.get("account_number") or "").strip()
-    bank_code_in = (request.args.get("bank_code") or "").strip().upper()
+    data = request.json
+    account_number = data.get("account_number")
+    bank_code = data.get("bank_code")
 
-    if not account_number or not bank_code_in:
-        return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
-    if not account_number.isdigit() or len(account_number) != 10:
-        return jsonify({"status": "error", "message": "account_number must be 10 digits"}), 400
-
-    # Normalize bank code (support names and codes)
-    bank_code = BANK_CODE_MAP.get(bank_code_in, bank_code_in)
+    if not account_number or not bank_code:
+        return jsonify({"status": "error", "message": "Missing account number or bank code"}), 400
 
     try:
-        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
-        params = {"account_number": account_number, "bank_code": bank_code}
-
-        # Call Nubapi
-        resp = requests.get(NUBAPI_URL, params=params, headers=headers, timeout=12)
-
-        # Try to parse JSON; if not JSON, keep raw text so we can see the error
-        try:
-            data = resp.json()
-        except Exception:
-            data = {"raw": resp.text}
-
-        # Helpful logs (visible in Render logs)
-        print(f"[NUBAPI] GET {NUBAPI_URL} -> {resp.status_code} | params={params} | body={data}", flush=True)
-
-        # Happy path from Nubapi
-        if resp.status_code == 200 and isinstance(data, dict) and data.get("account_name"):
-            return jsonify({"status": "success", "account_name": data["account_name"]}), 200
-
-        # If Nubapi didn’t resolve, fall back to your local DB for demo users
-        # (so your frontend can still proceed in testing)
-        with get_conn() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT username FROM users WHERE account_number = ?", (account_number,))
-            local = cur.fetchone()
-            if local:
-                return jsonify({"status": "success", "account_name": local["username"]}), 200
-
-        # Otherwise surface Nubapi’s message/status so you can see why it failed
-        message = None
-        if isinstance(data, dict):
-            message = data.get("message") or data.get("error") or data.get("raw")
-        if not message:
-            message = "Account not found or Nubapi error"
-
-        # Use Nubapi’s status if it’s a client error; default to 502 for upstream error
-        status = resp.status_code if 400 <= resp.status_code < 500 else 502
-        return jsonify({"status": "error", "message": message, "upstream_status": resp.status_code}), status
-
-    except requests.Timeout:
-        return jsonify({"status": "error", "message": "Timeout contacting Nubapi"}), 504
+        resp = requests.post(
+            f"https://nubapi.com/account/resolve?api_key={NUBAPI_KEY}",
+            json={"account_number": account_number, "bank_code": bank_code},
+            timeout=10
+        )
+        return resp.json(), resp.status_code
     except Exception as e:
-        # Final fallback: try local DB even on exception
-        try:
-            with get_conn() as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT username FROM users WHERE account_number = ?", (account_number,))
-                local = cur.fetchone()
-                if local:
-                    return jsonify({"status": "success", "account_name": local["username"]}), 200
-        except Exception:
-            pass
-        return jsonify({"status": "error", "message": f"Error connecting to Nubapi: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/banks", methods=["GET"])
 def banks():
     try:
-        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
-        resp = requests.get("https://nubapi.com/banks", headers=headers, timeout=10)
-
-        # Instead of forcing JSON, return raw text
-        return resp.text, resp.status_code
+        resp = requests.get(
+            f"https://nubapi.com/banks?api_key={NUBAPI_KEY}",
+            timeout=10
+        )
+        return resp.json(), resp.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
