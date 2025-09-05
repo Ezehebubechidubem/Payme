@@ -318,7 +318,6 @@ def user_by_account(account_number: str):
     }), 200
 
 
-
 @app.route("/resolve_account", methods=["GET", "POST"])
 def resolve_account():
     if request.method == "GET":
@@ -339,18 +338,25 @@ def resolve_account():
             params["bank_code"] = bank_code
 
         resp = requests.get(NUBAPI_URL, headers=headers, params=params, timeout=10)
-        return jsonify(resp.json()), resp.status_code
+        nubapi_data = resp.json()
+
+        # 🔄 Normalize NubAPI response
+        if nubapi_data.get("status") in (True, "success") and nubapi_data.get("data"):
+            return jsonify({
+                "status": "success",
+                "account_name": nubapi_data["data"].get("account_name"),
+                "account_number": nubapi_data["data"].get("account_number"),
+                "bank_code": nubapi_data["data"].get("bank_code")
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": nubapi_data.get("message", "Account not found")
+            }), 404
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-@app.route("/banks", methods=["GET"])
-def banks():
-    try:
-        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
-        resp = requests.get("https://nubapi.com/api/banks", headers=headers, timeout=10)
-        return jsonify(resp.json()), resp.status_code
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
