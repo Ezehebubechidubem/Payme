@@ -317,6 +317,8 @@ def user_by_account(account_number: str):
         "phone": row["phone"]
     }), 200
 
+
+
 @app.route("/resolve_account", methods=["GET", "POST"])
 def resolve_account():
     if request.method == "GET":
@@ -327,18 +329,21 @@ def resolve_account():
         account_number = data.get("account_number")
         bank_code = data.get("bank_code")
 
-    if not account_number or not bank_code:
-        return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
+    if not account_number:
+        return jsonify({"status": "error", "message": "Missing account_number"}), 400
 
     try:
-        resp = requests.get(
-            NUBAPI_URL,
-            params={"account_number": account_number, "bank_code": bank_code, "api_key": NUBAPI_KEY},
-            timeout=10
-        )
+        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
+        params = {"account_number": account_number}
+        if bank_code:
+            params["bank_code"] = bank_code
+
+        resp = requests.get(NUBAPI_URL, headers=headers, params=params, timeout=10)
         return jsonify(resp.json()), resp.status_code
+
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
