@@ -5,10 +5,7 @@ from datetime import datetime
 import os
 import sys
 import traceback
-import requests
 
-NUBAPI_URL = "https://nubapi.com/verify"
-NUBAPI_KEY = os.environ.get("NUBAPI_KEY", "")
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
@@ -385,6 +382,7 @@ def resolve_account():
 
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error connecting to Nubapi: {str(e)}"}), 500
+
 
 # -------------------------------------------------
 # Entry
