@@ -89,7 +89,7 @@
     <input type="number" id="amount" placeholder="Enter amount" required />
 
     <button onclick="makeTransfer()">Send Money</button>
-    <button class="back-btn" onclick="window.location.href='paymelogin.html'">⬅ Back to Dashboard</button>
+    <button class="back-btn" onclick="window.location.href='index.html'">⬅ Back to Dashboard</button>
   </div>
 
   <script>
@@ -103,7 +103,7 @@
                  || JSON.parse(localStorage.getItem("user"));
     if (!currentUser) {
       alert("⚠️ No logged-in user found. Please login first.");
-      window.location.href = "index.html";
+      window.location.href = "paymelogin.html";
     }
 
     let receiverUsername = ""; // ✅ store receiver name
@@ -158,64 +158,72 @@
 
     // ✅ Transfer money
     async function makeTransfer() {
-      const receiverAcc = document.getElementById("accountNumber").value.trim();
-      const amount = parseFloat(document.getElementById("amount").value);
+  const receiverAcc = document.getElementById("accountNumber").value.trim();
+  const amount = parseFloat(document.getElementById("amount").value);
 
-      if (!receiverAcc || receiverAcc.length !== 10) {
-        alert("⚠️ Please enter a valid 10-digit receiver account.");
-        return;
-      }
-      if (!amount || amount <= 0) {
-        alert("⚠️ Enter a valid amount.");
-        return;
-      }
+  if (!receiverAcc || receiverAcc.length !== 10) {
+    alert("⚠️ Please enter a valid 10-digit receiver account.");
+    return;
+  }
+  if (!amount || amount <= 0) {
+    alert("⚠️ Enter a valid amount.");
+    return;
+  }
 
-      const balance = await fetchBalance();
-      if (amount > balance) {
-        alert("❌ Insufficient funds.");
-        return;
-      }
+  
+  // 🚫 Prevent sending to self (support different key names)
+const userAcc = currentUser.account_number || currentUser.acc_number || currentUser.accountNumber;
 
-      try {
-        const response = await fetch(`${API_BASE}/send_money`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender_phone: currentUser.phone,
-            receiver_acc: receiverAcc,
-            amount: amount
-          })
-        });
+if (receiverAcc === userAcc) {
+  alert("❌ You cannot send money to your own account!");
+  return;
+}
 
-        const result = await response.json();
+  const balance = await fetchBalance();
+  if (amount > balance) {
+    alert("❌ Insufficient funds.");
+    return;
+  }
 
-        if (response.ok && result.status === "success") {
-  // Update balance inside loggedInUser
-  let user = JSON.parse(localStorage.getItem("loggedInUser"));
-  user.balance = balance - amount;
-  localStorage.setItem("loggedInUser", JSON.stringify(user));
+  try {
+    const response = await fetch(`${API_BASE}/send_money`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender_phone: currentUser.phone,
+        receiver_acc: receiverAcc,
+        amount: amount
+      })
+    });
 
-  // Save transaction
-  let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-  transactions.push({
-    type: "Transfer Out",
-    amount: amount,
-    description: "Transfer to " + (receiverUsername || receiverAcc),
-    date: new Date().toLocaleString()
-  });
-  localStorage.setItem("transactions", JSON.stringify(transactions));
+    const result = await response.json();
 
-  alert("✅ " + result.message);
-  window.location.hef = ".html";
+    if (response.ok && result.status === "success") {
+      // Update balance inside loggedInUser
+      let user = JSON.parse(localStorage.getItem("loggedInUser"));
+      user.balance = balance - amount;
+      localStorage.setItem("loggedInUser", JSON.stringify(user));
 
-        } else {
-          alert("❌ " + (result.message || "Transfer failed."));
-        }
-      } catch (err) {
-        console.error(err);
-        alert("⚠️ Error connecting to server.");
-      }
+      // Save transaction
+      let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+      transactions.push({
+        type: "Transfer Out",
+        amount: amount,
+        description: "Transfer to " + (receiverUsername || receiverAcc),
+        date: new Date().toLocaleString()
+      });
+      localStorage.setItem("transactions", JSON.stringify(transactions));
+
+      alert("✅ " + result.message);
+      window.location.href = "paymelogin.html"; // go back to dashboard
+    } else {
+      alert("❌ " + (result.message || "Transfer failed."));
     }
+  } catch (err) {
+    console.error(err);
+    alert("⚠️ Error connecting to server.");
+  }
+}
   </script>
 </body>
 </html>
