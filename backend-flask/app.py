@@ -294,13 +294,17 @@ def user_by_account(account_number: str):
 
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT username FROM users WHERE account_number = ?", (account_number,))
+        cur.execute("SELECT username, phone FROM users WHERE account_number = ?", (account_number,))
         row = cur.fetchone()
 
     if not row:
         return jsonify({"status": "error", "message": "Account not found"}), 404
 
-    return jsonify({"status": "success", "username": row["username"]}), 200
+    return jsonify({
+        "status": "success",
+        "username": row["username"],
+        "phone": row["phone"]
+    }), 200
 
 # -------------------------------------------------
 # Entry
