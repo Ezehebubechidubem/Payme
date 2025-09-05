@@ -5,51 +5,7 @@ from datetime import datetime
 import os
 import sys
 import traceback
-import requests
-import json
-# Nubapi config
-NUBAPI_URL = "https://nubapi.com/api/verify"
-NUBAPI_KEY = "EmOh5qt0KyfrI8KEoNDdQEmcMb5WpLDVIMuCcAzS4ca6c749"
 
-# ---------- Banks (NubAPI-style codes) ----------
-BANKS_FILE = os.environ.get("BANKS_FILE", "banks.json")
-_BANKS_CACHE = None
-
-def _load_banks():
-    """Load NubAPI-style bank codes -> bank names as a dict."""
-    global _BANKS_CACHE
-    if _BANKS_CACHE is not None:
-        return _BANKS_CACHE
-
-    # Try reading from a local JSON file first (recommended).
-    try:
-        with open(BANKS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict) and data:
-                _BANKS_CACHE = data
-                return _BANKS_CACHE
-    except Exception:
-        pass
-
-    # Fallback (minimal) so the endpoint still works even without banks.json.
-    _BANKS_CACHE = {
-        "000001": "STERLING BANK",
-        "000002": "KEYSTONE BANK",
-        "000003": "FIRST CITY MONUMENT BANK",
-        "000004": "UNITED BANK FOR AFRICA",
-        "000005": "ACCESS(DIAMOND) BANK",
-        "000006": "JAIZ BANK",
-        "000007": "FIDELITY BANK",
-        "000008": "POLARIS BANK",
-        "000009": "CITI BANK",
-        # ... add the rest here or in banks.json
-    }
-    return _BANKS_CACHE
-
-@app.route("/banks", methods=["GET"])
-def banks():
-    """Return NubAPI-style bank codes -> names."""
-    return jsonify(_load_banks()), 200
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
@@ -350,45 +306,48 @@ def user_by_account(account_number: str):
         "phone": row["phone"]
     }), 200
 
+@app.route("/user/<phone>", methods=["GET"])
+def get_user(phone: str):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT username, phone, account_number, balance FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+    return jsonify({"status": "success", "user": dict(row)}), 200
 
-@app.route("/resolve_account", methods=["GET", "POST"])
-def resolve_account():
-    if request.method == "GET":
-        account_number = request.args.get("account_number")
-        bank_code = request.args.get("bank_code")
-    else:
-        data = request.json or {}
-        account_number = data.get("account_number")
-        bank_code = data.get("bank_code")
 
-    if not account_number:
-        return jsonify({"status": "error", "message": "Missing account_number"}), 400
+@app.route("/update_user", methods=["POST"])
+def update_user():
+    data, err, code = json_required(["phone"])
+    if err:
+        return err, code
 
-    try:
-        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
-        params = {"account_number": account_number}
-        if bank_code:
-            params["bank_code"] = bank_code
+    phone = str(data["phone"]).strip()
+    new_phone = str(data.get("new_phone", "")).strip()
+    new_password = str(data.get("new_password", "")).strip()
 
-        resp = requests.get(NUBAPI_URL, headers=headers, params=params, timeout=10)
-        nubapi_data = resp.json()
+    if new_phone and (not new_phone.isdigit() or len(new_phone) != 11):
+        return jsonify({"status": "error", "message": "New phone must be 11 digits"}), 400
 
-        # 🔄 Normalize NubAPI response
-        if nubapi_data.get("status") in (True, "success") and nubapi_data.get("data"):
-            return jsonify({
-                "status": "success",
-                "account_name": nubapi_data["data"].get("account_name"),
-                "account_number": nubapi_data["data"].get("account_number"),
-                "bank_code": nubapi_data["data"].get("bank_code")
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": nubapi_data.get("message", "Account not found")
-            }), 404
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
 
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        if new_phone:
+            cur.execute("UPDATE users SET phone = ?, account_number = ? WHERE id = ?", 
+                        (new_phone, new_phone[-10:], user["id"]))
+        if new_password:
+            cur.execute("UPDATE users SET password = ? WHERE id = ?", (new_password, user["id"]))
+
+        # fetch updated user
+        cur.execute("SELECT username, phone, account_number, balance FROM users WHERE id = ?", (user["id"],))
+        updated = dict(cur.fetchone())
+
+    return jsonify({"status": "success", "user": updated}), 200
 
 # -------------------------------------------------
 # Entry
