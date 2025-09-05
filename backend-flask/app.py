@@ -317,24 +317,30 @@ def user_by_account(account_number: str):
         "phone": row["phone"]
     }), 200
 
-@app.route("/resolve_account", methods=["POST"])
+@app.route("/resolve_account", methods=["GET", "POST"])
 def resolve_account():
-    data = request.json
-    account_number = data.get("account_number")
-    bank_code = data.get("bank_code")
+    if request.method == "GET":
+        account_number = request.args.get("account_number")
+        bank_code = request.args.get("bank_code")
+    else:  # POST
+        data = request.json or {}
+        account_number = data.get("account_number")
+        bank_code = data.get("bank_code")
 
     if not account_number or not bank_code:
-        return jsonify({"status": "error", "message": "Missing account number or bank code"}), 400
+        return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
 
     try:
-        resp = requests.post(
-            f"https://nubapi.com/account/resolve?api_key={NUBAPI_KEY}",
-            json={"account_number": account_number, "bank_code": bank_code},
+        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
+        resp = requests.get(
+            NUBAPI_URL,
+            params={"account_number": account_number, "bank_code": bank_code},
+            headers=headers,
             timeout=10
         )
-        return resp.json(), resp.status_code
+        return jsonify(resp.json()), resp.status_code
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": f"Error connecting to Nubapi: {str(e)}"}), 500
 
 @app.route("/banks", methods=["GET"])
 def banks():
