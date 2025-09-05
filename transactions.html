@@ -32,8 +32,8 @@
     .tx{display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #eee}
     .tx .info{font-size:13px}
     .tx .amount{font-weight:700}
-    .credit{color:green}
-    .debit{color:red}
+    .Deposit,.Transfer\ In{color:green}
+    .Transfer\ Out{color:red}
     .empty{text-align:center;color:#777;margin-top:30px;font-size:14px}
   </style>
 </head>
@@ -47,27 +47,51 @@
   <div class="tx-list" id="txList"></div>
 
   <script>
-    function renderTransactions() {
-      const txList = JSON.parse(localStorage.getItem("transactions") || "[]");
-      const container = document.getElementById("txList");
-      container.innerHTML = "";
-      if(txList.length === 0){
-        container.innerHTML = "<p class='empty'>No transactions yet</p>";
+    const API_BASE = "https://payme-update.onrender.com";
+
+    async function renderTransactions() {
+      const user = JSON.parse(localStorage.getItem("loggedInUser"));
+      if (!user) {
+        alert("⚠️ Please login first.");
+        window.location.href = "paymelogin.html";
         return;
       }
-      txList.forEach(tx=>{
-        const div = document.createElement("div");
-        div.className = "tx";
-        div.innerHTML = `
-          <div class="info">
-            <div>${tx.desc}</div>
-            <div style="font-size:12px;color:#777">${tx.time}</div>
-          </div>
-          <div class="amount ${tx.type.toLowerCase()}">${tx.type==="Credit"?"+":"-"}₦${tx.amount}</div>
-        `;
-        container.appendChild(div);
-      });
+
+      const container = document.getElementById("txList");
+      container.innerHTML = "<p class='empty'>Loading...</p>";
+
+      try {
+        const res = await fetch(`${API_BASE}/transactions/${user.phone}`);
+        const data = await res.json();
+
+        if (res.ok && data.length > 0) {
+          container.innerHTML = "";
+          data.forEach(tx => {
+            const div = document.createElement("div");
+            div.className = "tx";
+            const sign = (tx.type === "Deposit" || tx.type === "Transfer In") ? "+" : "-";
+            const formattedDate = new Date(tx.date).toLocaleString();
+
+            div.innerHTML = `
+              <div class="info">
+                <div>${tx.type} (${tx.other_party})</div>
+                <div style="font-size:12px;color:#777">${formattedDate}</div>
+              </div>
+              <div class="amount ${tx.type.replace(" ", "\\ ")}">
+                ${sign}₦${tx.amount}
+              </div>
+            `;
+            container.appendChild(div);
+          });
+        } else {
+          container.innerHTML = "<p class='empty'>No transactions yet</p>";
+        }
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = "<p class='empty'>⚠️ Failed to load transactions.</p>";
+      }
     }
+
     renderTransactions();
   </script>
 </body>
