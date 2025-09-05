@@ -6,6 +6,9 @@ import os
 import sys
 import traceback
 import requests
+
+NUBAPI_URL = "https://nubapi.com/verify"
+NUBAPI_KEY = os.environ.get("NUBAPI_KEY", "")
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
