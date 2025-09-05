@@ -306,6 +306,49 @@ def user_by_account(account_number: str):
         "phone": row["phone"]
     }), 200
 
+@app.route("/user/<phone>", methods=["GET"])
+def get_user(phone: str):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT username, phone, account_number, balance FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+    return jsonify({"status": "success", "user": dict(row)}), 200
+
+
+@app.route("/update_user", methods=["POST"])
+def update_user():
+    data, err, code = json_required(["phone"])
+    if err:
+        return err, code
+
+    phone = str(data["phone"]).strip()
+    new_phone = str(data.get("new_phone", "")).strip()
+    new_password = str(data.get("new_password", "")).strip()
+
+    if new_phone and (not new_phone.isdigit() or len(new_phone) != 11):
+        return jsonify({"status": "error", "message": "New phone must be 11 digits"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        if new_phone:
+            cur.execute("UPDATE users SET phone = ?, account_number = ? WHERE id = ?", 
+                        (new_phone, new_phone[-10:], user["id"]))
+        if new_password:
+            cur.execute("UPDATE users SET password = ? WHERE id = ?", (new_password, user["id"]))
+
+        # fetch updated user
+        cur.execute("SELECT username, phone, account_number, balance FROM users WHERE id = ?", (user["id"],))
+        updated = dict(cur.fetchone())
+
+    return jsonify({"status": "success", "user": updated}), 200
+
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
