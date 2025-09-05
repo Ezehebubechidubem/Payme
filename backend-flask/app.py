@@ -287,6 +287,20 @@ def transactions(phone: str):
     ]
     return jsonify(result), 200
 
+@app.route("/user_by_account/<account_number>", methods=["GET"])
+def user_by_account(account_number: str):
+    if not account_number.isdigit() or len(account_number) != 10:
+        return jsonify({"status": "error", "message": "Invalid account number"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT username FROM users WHERE account_number = ?", (account_number,))
+        row = cur.fetchone()
+
+    if not row:
+        return jsonify({"status": "error", "message": "Account not found"}), 404
+
+    return jsonify({"status": "success", "username": row["username"]}), 200
 
 # -------------------------------------------------
 # Entry
