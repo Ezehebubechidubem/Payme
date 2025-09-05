@@ -67,7 +67,7 @@
   <div class="app">
     <!-- Top bar -->
     <header class="topbar">
-      <a href="index.html" class="back"><i class="fa-solid fa-arrow-left"></i></a>
+      <a href="paymelogin.html"><i class="fa-solid fa-arrow-left"></i></a>
       <h2>My Profile</h2>
     </header>
 
@@ -113,5 +113,14 @@
       </div>
     </div>
   </div>
+<script>
+function goBack() {
+  if (document.referrer && document.referrer !== "") {
+    window.history.back(); // go to previous page in history
+  } else {
+    window.location.replace("profile.html"); // fallback if no history
+  }
+}
+</script>
 </body>
 </html>
