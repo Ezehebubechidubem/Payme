@@ -5,6 +5,12 @@ from datetime import datetime
 import os
 import sys
 import traceback
+import requests
+
+# Nubapi config
+NUBAPI_URL = "https://nubapi.com/verify"
+NUBAPI_KEY = "EmOh5qt0KyfrI8KEoNDdQEmcMb5WpLDVIMuCcAzS4ca6c749"
+
 
 # -------------------------------------------------
 # App & CORS
