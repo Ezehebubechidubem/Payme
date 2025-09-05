@@ -385,7 +385,14 @@ def resolve_account():
             pass
         return jsonify({"status": "error", "message": f"Error connecting to Nubapi: {str(e)}"}), 500
 
-
+@app.route("/banks", methods=["GET"])
+def banks():
+    try:
+        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
+        resp = requests.get("https://nubapi.com/banks", headers=headers, timeout=10)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
