@@ -306,8 +306,11 @@ def transactions(user_id: int):
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
+if __name__ != "__main__":  # gunicorn case
+    with app.app_context():
+        init_db()
+
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
-    # Host 0.0.0.0 is required on Render
     app.run(host="0.0.0.0", port=port)
