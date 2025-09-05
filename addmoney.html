@@ -135,61 +135,96 @@
   </div>
 
   <script>
-    // Switch tabs
-    document.querySelectorAll(".tab").forEach(tab => {
-      tab.addEventListener("click", () => {
-        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-        tab.classList.add("active");
-        document.getElementById(tab.dataset.tab).classList.add("active");
-      });
+
+  // Switch tabs
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      tab.classList.add("active");
+      document.getElementById(tab.dataset.tab).classList.add("active");
+    });
+  });
+
+  // Load user
+  const user = JSON.parse(localStorage.getItem("user"));
+  if (user) {
+    const accNumber = user.phone.slice(-10);
+    document.getElementById("accountNumber").innerText = accNumber;
+    document.getElementById("displayUsername").innerText = user.username;
+  } else {
+    alert("⚠️ No user found. Please register first.");
+    window.location.href = "paymeregister.html";
+  }
+
+  // Copy account number
+  function copyAccount() {
+    const accNumber = document.getElementById("accountNumber").innerText;
+    navigator.clipboard.writeText(accNumber).then(() => {
+      alert("✅ Account number copied!");
+    });
+  }
+
+ 
+
+  // Simulate add money (Demo)
+  function simulateAddMoney() {
+    const amount = parseFloat(document.getElementById("demoAmount").value);
+    if (!amount || amount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+    backendAddMoney(amount, true);
+  }
+// Generic backend add money function
+async function backendAddMoney(amount, demo = false) {
+  try {
+    const response = await fetch("https://payme-update.onrender.com/add_money", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: user.phone, amount: amount })
     });
 
-    // Load user
-    const user = JSON.parse(localStorage.getItem("user"));
-    if (user) {
-      const accNumber = user.phone.slice(-10);
-      document.getElementById("accountNumber").innerText = accNumber;
-      document.getElementById("displayUsername").innerText = user.username;
-    } else {
-      alert("⚠️ No user found. Please register first.");
-      window.location.href = "paymeregister.html";
-    }
+    const result = await response.json();
 
-    // Copy account number
-    function copyAccount() {
-      const accNumber = document.getElementById("accountNumber").innerText;
-      navigator.clipboard.writeText(accNumber).then(() => {
-        alert("✅ Account number copied!");
-      });
-    }
-
-    // Simulate add money
-    function simulateAddMoney() {
-      const amount = parseFloat(document.getElementById("demoAmount").value);
-      if (!amount || amount <= 0) {
-        alert("Please enter a valid amount.");
-        return;
-      }
-
-      // Update balance
-      let balance = parseFloat(localStorage.getItem("balance")) || 0;
-      balance += amount;
-      localStorage.setItem("balance", balance);
+    if (response.ok && result.status === "success") {
+      // ✅ Update loggedInUser balance (SINGLE SOURCE OF TRUTH)
+      let loggedUser = JSON.parse(localStorage.getItem("loggedInUser"));
+      loggedUser.balance = (loggedUser.balance || 0) + amount;
+      localStorage.setItem("loggedInUser", JSON.stringify(loggedUser));
 
       // Save transaction
       let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-      const newTransaction = {
+      transactions.push({
         type: "Deposit",
         amount: amount,
+        description: demo ? "Demo Add Money" : "Added funds",
         date: new Date().toLocaleString()
-      };
-      transactions.push(newTransaction);
+      });
       localStorage.setItem("transactions", JSON.stringify(transactions));
 
-      alert("✅ ₦" + amount + " added successfully!");
-      window.location.href = "index.html"; // redirect to dashboard
+      if (demo) {
+        alert("✅ ₦" + amount + " added successfully (Demo)!");
+      } else {
+        alert("✅ " + result.message);
+      }
+      window.location.href = "index.html";
+    } else {
+      alert("❌ " + (result.message || "Failed to add money."));
     }
-  </script>
+  } catch (err) {
+    alert("⚠️ Error connecting to server.");
+  }
+}
+  // Real add money
+  function realAddMoney() {
+    const amount = parseFloat(document.getElementById("realAmount").value);
+    if (!amount || amount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+    backendAddMoney(amount, false);
+  }
+</script>
 </body>
 </html>
