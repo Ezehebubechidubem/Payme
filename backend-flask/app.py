@@ -6,6 +6,9 @@ import os
 import sys
 import traceback
 
+NUBAPI_KEY = os.environ.get("")  # stored safely in Render
+
+
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
