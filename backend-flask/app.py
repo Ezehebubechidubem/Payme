@@ -322,32 +322,27 @@ def resolve_account():
     if request.method == "GET":
         account_number = request.args.get("account_number")
         bank_code = request.args.get("bank_code")
-    else:  # POST
+    else:
         data = request.json or {}
         account_number = data.get("account_number")
         bank_code = data.get("bank_code")
 
-    if not account_number or not bank_code:
-        return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
+    if not account_number:
+        return jsonify({"status": "error", "message": "Missing account_number"}), 400
 
     try:
-        # ✅ Correct request with api_key as query param
-        resp = requests.get(
-            "https://nubapi.com/verify",
-            params={
-                "api_key": NUBAPI_KEY,
-                "account_number": account_number,
-                "bank_code": bank_code,
-            },
-            timeout=10
-        )
-        return jsonify(resp.json()), resp.status_code
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Error connecting to Nubapi: {str(e)}"
-        }), 500
+        url = "https://nubapi.com/verify"
+        params = {"account_number": account_number}
+        if bank_code:
+            params["bank_code"] = bank_code
 
+        resp = requests.get(url, params=params, timeout=10)
+        raw = resp.text
+        status = resp.status_code
+
+        return jsonify({"status": "upstream", "code": status, "raw": raw}), status
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
