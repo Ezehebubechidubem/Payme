@@ -99,7 +99,8 @@
     const receiverInfo = document.getElementById("receiverInfo");
     const errorBox = document.getElementById("error");
 
-    const currentUser = JSON.parse(localStorage.getItem("user"));
+ const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) 
+                 || JSON.parse(localStorage.getItem("user"));
     if (!currentUser) {
       alert("⚠️ No logged-in user found. Please login first.");
       window.location.href = "paymelogin.html";
