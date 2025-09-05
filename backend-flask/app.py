@@ -331,27 +331,22 @@ def resolve_account():
         return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
 
     try:
-        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
+        # ✅ Correct request with api_key as query param
         resp = requests.get(
-            NUBAPI_URL,
-            params={"account_number": account_number, "bank_code": bank_code},
-            headers=headers,
+            "https://nubapi.com/verify",
+            params={
+                "api_key": NUBAPI_KEY,
+                "account_number": account_number,
+                "bank_code": bank_code,
+            },
             timeout=10
         )
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Error connecting to Nubapi: {str(e)}"}), 500
-
-@app.route("/banks", methods=["GET"])
-def banks():
-    try:
-        resp = requests.get(
-            f"https://nubapi.com/banks?api_key={NUBAPI_KEY}",
-            timeout=10
-        )
-        return resp.json(), resp.status_code
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Error connecting to Nubapi: {str(e)}"
+        }), 500
 
 # -------------------------------------------------
 # Entry
