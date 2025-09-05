@@ -11,12 +11,9 @@ import traceback
 # -------------------------------------------------
 app = Flask(__name__)
 
-# Allow all origins by default (works with file:// or any SPA host)
-# If you want to restrict, set CORS_ORIGINS env var to comma-separated list.
 cors_origins = os.environ.get("CORS_ORIGINS", "*")
 CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
 
-# SQLite file (persisted on Render disk; resets on redeploy unless using a Disk)
 DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
 
 
@@ -24,13 +21,9 @@ DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
 # DB helpers
 # -------------------------------------------------
 def get_conn():
-    """
-    Open a SQLite connection with thread check disabled for WSGI servers.
-    WAL mode improves concurrency for reads/writes.
-    """
     conn = sqlite3.connect(DB, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    with conn:  # pragma config is safe in a transaction
+    with conn:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys=ON;")
     return conn
@@ -72,10 +65,6 @@ def init_db():
 # Utilities
 # -------------------------------------------------
 def json_required(keys):
-    """
-    Validate JSON presence and required keys.
-    Returns (data, error_response) where error_response is a Flask response or None.
-    """
     if not request.is_json:
         return None, jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
     data = request.get_json(silent=True) or {}
@@ -85,30 +74,17 @@ def json_required(keys):
     return data, None, None
 
 
-def to_user_dict(row):
-    return {
-        "id": row["id"],
-        "username": row["username"],
-        "phone": row["phone"],
-        "account_number": row["account_number"],
-        "balance": row["balance"],
-    }
-
-
 # -------------------------------------------------
 # Global error & logging
 # -------------------------------------------------
 @app.before_request
 def _log_request():
-    # lightweight request log to stdout (visible in Render logs)
     print(f"> {request.method} {request.path}", file=sys.stdout, flush=True)
 
 
 @app.errorhandler(Exception)
 def _handle_exception(e):
-    # Log full traceback to Render logs
     traceback.print_exc()
-    # Return JSON error so the frontend sees details while you debug
     return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -120,7 +96,6 @@ def _security_headers(resp):
     return resp
 
 
-# Generic preflight responder (optional—Flask-CORS usually covers this)
 @app.route("/", methods=["OPTIONS"])
 @app.route("/<path:_any>", methods=["OPTIONS"])
 def options(_any=None):
@@ -162,7 +137,6 @@ def register():
             )
         return jsonify({"status": "success", "account_number": account_number}), 200
     except sqlite3.IntegrityError as ie:
-        # username OR phone uniqueness violation
         msg = "User already exists"
         if "username" in str(ie).lower():
             msg = "Username already exists"
@@ -205,75 +179,85 @@ def login():
 # -------------------------------------------------
 # Money
 # -------------------------------------------------
-@app.route("/balance/<int:user_id>", methods=["GET"])
-def balance(user_id: int):
+@app.route("/balance/<phone>", methods=["GET"])
+def balance(phone: str):
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+        cur.execute("SELECT balance FROM users WHERE phone = ?", (phone,))
         row = cur.fetchone()
     return jsonify({"balance": (row["balance"] if row else 0.0)}), 200
 
 
 @app.route("/add_money", methods=["POST"])
 def add_money():
-    data, err, code = json_required(["user_id", "amount"])
+    data, err, code = json_required(["phone", "amount"])
     if err:
         return err, code
 
+    phone = str(data["phone"]).strip()
     try:
-        user_id = int(data["user_id"])
         amount = float(data["amount"])
     except Exception:
-        return jsonify({"status": "error", "message": "user_id must be int, amount must be number"}), 400
+        return jsonify({"status": "error", "message": "amount must be a number"}), 400
 
     if amount <= 0:
         return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
 
     with get_conn() as conn:
         cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        user_id = row["id"]
+
         cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, user_id))
         cur.execute(
             "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
             (user_id, "Deposit", amount, "Self", datetime.now().isoformat()),
         )
+
     return jsonify({"status": "success", "message": f"₦{amount} added"}), 200
 
 
 @app.route("/send_money", methods=["POST"])
 def send_money():
-    data, err, code = json_required(["sender_id", "receiver_acc", "amount"])
+    data, err, code = json_required(["sender_phone", "receiver_acc", "amount"])
     if err:
         return err, code
 
+    sender_phone = str(data["sender_phone"]).strip()
+    receiver_acc = str(data["receiver_acc"]).strip()
     try:
-        sender_id = int(data["sender_id"])
-        receiver_acc = str(data["receiver_acc"]).strip()
         amount = float(data["amount"])
     except Exception:
-        return jsonify({"status": "error", "message": "Invalid payload types"}), 400
+        return jsonify({"status": "error", "message": "amount must be number"}), 400
 
     if amount <= 0:
         return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
     if not receiver_acc.isdigit() or len(receiver_acc) != 10:
-        return jsonify({"status": "error", "message": "receiver_acc must be a 10-digit account number"}), 400
+        return jsonify({"status": "error", "message": "receiver_acc must be 10 digits"}), 400
 
     with get_conn() as conn:
         cur = conn.cursor()
 
-        # Check sender balance
-        cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
+        # Get sender
+        cur.execute("SELECT id, balance FROM users WHERE phone = ?", (sender_phone,))
         sender_row = cur.fetchone()
-        if (not sender_row) or (sender_row["balance"] < amount):
+        if not sender_row or sender_row["balance"] < amount:
             return jsonify({"status": "error", "message": "Insufficient funds"}), 400
 
-        # Deduct from sender
+        sender_id = sender_row["id"]
+
+        # Deduct sender
         cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, sender_id))
         cur.execute(
             "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
             (sender_id, "Transfer Out", amount, receiver_acc, datetime.now().isoformat()),
         )
 
-        # Credit receiver (if exists locally)
+        # Credit receiver (if exists)
         cur.execute("SELECT id FROM users WHERE account_number = ?", (receiver_acc,))
         recv = cur.fetchone()
         if recv:
@@ -281,19 +265,20 @@ def send_money():
             cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, recv_id))
             cur.execute(
                 "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
-                (recv_id, "Transfer In", amount, str(sender_id), datetime.now().isoformat()),
+                (recv_id, "Transfer In", amount, sender_phone, datetime.now().isoformat()),
             )
 
     return jsonify({"status": "success", "message": f"₦{amount} sent"}), 200
 
 
-@app.route("/transactions/<int:user_id>", methods=["GET"])
-def transactions(user_id: int):
+@app.route("/transactions/<phone>", methods=["GET"])
+def transactions(phone: str):
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT type, amount, other_party, date FROM transactions WHERE user_id = ? ORDER BY id DESC",
-            (user_id,),
+            "SELECT type, amount, other_party, date FROM transactions "
+            "WHERE user_id = (SELECT id FROM users WHERE phone = ?) ORDER BY id DESC",
+            (phone,),
         )
         rows = cur.fetchall()
     result = [
@@ -306,7 +291,7 @@ def transactions(user_id: int):
 # -------------------------------------------------
 # Entry
 # -------------------------------------------------
-if __name__ != "__main__":  # gunicorn case
+if __name__ != "__main__":
     with app.app_context():
         init_db()
 
