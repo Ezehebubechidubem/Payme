@@ -34,27 +34,52 @@
       <input type="password" id="newPassword" placeholder="Enter new password">
       
       <button onclick="updateSettings()">Update</button>
+      <a href="profile.html">Back</a>
     </div>
+    
   </div>
 
-  <script>
-    const user = JSON.parse(localStorage.getItem("user"));
+<script>
+  const API_BASE = "https://payme-update.onrender.com";
+  const user = JSON.parse(localStorage.getItem("user"));
 
-    function updateSettings(){
-      const newPhone = document.getElementById("newPhone").value.trim();
-      const newPassword = document.getElementById("newPassword").value.trim();
+  async function updateSettings(){
+    const newPhone = document.getElementById("newPhone").value.trim();
+    const newPassword = document.getElementById("newPassword").value.trim();
 
-      if (newPhone && (isNaN(newPhone) || newPhone.length !== 11)) {
-        alert("❌ Phone number must be exactly 11 digits!");
-        return;
-      }
-      if (newPhone) user.phone = newPhone;
-      if (newPassword) user.password = newPassword;
-
-      localStorage.setItem("user", JSON.stringify(user));
-      alert("✅ Settings updated!");
-      window.location.href = "profile.html";
+    if (newPhone && (isNaN(newPhone) || newPhone.length !== 11)) {
+      alert("❌ Phone number must be exactly 11 digits!");
+      return;
     }
-  </script>
+
+    try {
+      const response = await fetch(`${API_BASE}/update_user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: user.phone,   // current phone to identify user
+          new_phone: newPhone || undefined,
+          new_password: newPassword || undefined
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === "success") {
+        // update localStorage with backend response
+        localStorage.setItem("user", JSON.stringify(data.user));
+        localStorage.setItem("loggedInUser", JSON.stringify(data.user));
+
+        alert("✅ Settings updated!");
+        window.location.href = "profile.html";
+      } else {
+        alert("❌ " + (data.message || "Update failed."));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("⚠️ Could not connect to server.");
+    }
+  }
+</script>
 </body>
 </html>
