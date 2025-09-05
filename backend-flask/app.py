@@ -9,8 +9,13 @@ CORS(app)  # allow frontend calls
 DB = "payme.db"
 
 
+def get_conn():
+    """Always return SQLite connection with thread safety disabled."""
+    return sqlite3.connect(DB, check_same_thread=False)
+
+
 def init_db():
-    conn = sqlite3.connect(DB)
+    conn = get_conn()
     cur = conn.cursor()
     # Users table
     cur.execute("""
@@ -39,6 +44,11 @@ def init_db():
     conn.close()
 
 
+@app.route("/")
+def home():
+    return jsonify({"message": "✅ PayMe backend is running"})
+
+
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -49,10 +59,12 @@ def register():
     account_number = phone[-10:]
 
     try:
-        conn = sqlite3.connect(DB)
+        conn = get_conn()
         cur = conn.cursor()
-        cur.execute("INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
-                    (username, phone, password, account_number, 0))
+        cur.execute(
+            "INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
+            (username, phone, password, account_number, 0)
+        )
         conn.commit()
         conn.close()
         return jsonify({"status": "success", "account_number": account_number})
@@ -66,7 +78,7 @@ def login():
     login = data.get("login")
     password = data.get("password")
 
-    conn = sqlite3.connect(DB)
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT * FROM users WHERE (username=? OR phone=?) AND password=?", (login, login, password))
     user = cur.fetchone()
@@ -88,7 +100,7 @@ def login():
 
 @app.route("/balance/<int:user_id>")
 def balance(user_id):
-    conn = sqlite3.connect(DB)
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT balance FROM users WHERE id=?", (user_id,))
     row = cur.fetchone()
@@ -102,11 +114,13 @@ def add_money():
     user_id = data.get("user_id")
     amount = float(data.get("amount"))
 
-    conn = sqlite3.connect(DB)
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE users SET balance = balance + ? WHERE id=?", (amount, user_id))
-    cur.execute("INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
-                (user_id, "Deposit", amount, "Self", datetime.now().isoformat()))
+    cur.execute(
+        "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+        (user_id, "Deposit", amount, "Self", datetime.now().isoformat())
+    )
     conn.commit()
     conn.close()
     return jsonify({"status": "success", "message": f"₦{amount} added"})
@@ -119,7 +133,7 @@ def send_money():
     receiver_acc = data.get("receiver_acc")
     amount = float(data.get("amount"))
 
-    conn = sqlite3.connect(DB)
+    conn = get_conn()
     cur = conn.cursor()
 
     # Check sender balance
@@ -130,8 +144,10 @@ def send_money():
 
     # Deduct from sender
     cur.execute("UPDATE users SET balance = balance - ? WHERE id=?", (amount, sender_id))
-    cur.execute("INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
-                (sender_id, "Transfer Out", amount, receiver_acc, datetime.now().isoformat()))
+    cur.execute(
+        "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+        (sender_id, "Transfer Out", amount, receiver_acc, datetime.now().isoformat())
+    )
 
     # Credit receiver
     cur.execute("SELECT id FROM users WHERE account_number=?", (receiver_acc,))
@@ -139,8 +155,10 @@ def send_money():
     if recv:
         recv_id = recv[0]
         cur.execute("UPDATE users SET balance = balance + ? WHERE id=?", (amount, recv_id))
-        cur.execute("INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
-                    (recv_id, "Transfer In", amount, str(sender_id), datetime.now().isoformat()))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (recv_id, "Transfer In", amount, str(sender_id), datetime.now().isoformat())
+        )
 
     conn.commit()
     conn.close()
@@ -149,9 +167,12 @@ def send_money():
 
 @app.route("/transactions/<int:user_id>")
 def transactions(user_id):
-    conn = sqlite3.connect(DB)
+    conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT type, amount, other_party, date FROM transactions WHERE user_id=? ORDER BY id DESC", (user_id,))
+    cur.execute(
+        "SELECT type, amount, other_party, date FROM transactions WHERE user_id=? ORDER BY id DESC",
+        (user_id,)
+    )
     rows = cur.fetchall()
     conn.close()
     return jsonify([{"type": r[0], "amount": r[1], "other_party": r[2], "date": r[3]} for r in rows])
