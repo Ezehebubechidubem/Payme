@@ -11,12 +11,45 @@ import requests
 NUBAPI_URL = "https://nubapi.com/api/verify"
 NUBAPI_KEY = "EmOh5qt0KyfrI8KEoNDdQEmcMb5WpLDVIMuCcAzS4ca6c749"
 
-# Accept both names and NIP codes (extend as you need)
-BANK_CODE_MAP = {
-    "044": "044", "ACCESS": "044", "ACCESS BANK": "044",
-    "058": "058", "GTB": "058", "GTBANK": "058", "GUARANTY TRUST": "058",
-    "033": "033", "UBA": "033", "UNITED BANK FOR AFRICA": "033",
-}
+# ---------- Banks (NubAPI-style codes) ----------
+BANKS_FILE = os.environ.get("BANKS_FILE", "banks.json")
+_BANKS_CACHE = None
+
+def _load_banks():
+    """Load NubAPI-style bank codes -> bank names as a dict."""
+    global _BANKS_CACHE
+    if _BANKS_CACHE is not None:
+        return _BANKS_CACHE
+
+    # Try reading from a local JSON file first (recommended).
+    try:
+        with open(BANKS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and data:
+                _BANKS_CACHE = data
+                return _BANKS_CACHE
+    except Exception:
+        pass
+
+    # Fallback (minimal) so the endpoint still works even without banks.json.
+    _BANKS_CACHE = {
+        "000001": "STERLING BANK",
+        "000002": "KEYSTONE BANK",
+        "000003": "FIRST CITY MONUMENT BANK",
+        "000004": "UNITED BANK FOR AFRICA",
+        "000005": "ACCESS(DIAMOND) BANK",
+        "000006": "JAIZ BANK",
+        "000007": "FIDELITY BANK",
+        "000008": "POLARIS BANK",
+        "000009": "CITI BANK",
+        # ... add the rest here or in banks.json
+    }
+    return _BANKS_CACHE
+
+@app.route("/banks", methods=["GET"])
+def banks():
+    """Return NubAPI-style bank codes -> names."""
+    return jsonify(_load_banks()), 200
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
