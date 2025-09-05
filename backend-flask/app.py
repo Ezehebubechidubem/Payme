@@ -6,7 +6,7 @@ import os
 import sys
 import traceback
 import requests
-
+import json
 # Nubapi config
 NUBAPI_URL = "https://nubapi.com/api/verify"
 NUBAPI_KEY = "EmOh5qt0KyfrI8KEoNDdQEmcMb5WpLDVIMuCcAzS4ca6c749"
