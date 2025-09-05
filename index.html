@@ -74,7 +74,7 @@
 <body>
   <div class="form-container">
     <h2>Login</h2>
-    <form>
+    <form id="loginForm">
       <label for="login">Username or Phone</label>
       <input type="text" id="login" placeholder="Enter username or phone" required>
 
@@ -89,32 +89,40 @@
   </div>
 
   <script>
-  document.querySelector("form").addEventListener("submit", function(e) {
+  document.getElementById("loginForm").addEventListener("submit", async function(e) {
     e.preventDefault();
 
     const login = document.getElementById("login").value.trim();
     const password = document.getElementById("password").value;
 
-    // Fetch user data from localStorage
-    const storedUser = JSON.parse(localStorage.getItem("user"));
+    try {
+      const response = await fetch("https://payme-update.onrender.com/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login, password })
+      });
 
-    if (!storedUser) {
-      alert("❌ No user found. Please register first.");
-      window.location.href = "paymeregister.html";
-      return;
-    }
+      const data = await response.json();
 
-    // Allow login by username OR phone
-    if (
-      (login === storedUser.username || login === storedUser.phone) &&
-      password === storedUser.password
-    ) {
-      alert("✅ Login successful!");
-      // save session
-      localStorage.setItem("loggedInUser", JSON.stringify(storedUser));
-      window.location.href = "paymelogin.html"; // go to dashboard
-    } else {
-      alert("❌ Invalid username/phone or password.");
+      if (data.status === "success") {
+        // Save logged-in user to localStorage
+        const user = {
+          username: data.user.username,
+          phone: data.user.phone,
+          password: password, // keep password so profile/settings don’t break
+          accountNumber: data.user.account_number
+        };
+        localStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("loggedInUser", JSON.stringify(user));
+
+        alert("✅ Login successful!");
+        window.location.href = "index.html"; // redirect to dashboard
+      } else {
+        alert("❌ " + data.message);
+      }
+    } catch (error) {
+      alert("⚠️ Server error. Please try again later.");
+      console.error(error);
     }
   });
   </script>
