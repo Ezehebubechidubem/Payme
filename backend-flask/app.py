@@ -1,187 +1,159 @@
-# app.py
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+import sqlite3
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)
+DB = "payme.db"
 
-# ----------------- In-memory database (demo only) -----------------
-users = {}       # user_id : {username, full_name, password, balance, transactions}
-next_id = 1
 
-# ----------------- Helper Functions -----------------
-def find_user_by_username(username):
-    for uid, user in users.items():
-        if user["username"] == username:
-            return uid, user
-    return None, None
+def init_db():
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    # Users table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        phone TEXT UNIQUE,
+        password TEXT,
+        account_number TEXT UNIQUE,
+        balance REAL DEFAULT 0
+    )
+    """)
+    # Transactions table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS transactions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        type TEXT,
+        amount REAL,
+        other_party TEXT,
+        date TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+    conn.commit()
+    conn.close()
 
-# ----------------- Routes -----------------
 
-# Register
 @app.route("/register", methods=["POST"])
 def register():
-    global next_id
-    data = request.get_json()
+    data = request.json
     username = data.get("username")
+    phone = data.get("phone")
     password = data.get("password")
-    full_name = data.get("full_name")
-    
-    if not username or not password or not full_name:
-        return jsonify({"success": False, "message": "All fields are required"}), 400
-    
-    # Check if username exists
-    _, existing_user = find_user_by_username(username)
-    if existing_user:
-        return jsonify({"success": False, "message": "Username already exists"}), 409
-    
-    # Create user
-    users[next_id] = {
-        "username": username,
-        "full_name": full_name,
-        "password": password,
-        "balance": 0.0,
-        "transactions": []
-    }
-    next_id += 1
-    
-    return jsonify({"success": True, "message": "User registered successfully"})
 
-# Login
+    account_number = phone[-10:]
+
+    try:
+        conn = sqlite3.connect(DB)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
+                    (username, phone, password, account_number, 0))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "account_number": account_number})
+    except sqlite3.IntegrityError:
+        return jsonify({"status": "error", "message": "User already exists"}), 400
+
+
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.get_json()
-    username = data.get("username")
+    data = request.json
+    login = data.get("login")
     password = data.get("password")
-    
-    uid, user = find_user_by_username(username)
-    if not user or user["password"] != password:
-        return jsonify({"success": False, "message": "Invalid credentials"}), 401
-    
-    return jsonify({"success": True, "user_id": uid, "full_name": user["full_name"], "balance": user["balance"]})
 
-# Get Dashboard Info
-@app.route("/dashboard/<int:user_id>", methods=["GET"])
-def dashboard(user_id):
-    user = users.get(user_id)
-    if not user:
-        return jsonify({"success": False, "message": "User not found"}), 404
-    
-    return jsonify({
-        "success": True,
-        "full_name": user["full_name"],
-        "balance": user["balance"],
-        "transactions": user["transactions"]
-    })
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE (username=? OR phone=?) AND password=?", (login, login, password))
+    user = cur.fetchone()
+    conn.close()
 
-# Check Receiver Name Before Sending
-@app.route("/get_receiver", methods=["POST"])
-def get_receiver():
-    data = request.get_json()
-    username = data.get("username")
-    
-    if not username:
-        return jsonify({"success": False, "message": "No username provided"}), 400
-    
-    uid, user = find_user_by_username(username)
     if user:
-        return jsonify({"success": True, "full_name": user["full_name"]})
-    
-    return jsonify({"success": False, "message": "User not found"}), 404
+        return jsonify({
+            "status": "success",
+            "user": {
+                "id": user[0],
+                "username": user[1],
+                "phone": user[2],
+                "account_number": user[4],
+                "balance": user[5]
+            }
+        })
+    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
-# Send Money
+
+@app.route("/balance/<int:user_id>")
+def balance(user_id):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("SELECT balance FROM users WHERE id=?", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    return jsonify({"balance": row[0] if row else 0})
+
+
+@app.route("/add_money", methods=["POST"])
+def add_money():
+    data = request.json
+    user_id = data.get("user_id")
+    amount = float(data.get("amount"))
+
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET balance = balance + ? WHERE id=?", (amount, user_id))
+    cur.execute("INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                (user_id, "Deposit", amount, "Self", datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": f"₦{amount} added"})
+
+
 @app.route("/send_money", methods=["POST"])
 def send_money():
-    data = request.get_json()
+    data = request.json
     sender_id = data.get("sender_id")
-    receiver_username = data.get("receiver_username")
-    amount = float(data.get("amount", 0))
-    
-    if not sender_id or not receiver_username or amount <= 0:
-        return jsonify({"success": False, "message": "Invalid data"}), 400
-    
-    sender = users.get(sender_id)
-    if not sender:
-        return jsonify({"success": False, "message": "Sender not found"}), 404
-    
-    receiver_id, receiver = find_user_by_username(receiver_username)
-    if not receiver:
-        return jsonify({"success": False, "message": "Receiver not found"}), 404
-    
-    if sender["balance"] < amount:
-        return jsonify({"success": False, "message": "Insufficient balance"}), 400
-    
-    # Perform transaction
-    sender["balance"] -= amount
-    receiver["balance"] += amount
-    
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Log transaction for sender
-    sender["transactions"].append({
-        "type": "Sent",
-        "amount": amount,
-        "to": receiver["full_name"],
-        "timestamp": timestamp
-    })
-    
-    # Log transaction for receiver
-    receiver["transactions"].append({
-        "type": "Received",
-        "amount": amount,
-        "from": sender["full_name"],
-        "timestamp": timestamp
-    })
-    
-    return jsonify({"success": True, "message": f"Sent ₦{amount} to {receiver['full_name']}"})
+    receiver_acc = data.get("receiver_acc")
+    amount = float(data.get("amount"))
 
-# Deposit Money
-@app.route("/deposit", methods=["POST"])
-def deposit():
-    data = request.get_json()
-    user_id = data.get("user_id")
-    amount = float(data.get("amount", 0))
-    
-    user = users.get(user_id)
-    if not user:
-        return jsonify({"success": False, "message": "User not found"}), 404
-    if amount <= 0:
-        return jsonify({"success": False, "message": "Invalid amount"}), 400
-    
-    user["balance"] += amount
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    user["transactions"].append({
-        "type": "Deposit",
-        "amount": amount,
-        "timestamp": timestamp
-    })
-    
-    return jsonify({"success": True, "balance": user["balance"], "message": f"Deposited ₦{amount}"})
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
 
-# Withdraw Money
-@app.route("/withdraw", methods=["POST"])
-def withdraw():
-    data = request.get_json()
-    user_id = data.get("user_id")
-    amount = float(data.get("amount", 0))
-    
-    user = users.get(user_id)
-    if not user:
-        return jsonify({"success": False, "message": "User not found"}), 404
-    if amount <= 0 or amount > user["balance"]:
-        return jsonify({"success": False, "message": "Invalid amount"}), 400
-    
-    user["balance"] -= amount
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    user["transactions"].append({
-        "type": "Withdraw",
-        "amount": amount,
-        "timestamp": timestamp
-    })
-    
-    return jsonify({"success": True, "balance": user["balance"], "message": f"Withdrew ₦{amount}"})
+    # Check sender balance
+    cur.execute("SELECT balance FROM users WHERE id=?", (sender_id,))
+    row = cur.fetchone()
+    if not row or row[0] < amount:
+        return jsonify({"status": "error", "message": "Insufficient funds"}), 400
 
-# Run app
+    # Deduct from sender
+    cur.execute("UPDATE users SET balance = balance - ? WHERE id=?", (amount, sender_id))
+    cur.execute("INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                (sender_id, "Transfer Out", amount, receiver_acc, datetime.now().isoformat()))
+
+    # Credit receiver
+    cur.execute("SELECT id FROM users WHERE account_number=?", (receiver_acc,))
+    recv = cur.fetchone()
+    if recv:
+        recv_id = recv[0]
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id=?", (amount, recv_id))
+        cur.execute("INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                    (recv_id, "Transfer In", amount, str(sender_id), datetime.now().isoformat()))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": f"₦{amount} sent"})
+
+
+@app.route("/transactions/<int:user_id>")
+def transactions(user_id):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("SELECT type, amount, other_party, date FROM transactions WHERE user_id=? ORDER BY id DESC", (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify([{"type": r[0], "amount": r[1], "other_party": r[2], "date": r[3]} for r in rows])
+
+
 if __name__ == "__main__":
+    init_db()
     app.run(debug=True)
