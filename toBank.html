@@ -3,179 +3,218 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Send to Wallet</title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <title>Transfer to Bank/Wallet - PAYME</title>
   <style>
-    :root {
-      --primary:#00c853;
-      --primary-dark:#009624;
-      --bg:#f9f9f9;
-      --card:#fff;
-      --text:#1b1b1b;
-      --muted:#666;
-      --line:#e0e0e0;
-    }
-    *{box-sizing:border-box;margin:0;padding:0}
     body {
-      font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      -webkit-font-smoothing:antialiased;
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
     }
-    .app { max-width:440px; margin:0 auto; padding-bottom:40px; }
-
-    /* Top bar */
-    .topbar {
-      display:flex; align-items:center; gap:10px;
-      padding:14px; border-bottom:1px solid var(--line);
-      background:var(--card); position:sticky; top:0; z-index:10;
+    .container {
+      max-width: 400px;
+      margin: auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 20px;
     }
-    .topbar .back { font-size:18px; color:var(--text); cursor:pointer; }
-    .topbar h2 { font-size:16px; font-weight:600; }
-
-    /* Card */
-    .card {
-      background:var(--card);
-      margin:20px 12px;
-      border-radius:14px;
-      padding:20px;
-      box-shadow:0 1px 3px rgba(0,0,0,.08);
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #00c853;
     }
-    .card h3 { font-size:15px; font-weight:700; margin-bottom:16px; }
-    label { font-size:13px; font-weight:600; margin-bottom:6px; display:block; color:var(--muted); }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      display: block;
+    }
     input {
-      width:100%; padding:12px; border:1px solid var(--line);
-      border-radius:10px; font-size:14px; margin-bottom:16px;
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
     }
-    input:focus { border-color:var(--primary); outline:none; }
-    .btn {
-      width:100%; padding:12px; background:var(--primary); border:0;
-      color:#fff; font-weight:700; font-size:15px; border-radius:12px; cursor:pointer;
+    button {
+      width: 100%;
+      background: #00c853;
+      border: none;
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+      margin-bottom: 10px;
     }
-    .btn:hover { background:var(--primary-dark); }
+    button:hover {
+      background: #009624;
+    }
+    .back-btn {
+      background: #555;
+    }
+    .back-btn:hover {
+      background: #333;
+    }
     .receiver-info {
-      font-size:14px; color:var(--primary-dark); margin-bottom:12px; font-weight:600;
-      display:none;
+      font-size: 14px;
+      padding: 10px;
+      background: #e8f5e9;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      display: none;
     }
-    .error { color:red; font-size:13px; margin-bottom:12px; display:none; }
-    .success { color:green; font-size:13px; margin-bottom:12px; display:none; }
+    .error {
+      color: red;
+      font-size: 13px;
+      margin-bottom: 10px;
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Top bar -->
-    <header class="topbar">
-      <a class="back" href="index.html"><i class="fa-solid fa-arrow-left"></i></a>
-      <h2>Send to Wallet</h2>
-    </header>
+  <div class="container">
+    <h2>Transfer Money</h2>
 
-    <!-- Form -->
-    <section class="card">
-      <h3>Transfer Money</h3>
-      <form id="transferForm">
-        <label for="account">Recipient Account (10 digits)</label>
-        <input type="text" id="account" name="account" maxlength="10" placeholder="Enter 10-digit account number" required>
-        <div id="receiverName" class="receiver-info"></div>
+    <label for="accountNumber">Receiver Account Number</label>
+    <input type="text" id="accountNumber" placeholder="Enter account number" maxlength="10" required />
 
-        <label for="amount">Amount (₦)</label>
-        <input type="number" id="amount" name="amount" placeholder="Enter amount" required>
+    <div class="receiver-info" id="receiverInfo"></div>
+    <div class="error" id="error"></div>
 
-        <div id="error" class="error"></div>
-        <div id="success" class="success"></div>
+    <label for="amount">Amount (₦)</label>
+    <input type="number" id="amount" placeholder="Enter amount" required />
 
-        <button type="submit" class="btn">Send Money</button>
-      </form>
-    </section>
+    <button onclick="makeTransfer()">Send Money</button>
+    <button class="back-btn" onclick="window.location.href='index.html'">⬅ Back to Dashboard</button>
   </div>
 
   <script>
-    // Current user and balance
+    const API_BASE = "https://payme-update.onrender.com"; // ✅ backend URL
+
+    const accountInput = document.getElementById("accountNumber");
+    const receiverInfo = document.getElementById("receiverInfo");
+    const errorBox = document.getElementById("error");
+
     const currentUser = JSON.parse(localStorage.getItem("user"));
-    let balance = parseFloat(localStorage.getItem("balance")) || 0;
+    if (!currentUser) {
+      alert("⚠️ No logged-in user found. Please login first.");
+      window.location.href = "paymelogin.html";
+    }
 
-    // All users (simulate DB)
-    let users = JSON.parse(localStorage.getItem("users")) || [];
+    let receiverUsername = ""; // ✅ store receiver name
 
-    const accountInput = document.getElementById("account");
-    const receiverNameDiv = document.getElementById("receiverName");
-    const form = document.getElementById("transferForm");
-    const errorDiv = document.getElementById("error");
-    const successDiv = document.getElementById("success");
-
-    // Show receiver name when account is typed
-    accountInput.addEventListener("input", () => {
-      const acct = accountInput.value.trim();
-      if (acct.length === 10) {
-        const receiver = users.find(u => u.account === acct);
-        if (receiver) {
-          receiverNameDiv.style.display = "block";
-          receiverNameDiv.textContent = "Receiver: " + receiver.username;
-        } else {
-          receiverNameDiv.style.display = "block";
-          receiverNameDiv.textContent = "❌ Account not found!";
+    // Fetch latest balance
+    async function fetchBalance() {
+      try {
+        const res = await fetch(`${API_BASE}/balance/${currentUser.phone}`);
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem("balance", data.balance);
+          return data.balance;
         }
-      } else {
-        receiverNameDiv.style.display = "none";
+      } catch (err) {
+        console.error(err);
+      }
+      return parseFloat(localStorage.getItem("balance")) || 0;
+    }
+
+    // ✅ Lookup receiver’s username when typing account number
+    accountInput.addEventListener("input", async function() {
+      receiverInfo.style.display = "none";
+      errorBox.style.display = "none";
+      receiverUsername = "";
+
+      const acc = accountInput.value.trim();
+      if (acc.length === 10) {
+        if (acc === currentUser.account_number) {
+          errorBox.innerText = "❌ You cannot send money to yourself!";
+          errorBox.style.display = "block";
+        } else {
+          try {
+            const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
+            const data = await res.json();
+
+            if (res.ok && data.status === "success") {
+              receiverUsername = data.username;
+              receiverInfo.innerText = "✅ Receiver: " + receiverUsername;
+              receiverInfo.style.display = "block";
+            } else {
+              errorBox.innerText = "❌ Account not found!";
+              errorBox.style.display = "block";
+            }
+          } catch (err) {
+            console.error(err);
+            errorBox.innerText = "⚠️ Error checking account.";
+            errorBox.style.display = "block";
+          }
+        }
       }
     });
 
-    // Handle transfer
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      errorDiv.style.display = "none";
-      successDiv.style.display = "none";
-
-      const acct = accountInput.value.trim();
+    // ✅ Transfer money
+    async function makeTransfer() {
+      const receiverAcc = document.getElementById("accountNumber").value.trim();
       const amount = parseFloat(document.getElementById("amount").value);
 
-      if (acct.length !== 10) {
-        errorDiv.textContent = "Invalid account number.";
-        errorDiv.style.display = "block";
+      if (!receiverAcc || receiverAcc.length !== 10) {
+        alert("⚠️ Please enter a valid 10-digit receiver account.");
         return;
       }
-      if (isNaN(amount) || amount <= 0) {
-        errorDiv.textContent = "Enter a valid amount.";
-        errorDiv.style.display = "block";
+      if (!amount || amount <= 0) {
+        alert("⚠️ Enter a valid amount.");
         return;
       }
+
+      const balance = await fetchBalance();
       if (amount > balance) {
-        errorDiv.textContent = "Insufficient balance.";
-        errorDiv.style.display = "block";
+        alert("❌ Insufficient funds.");
         return;
       }
 
-      const receiver = users.find(u => u.account === acct);
-      if (!receiver) {
-        errorDiv.textContent = "Recipient account not found.";
-        errorDiv.style.display = "block";
-        return;
+      try {
+        const response = await fetch(`${API_BASE}/send_money`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender_phone: currentUser.phone,
+            receiver_acc: receiverAcc,
+            amount: amount
+          })
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.status === "success") {
+  // Update balance inside loggedInUser
+  let user = JSON.parse(localStorage.getItem("loggedInUser"));
+  user.balance = balance - amount;
+  localStorage.setItem("loggedInUser", JSON.stringify(user));
+
+  // Save transaction
+  let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+  transactions.push({
+    type: "Transfer Out",
+    amount: amount,
+    description: "Transfer to " + (receiverUsername || receiverAcc),
+    date: new Date().toLocaleString()
+  });
+  localStorage.setItem("transactions", JSON.stringify(transactions));
+
+  alert("✅ " + result.message);
+  window.location.hef = ".html";
+
+        } else {
+          alert("❌ " + (result.message || "Transfer failed."));
+        }
+      } catch (err) {
+        console.error(err);
+        alert("⚠️ Error connecting to server.");
       }
-
-      // Deduct sender balance
-      balance -= amount;
-      localStorage.setItem("balance", balance);
-
-      // Add to receiver's balance
-      let receiverBalance = parseFloat(localStorage.getItem(`balance_${receiver.username}`)) || 0;
-      receiverBalance += amount;
-      localStorage.setItem(`balance_${receiver.username}`, receiverBalance);
-
-      // Record transaction
-      let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-      transactions.push({
-        from: currentUser.username,
-        to: receiver.username,
-        amount: amount,
-        date: new Date().toLocaleString()
-      });
-      localStorage.setItem("transactions", JSON.stringify(transactions));
-
-      // Success
-      successDiv.textContent = `₦${amount.toFixed(2)} sent to ${receiver.username}`;
-      successDiv.style.display = "block";
-      form.reset();
-      receiverNameDiv.style.display = "none";
-    });
+    }
   </script>
 </body>
-  </html>
+</html>
