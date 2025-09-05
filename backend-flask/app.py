@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 import sys
 import traceback
-
+import requests
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
@@ -348,6 +348,32 @@ def update_user():
         updated = dict(cur.fetchone())
 
     return jsonify({"status": "success", "user": updated}), 200
+
+# -------------------------------------------------
+# Nubapi Account Resolution
+# -------------------------------------------------
+NUBAPI_URL = "https://nubapi.com/verify"
+NUBAPI_KEY = os.environ.get("NUBAPI_KEY", "your_api_key_here")  # ⚠️ set this in Render env
+
+@app.route("/resolve_account", methods=["GET"])
+def resolve_account():
+    account_number = request.args.get("account_number")
+    bank_code = request.args.get("bank_code")
+
+    if not account_number or not bank_code:
+        return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
+
+    try:
+        headers = {"Authorization": f"Bearer {NUBAPI_KEY}"}
+        resp = requests.get(
+            NUBAPI_URL,
+            params={"account_number": account_number, "bank_code": bank_code},
+            headers=headers,
+            timeout=10
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error connecting to Nubapi: {str(e)}"}), 500
 
 # -------------------------------------------------
 # Entry
