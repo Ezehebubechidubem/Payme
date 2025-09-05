@@ -401,33 +401,26 @@ def resolve_account():
         url = f"https://nubapi.com/api/verify?account_number={account_number}&bank_code={bank_code}&api_key={NUBAPI_KEY}"
         res = requests.get(url, timeout=10)
 
-        # 🔥 Debug: capture raw response
+        # Try JSON parse safely
         try:
             data = res.json()
         except Exception:
             return jsonify({
                 "status": "error",
-                "message": f"NubAPI returned non-JSON",
-                "raw": res.text,    # show exactly what came back
-                "status_code": res.status_code
+                "message": "NubAPI did not return JSON",
+                "status_code": res.status_code,
+                "raw": res.text  # 👈 show exactly what NubAPI sent
             }), 502
 
-        if data.get("status") == "success" and data.get("account_name"):
-            return jsonify({
-                "status": "success",
-                "account_name": data["account_name"],
-                "account_number": account_number,
-                "bank_code": bank_code
-            }), 200
-
         return jsonify({
-            "status": "error",
-            "message": data.get("message", "Unable to verify account"),
-            "raw": data
-        }), 400
+            "status": "upstream",
+            "nubapi_status": res.status_code,
+            "response": data
+        }), 200
 
     except Exception as e:
         return jsonify({"status": "error", "message": f"Request failed: {str(e)}"}), 500
+
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
