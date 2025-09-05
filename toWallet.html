@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ToWallet</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 400px;
+      margin: auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #00c853;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      display: block;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    button {
+      width: 100%;
+      background: #00c853;
+      border: none;
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #009624;
+    }
+    .hidden {
+      display: none;
+    }
+    .info-box {
+      background: #e8f5e9;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Transfer Money</h2>
+
+    <!-- Step 1: Enter account number -->
+    <label for="accountNumber">Receiver Account Number</label>
+    <input type="text" id="accountNumber" maxlength="10" placeholder="Enter 10-digit account" />
+
+    <!-- Step 2: Bank dropdown -->
+    <div id="bankSection" class="hidden">
+      <label for="bankSelect">Select Bank</label>
+      <select id="bankSelect">
+        <option value="">--Choose Bank--</option>
+        <option value="044">Access Bank</option>
+        <option value="058">GTBank</option>
+        <option value="033">UBA</option>
+      </select>
+    </div>
+
+    <!-- Step 3: Show receiver name -->
+    <div id="receiverSection" class="hidden">
+      <div class="info-box">
+        <p><strong>Receiver:</strong> <span id="receiverName"></span></p>
+      </div>
+    </div>
+
+    <!-- Step 4: Amount input -->
+    <div id="amountSection" class="hidden">
+      <label for="amount">Amount (₦)</label>
+      <input type="number" id="amount" placeholder="Enter amount" />
+    </div>
+
+    <!-- Step 5: Send button -->
+    <div id="sendSection" class="hidden">
+      <button onclick="sendMoney()">Send Money</button>
+    </div>
+  </div>
+
+  <script>
+    const accountInput = document.getElementById("accountNumber");
+    const bankSection = document.getElementById("bankSection");
+    const bankSelect = document.getElementById("bankSelect");
+    const receiverSection = document.getElementById("receiverSection");
+    const receiverName = document.getElementById("receiverName");
+    const amountSection = document.getElementById("amountSection");
+    const sendSection = document.getElementById("sendSection");
+
+    let currentAccount = "";
+
+    // Step 1 → Show bank list when account number is complete
+    accountInput.addEventListener("input", function() {
+      if (this.value.length === 10) {
+        currentAccount = this.value;
+        bankSection.classList.remove("hidden");
+      } else {
+        bankSection.classList.add("hidden");
+        receiverSection.classList.add("hidden");
+        amountSection.classList.add("hidden");
+        sendSection.classList.add("hidden");
+      }
+    });
+
+    // Step 2 → Select bank triggers API lookup
+    bankSelect.addEventListener("change", async function() {
+      if (this.value) {
+        const bankCode = this.value;
+        const url = `https://nubapi.com/verify?account_number=${currentAccount}&bank_code=${bankCode}`;
+
+        receiverName.textContent = "⏳ Looking up...";
+        receiverSection.classList.remove("hidden");
+
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+
+          if (data && data.account_name) {
+            receiverName.textContent = data.account_name;
+            amountSection.classList.remove("hidden");
+            sendSection.classList.remove("hidden");
+          } else {
+            receiverName.textContent = "❌ Account not found!";
+            amountSection.classList.add("hidden");
+            sendSection.classList.add("hidden");
+          }
+        } catch (err) {
+          console.error(err);
+          receiverName.textContent = "⚠️ Error connecting to Nubapi.";
+        }
+      } else {
+        receiverSection.classList.add("hidden");
+        amountSection.classList.add("hidden");
+        sendSection.classList.add("hidden");
+      }
+    });
+
+    // Step 5 → Fake send money
+    function sendMoney() {
+      const amount = document.getElementById("amount").value;
+      if (!amount || amount <= 0) {
+        alert("⚠️ Enter a valid amount");
+        return;
+      }
+      alert("✅ Transfer of ₦" + amount + " to " + receiverName.textContent + " successful!");
+    }
+  </script>
+</body>
+</html>
