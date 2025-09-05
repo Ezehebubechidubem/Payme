@@ -383,10 +383,8 @@ def get_banks():
     """Return available banks (code -> name)"""
     return jsonify(BANKS), 200
 
-
 @app.route("/resolve_account", methods=["GET"])
 def resolve_account():
-    """Proxy NubAPI account verification"""
     account_number = request.args.get("account_number", "").strip()
     bank_code = request.args.get("bank_code", "").strip()
 
@@ -395,21 +393,24 @@ def resolve_account():
     if bank_code not in BANKS:
         return jsonify({"status": "error", "message": "Unknown bank code"}), 400
 
-    # 🔑 Your NubAPI key (set in Render environment variables)
     NUBAPI_KEY = os.environ.get("NUBAPI_KEY")
     if not NUBAPI_KEY:
         return jsonify({"status": "error", "message": "NUBAPI_KEY not set"}), 500
 
-    # 🔗 Call NubAPI
     try:
         url = f"https://nubapi.com/api/verify?account_number={account_number}&bank_code={bank_code}&api_key={NUBAPI_KEY}"
         res = requests.get(url, timeout=10)
 
-        if res.status_code != 200:
-            return jsonify({"status": "error", "message": f"NubAPI error {res.status_code}"}), 502
-
-        data = res.json()
-        # Expect NubAPI to return: { "status": "success", "account_name": "John Doe", ... }
+        # 🔥 Debug: capture raw response
+        try:
+            data = res.json()
+        except Exception:
+            return jsonify({
+                "status": "error",
+                "message": f"NubAPI returned non-JSON",
+                "raw": res.text,    # show exactly what came back
+                "status_code": res.status_code
+            }), 502
 
         if data.get("status") == "success" and data.get("account_name"):
             return jsonify({
@@ -421,7 +422,8 @@ def resolve_account():
 
         return jsonify({
             "status": "error",
-            "message": data.get("message", "Unable to verify account")
+            "message": data.get("message", "Unable to verify account"),
+            "raw": data
         }), 400
 
     except Exception as e:
