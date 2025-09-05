@@ -349,12 +349,6 @@ def update_user():
 
     return jsonify({"status": "success", "user": updated}), 200
 
-# -------------------------------------------------
-# Nubapi Account Resolution
-# -------------------------------------------------
-NUBAPI_URL = "https://nubapi.com/verify"
-NUBAPI_KEY = os.environ.get("NUBAPI_KEY", "your_api_key_here")  # ⚠️ set this in Render env
-
 @app.route("/resolve_account", methods=["GET"])
 def resolve_account():
     account_number = request.args.get("account_number")
@@ -371,7 +365,21 @@ def resolve_account():
             headers=headers,
             timeout=10
         )
-        return jsonify(resp.json()), resp.status_code
+
+        data = resp.json()
+
+        # ✅ Normalize response for frontend
+        if resp.status_code == 200 and "account_name" in data:
+            return jsonify({
+                "status": "success",
+                "account_name": data["account_name"]
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": data.get("message", "Account not found")
+            }), 404
+
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error connecting to Nubapi: {str(e)}"}), 500
 
