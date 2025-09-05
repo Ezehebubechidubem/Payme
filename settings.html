@@ -71,7 +71,7 @@
         localStorage.setItem("loggedInUser", JSON.stringify(data.user));
 
         alert("✅ Settings updated!");
-        window.location.href = "profile.html";
+        window.location.replace= "profile.html";
       } else {
         alert("❌ " + (data.message || "Update failed."));
       }
