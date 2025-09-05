@@ -6,7 +6,7 @@ import os
 import sys
 import traceback
 
-NUBAPI_KEY = os.environ.get("")  # stored safely in Render
+NUBAPI_KEY = os.environ.get("EmOh5qt0KyfrI8KEoNDdQEmcMb5WpLDVIMuCcAzS4ca6c749")  # stored safely in Render
 
 
 # -------------------------------------------------
