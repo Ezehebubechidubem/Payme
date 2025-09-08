@@ -121,11 +121,12 @@ table th, table td {
   </div>
 
   <script>
-  const userId = 1; // replace with logged-in user id
+ 
+const phone = "09012345678"; // replace with logged-in user phone
 
 // Fetch savings
 async function loadSavings() {
-  const res = await fetch(`/savings/list/${userId}`);
+  const res = await fetch(`https://payme-update.onrender.com/savings/list/${phone}`);
   const data = await res.json();
   if (data.status === "success") {
     const table = document.getElementById("savingsTable");
@@ -168,7 +169,11 @@ function startCountdown(id, endDate) {
 
 // Withdraw savings
 async function withdraw(id) {
-  const res = await fetch(`/savings/withdraw/${id}`, { method: "POST" });
+  const res = await fetch("https://payme-update.onrender.com/savings/withdraw", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: phone, savings_id: id })
+  });
   const data = await res.json();
   alert(data.message || `Payout: ${data.payout}`);
   loadSavings();
@@ -181,10 +186,10 @@ document.getElementById("savingsForm").addEventListener("submit", async (e) => {
   const savingsType = document.getElementById("savingsType").value;
   const duration = document.getElementById("duration").value;
 
-  const res = await fetch("/savings/create", {
+  const res = await fetch("https://payme-update.onrender.com/savings/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, amount, savings_type: savingsType, duration_days: duration })
+    body: JSON.stringify({ phone: phone, amount, savings_type: savingsType, duration_days: duration })
   });
   const data = await res.json();
   alert(data.message);
@@ -192,6 +197,7 @@ document.getElementById("savingsForm").addEventListener("submit", async (e) => {
 });
 
 loadSavings();
+
   </script>
 </body>
 </html>
