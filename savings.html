@@ -123,10 +123,24 @@ table th, table td {
   <script>
  
 const phone = "09012345678"; // replace with logged-in user phone
+let userId = null;
+
+// Get user ID from backend
+async function getUserId() {
+  const res = await fetch(`https://payme-update.onrender.com/balance/${phone}`);
+  const data = await res.json();
+  if (data.status === "success" && data.user) {
+    userId = data.user.id;
+    loadSavings();
+  } else {
+    alert("User not found");
+  }
+}
 
 // Fetch savings
 async function loadSavings() {
-  const res = await fetch(`https://payme-update.onrender.com/savings/list/${phone}`);
+  if (!userId) return;
+  const res = await fetch(`https://payme-update.onrender.com/savings/list/${userId}`);
   const data = await res.json();
   if (data.status === "success") {
     const table = document.getElementById("savingsTable");
@@ -172,7 +186,7 @@ async function withdraw(id) {
   const res = await fetch("https://payme-update.onrender.com/savings/withdraw", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone: phone, savings_id: id })
+    body: JSON.stringify({ user_id: userId, savings_id: id })
   });
   const data = await res.json();
   alert(data.message || `Payout: ${data.payout}`);
@@ -189,14 +203,15 @@ document.getElementById("savingsForm").addEventListener("submit", async (e) => {
   const res = await fetch("https://payme-update.onrender.com/savings/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone: phone, amount, savings_type: savingsType, duration_days: duration })
+    body: JSON.stringify({ user_id: userId, amount, savings_type: savingsType, duration_days: duration })
   });
   const data = await res.json();
   alert(data.message);
   loadSavings();
 });
 
-loadSavings();
+// Initialize
+getUserId();
 
   </script>
 </body>
