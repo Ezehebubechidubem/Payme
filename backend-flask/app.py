@@ -550,7 +550,6 @@ def savings_create():
     return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
 
 @app.route("/savings/list/<int:user_id>", methods=["GET"])
-def savings_list(user_id: int):
     """
     Returns: { status, savings: [ {id, amount, type, start_date, end_date, duration_days, status} ] }
     Auto-credits matured fixed savings (if due).
