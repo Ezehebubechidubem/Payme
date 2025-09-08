@@ -549,15 +549,14 @@ def savings_create():
 
     return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
 
-
 @app.route("/savings/list/<int:user_id>", methods=["GET"])
 def savings_list(user_id: int):
     """
-    Returns: { status, savings: [ {id, amount, type, end_date, status, start_date, duration_days, can_withdraw} ] }
+    Returns: { status, savings: [ {id, amount, type, start_date, end_date, duration_days, status} ] }
     Auto-credits matured fixed savings (if due).
     """
     with get_conn() as conn:
-        # Sweep matured fixed (auto-credit only those at/after maturity)
+        # Auto credit matured savings
         _sweep_matured_savings_for_user(conn, user_id)
 
         cur = conn.cursor()
@@ -576,31 +575,22 @@ def savings_list(user_id: int):
     now = datetime.now()
 
     for r in rows:
-        start = datetime.fromisoformat(r["start_date"])
-        end = datetime.fromisoformat(r["end_date"])
-        can_withdraw = False
-
-        if r["status"] == "active":
-            if r["type"] == "flexible":
-                # Flexible → always withdrawable
-                can_withdraw = True
-            elif r["type"] == "fixed":
-                # Fixed → only at/after maturity
-                if now >= end:
-                    can_withdraw = True
-
         savings.append({
             "id": r["id"],
             "amount": r["amount"],
-            "type": r["type"],
+            "savings_type": r["type"],
             "start_date": r["start_date"],
-            "duration_days": r["duration_days"],
             "end_date": r["end_date"],
+            "duration_days": r["duration_days"],
             "status": r["status"],
-            "can_withdraw": can_withdraw
+            "can_withdraw": (
+                r["type"] == "flexible" or 
+                (r["type"] == "fixed" and datetime.fromisoformat(r["end_date"]) <= now)
+            )
         })
 
     return jsonify({"status": "success", "savings": savings}), 200
+
 
 @app.route("/savings/withdraw", methods=["POST"])
 def savings_withdraw():
