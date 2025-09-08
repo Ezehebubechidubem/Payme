@@ -1,0 +1,197 @@
+<!-- savings.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Savings Page</title>
+  <style>
+  body {
+  font-family: Arial, sans-serif;
+  background: #f3f3f3;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  width: 90%;
+  margin: auto;
+  padding: 20px;
+}
+
+h2 {
+  text-align: center;
+  color: #333;
+}
+
+.card {
+  background: #fff;
+  padding: 20px;
+  margin-top: 20px;
+  border-radius: 10px;
+  box-shadow: 0px 3px 6px rgba(0,0,0,0.1);
+}
+
+form label {
+  display: block;
+  margin: 10px 0 5px;
+}
+
+form input, form select {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+}
+
+button {
+  background: #28a745;
+  color: white;
+  padding: 10px;
+  border: none;
+  width: 100%;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #218838;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+table th, table td {
+  padding: 10px;
+  border: 1px solid #ddd;
+  text-align: center;
+}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>💰 Savings Dashboard</h2>
+
+    <!-- Create Savings -->
+    <div class="card">
+      <h3>Create Savings</h3>
+      <form id="savingsForm">
+        <label>Amount</label>
+        <input type="number" id="amount" required>
+
+        <label>Type</label>
+        <select id="savingsType">
+          <option value="flexible">Flexible</option>
+          <option value="fixed">Fixed</option>
+        </select>
+
+        <label>Duration</label>
+        <select id="duration">
+          <option value="7">7 Days</option>
+          <option value="30">30 Days</option>
+          <option value="60">60 Days</option>
+          <option value="180">180 Days</option>
+          <option value="365">1 Year</option>
+          <option value="730">2 Years</option>
+          <option value="1095">3 Years</option>
+        </select>
+
+        <button type="submit">Start Saving</button>
+      </form>
+    </div>
+
+    <!-- Active Savings -->
+    <div class="card">
+      <h3>Active Savings</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Amount</th>
+            <th>Type</th>
+            <th>End Date</th>
+            <th>Countdown</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="savingsTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+  const userId = 1; // replace with logged-in user id
+
+// Fetch savings
+async function loadSavings() {
+  const res = await fetch(`/savings/list/${userId}`);
+  const data = await res.json();
+  if (data.status === "success") {
+    const table = document.getElementById("savingsTable");
+    table.innerHTML = "";
+    data.savings.forEach(s => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${s.amount}</td>
+        <td>${s.savings_type}</td>
+        <td>${new Date(s.end_date).toLocaleDateString()}</td>
+        <td id="timer-${s.id}"></td>
+        <td>
+          <button onclick="withdraw(${s.id})">Withdraw</button>
+        </td>
+      `;
+      table.appendChild(row);
+      startCountdown(s.id, s.end_date);
+    });
+  }
+}
+
+// Countdown
+function startCountdown(id, endDate) {
+  const timerElement = document.getElementById(`timer-${id}`);
+  function update() {
+    const now = new Date();
+    const distance = new Date(endDate) - now;
+    if (distance <= 0) {
+      timerElement.innerHTML = "Completed";
+      return;
+    }
+    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((distance / (1000 * 60 * 60)) % 24);
+    const mins = Math.floor((distance / (1000 * 60)) % 60);
+    timerElement.innerHTML = `${days}d ${hours}h ${mins}m`;
+  }
+  update();
+  setInterval(update, 60000);
+}
+
+// Withdraw savings
+async function withdraw(id) {
+  const res = await fetch(`/savings/withdraw/${id}`, { method: "POST" });
+  const data = await res.json();
+  alert(data.message || `Payout: ${data.payout}`);
+  loadSavings();
+}
+
+// Handle form submit
+document.getElementById("savingsForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const amount = document.getElementById("amount").value;
+  const savingsType = document.getElementById("savingsType").value;
+  const duration = document.getElementById("duration").value;
+
+  const res = await fetch("/savings/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId, amount, savings_type: savingsType, duration_days: duration })
+  });
+  const data = await res.json();
+  alert(data.message);
+  loadSavings();
+});
+
+loadSavings();
+  </script>
+</body>
+</html>
