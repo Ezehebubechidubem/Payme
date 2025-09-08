@@ -1,14 +1,11 @@
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import sys
 import traceback
 import requests
-from math import floor
-
-INTEREST_RATE
 NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
 
 
@@ -61,6 +58,22 @@ def init_db():
                 amount REAL,
                 other_party TEXT,
                 date TEXT,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        # Savings table
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS savings(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                amount REAL,
+                type TEXT CHECK(type IN ('flexible','fixed')),
+                start_date TEXT,
+                duration_days INTEGER,
+                end_date TEXT,
+                status TEXT DEFAULT 'active',
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
             """
@@ -356,15 +369,6 @@ def update_user():
     return jsonify({"status": "success", "user": updated}), 200
 
 # -------------------------------------------------
-# Entry
-# -------------------------------------------------
-if __name__ != "__main__":
-    with app.app_context():
-        init_db()
-
-
-
-# -------------------------------------------------
 # Banks (NubAPI codes)
 # -------------------------------------------------
 BANKS = {
@@ -433,145 +437,144 @@ def resolve_account():
 
 
 
-INTEREST_RATE = 0.20  # 20% p.a.
-
 # -------------------------------------------------
-# Savings Helpers
+# Savings
 # -------------------------------------------------
-def daily_interest(amount, days):
-    return amount * INTEREST_RATE * (days / 365)
+INTEREST_RATE = 0.20  # 20% annual
 
-def apply_matured_savings():
-    """Auto credit matured savings"""
-    with get_conn() as conn:
-        cur = conn.cursor()
-        today = datetime.now().date().isoformat()
+@app.route("/savings/start", methods=["POST"])
+def start_savings():
+    data, err, code = json_required(["phone", "amount", "type", "duration_days"])
+    if err:
+        return err, code
 
-        cur.execute("""
-            SELECT s.id, s.user_id, s.amount, s.start_date, s.end_date, s.duration_days, u.balance
-            FROM savings s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.status='active' AND date(s.end_date) <= date(?)
-        """, (today,))
-        rows = cur.fetchall()
+    phone = str(data["phone"]).strip()
+    try:
+        amount = float(data["amount"])
+        duration_days = int(data["duration_days"])
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid amount or duration"}), 400
 
-        for r in rows:
-            # calculate interest
-            interest = daily_interest(r["amount"], r["duration_days"])
-            total = r["amount"] + interest
-
-            # update user balance
-            cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (total, r["user_id"]))
-
-            # mark savings as matured
-            cur.execute("UPDATE savings SET status='matured' WHERE id=?", (r["id"],))
-
-            # record transaction
-            cur.execute(
-                "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
-                (r["user_id"], "Savings Matured", total, "System", datetime.now().isoformat())
-            )
-
-
-@app.before_request
-def run_before_request():
-    apply_matured_savings()
-
-
-# -------------------------------------------------
-# Savings Endpoints
-# -------------------------------------------------
-@app.route("/savings/create", methods=["POST"])
-def create_savings():
-    data, err, code = json_required(["phone", "amount", "plan", "duration_days"])
-    if err: return err, code
-
-    phone, amount, plan = data["phone"], float(data["amount"]), data["plan"].lower()
-    duration_days = int(data["duration_days"])
-
-    if plan not in ("fixed", "flexible"):
-        return jsonify({"status": "error", "message": "Plan must be fixed or flexible"}), 400
-
-    if duration_days not in (7, 30, 60, 180, 365, 730, 1095):
-        return jsonify({"status": "error", "message": "Invalid duration"}), 400
+    if amount <= 0:
+        return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
+    if data["type"] not in ("flexible", "fixed"):
+        return jsonify({"status": "error", "message": "Invalid savings type"}), 400
 
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, balance FROM users WHERE phone=?", (phone,))
+        cur.execute("SELECT id, balance FROM users WHERE phone = ?", (phone,))
         user = cur.fetchone()
         if not user or user["balance"] < amount:
             return jsonify({"status": "error", "message": "Insufficient balance"}), 400
 
-        # Deduct from main balance
-        cur.execute("UPDATE users SET balance=balance-? WHERE id=?", (amount, user["id"]))
+        user_id = user["id"]
+        start = datetime.now()
+        end = start + timedelta(days=duration_days)
 
-        # Insert savings
-        start_date = datetime.now().date()
-        end_date = (datetime.now().date() + timedelta(days=duration_days))
+        # deduct money
+        cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, user_id))
         cur.execute(
-            "INSERT INTO savings (user_id, amount, plan, duration_days, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?)",
-            (user["id"], amount, plan, duration_days, start_date.isoformat(), end_date.isoformat())
+            "INSERT INTO savings (user_id, amount, type, start_date, duration_days, end_date) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, amount, data["type"], start.isoformat(), duration_days, end.isoformat()),
         )
 
-    return jsonify({"status": "success", "message": "Savings created"}), 200
+    return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
+
+
+@app.route("/savings/<phone>", methods=["GET"])
+def list_savings(phone: str):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, amount, type, start_date, duration_days, end_date, status FROM savings "
+            "WHERE user_id = (SELECT id FROM users WHERE phone = ?) ORDER BY id DESC",
+            (phone,),
+        )
+        rows = cur.fetchall()
+
+    return jsonify([dict(r) for r in rows]), 200
 
 
 @app.route("/savings/withdraw", methods=["POST"])
 def withdraw_savings():
     data, err, code = json_required(["phone", "savings_id"])
-    if err: return err, code
+    if err:
+        return err, code
 
-    phone, sid = data["phone"], int(data["savings_id"])
+    phone = str(data["phone"]).strip()
+    sid = int(data["savings_id"])
 
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id FROM users WHERE phone=?", (phone,))
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
+        user = cur.fetchone()
+        if not user:
+            return
+@app.route("/savings/withdraw", methods=["POST"])
+def withdraw_savings():
+    data, err, code = json_required(["phone", "savings_id"])
+    if err:
+        return err, code
+
+    phone = str(data["phone"]).strip()
+    sid = int(data["savings_id"])
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
         user = cur.fetchone()
         if not user:
             return jsonify({"status": "error", "message": "User not found"}), 404
 
-        cur.execute("SELECT * FROM savings WHERE id=? AND user_id=? AND status='active'", (sid, user["id"]))
+        user_id = user["id"]
+
+        # find savings
+        cur.execute(
+            "SELECT id, amount, type, start_date, duration_days, end_date, status "
+            "FROM savings WHERE id = ? AND user_id = ?",
+            (sid, user_id),
+        )
         s = cur.fetchone()
         if not s:
-            return jsonify({"status": "error", "message": "Savings not active"}), 400
+            return jsonify({"status": "error", "message": "Savings not found"}), 404
+        if s["status"] != "active":
+            return jsonify({"status": "error", "message": "Already withdrawn"}), 400
 
-        today = datetime.now().date()
-        end_date = datetime.fromisoformat(s["end_date"]).date()
+        start = datetime.fromisoformat(s["start_date"])
+        end = datetime.fromisoformat(s["end_date"])
+        now = datetime.now()
 
-        payout = s["amount"]
+        # interest calculation (simple annualized interest)
+        days_held = (now - start).days
+        if days_held < 0:
+            days_held = 0
+        interest = s["amount"] * INTEREST_RATE * (days_held / 365.0)
 
-        if today < end_date:  # early withdrawal
-            if s["plan"] == "fixed":
-                penalty = 0.02 * s["amount"]
-                payout -= penalty
-            # flexible → no penalty but no interest
-        else:
-            payout += daily_interest(s["amount"], s["duration_days"])
+        # penalty for fixed savings early withdrawal
+        if s["type"] == "fixed" and now < end:
+            interest = 0  # lose interest if withdrawn early
 
-        # update balance
-        cur.execute("UPDATE users SET balance = balance + ? WHERE id=?", (payout, user["id"]))
-        cur.execute("UPDATE savings SET status='withdrawn' WHERE id=?", (sid,))
+        payout = s["amount"] + interest
+
+        # update savings record
+        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (sid,))
+
+        # credit user
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (payout, user_id))
         cur.execute(
             "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
-            (user["id"], "Savings Withdraw", payout, "System", datetime.now().isoformat())
+            (user_id, "Savings Withdrawal", payout, "Self", datetime.now().isoformat()),
         )
 
-    return jsonify({"status": "success", "payout": payout}), 200
+    return jsonify({
+        "status": "success",
+        "message": f"₦{payout:.2f} credited (principal ₦{s['amount']} + interest ₦{interest:.2f})"
+    }), 200
 
 
-@app.route("/savings/my/<phone>", methods=["GET"])
-def my_savings(phone):
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, amount, plan, duration_days, start_date, end_date, status
-            FROM savings WHERE user_id=(SELECT id FROM users WHERE phone=?)
-            ORDER BY id DESC
-        """, (phone,))
-        rows = cur.fetchall()
-
-    return jsonify([dict(r) for r in rows]), 200
-
+# -------------------------------------------------
+# Startup
+# -------------------------------------------------
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
