@@ -498,21 +498,20 @@ def _sweep_matured_savings_for_user(conn, user_id: int):
 @app.route("/savings/create", methods=["POST"])
 def savings_create():
     """
-    Body: { user_id, amount, savings_type: 'flexible'|'fixed', duration_days }
+    Body: { user_id OR phone, amount, savings_type, duration_days }
     """
-    data, err, code = json_required(["user_id", "amount", "savings_type", "duration_days"])
-    if err:
-        return err, code
+    data = request.get_json()
 
-    try:
-        user_id = int(data["user_id"])
-        amount = float(data["amount"])
-        savings_type = str(data["savings_type"]).strip().lower()
-        duration_days = int(data["duration_days"])
-    except Exception:
-        return jsonify({"status": "error", "message": "Invalid payload types"}), 400
+    # Accept either user_id or phone
+    user_id = data.get("user_id")
+    phone = data.get("phone")
+    amount = data.get("amount")
+    savings_type = str(data.get("savings_type", "")).strip().lower()
+    duration_days = int(data.get("duration_days", 0))
 
-    if amount <= 0:
+    if not (user_id or phone):
+        return jsonify({"status": "error", "message": "user_id or phone required"}), 400
+    if not amount or float(amount) <= 0:
         return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
     if savings_type not in ("flexible", "fixed"):
         return jsonify({"status": "error", "message": "savings_type must be 'flexible' or 'fixed'"}), 400
@@ -522,12 +521,19 @@ def savings_create():
     with get_conn() as conn:
         cur = conn.cursor()
 
-        # Ensure user exists & has balance
-        cur.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+        # Look up user either by id or phone
+        if user_id:
+            cur.execute("SELECT id, balance FROM users WHERE id = ?", (user_id,))
+        else:
+            cur.execute("SELECT id, balance FROM users WHERE phone = ?", (phone,))
+
         row = cur.fetchone()
         if not row:
             return jsonify({"status": "error", "message": "User not found"}), 404
-        if float(row["balance"]) < amount:
+
+        user_id = row["id"]
+        balance = float(row["balance"])
+        if balance < float(amount):
             return jsonify({"status": "error", "message": "Insufficient balance"}), 400
 
         start = datetime.now()
@@ -548,6 +554,7 @@ def savings_create():
         )
 
     return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
+
 
 @app.route("/savings/list/<int:user_id>", methods=["GET"])
 def savings_list(user_id: int):
