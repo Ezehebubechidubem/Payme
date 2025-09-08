@@ -4,70 +4,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Savings Page</title>
+  <title>Savings Dashboard</title>
   <style>
-  body {
-  font-family: Arial, sans-serif;
-  background: #f3f3f3;
-  margin: 0;
-  padding: 0;
-}
-
-.container {
-  width: 90%;
-  margin: auto;
-  padding: 20px;
-}
-
-h2 {
-  text-align: center;
-  color: #333;
-}
-
-.card {
-  background: #fff;
-  padding: 20px;
-  margin-top: 20px;
-  border-radius: 10px;
-  box-shadow: 0px 3px 6px rgba(0,0,0,0.1);
-}
-
-form label {
-  display: block;
-  margin: 10px 0 5px;
-}
-
-form input, form select {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 15px;
-}
-
-button {
-  background: #28a745;
-  color: white;
-  padding: 10px;
-  border: none;
-  width: 100%;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-button:hover {
-  background: #218838;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 15px;
-}
-
-table th, table td {
-  padding: 10px;
-  border: 1px solid #ddd;
-  text-align: center;
-}
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f3f3;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      width: 90%;
+      margin: auto;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+    .card {
+      background: #fff;
+      padding: 20px;
+      margin-top: 20px;
+      border-radius: 10px;
+      box-shadow: 0px 3px 6px rgba(0,0,0,0.1);
+    }
+    form label {
+      display: block;
+      margin: 10px 0 5px;
+    }
+    form input, form select {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+    }
+    button {
+      background: #28a745;
+      color: white;
+      padding: 10px;
+      border: none;
+      width: 100%;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #218838;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    table th, table td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -112,6 +103,7 @@ table th, table td {
             <th>Type</th>
             <th>End Date</th>
             <th>Countdown</th>
+            <th>Status</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -121,98 +113,94 @@ table th, table td {
   </div>
 
   <script>
- 
-const phone = "09012345678"; // replace with logged-in user phone
-let userId = null;
+    // ✅ get logged-in user_id dynamically from localStorage (set at login)
+    const userId = localStorage.getItem("user_id");
 
-// Get user ID from backend
-async function getUserId() {
-  const res = await fetch(`https://payme-update.onrender.com/balance/${phone}`);
-  const data = await res.json();
-  if (data.status === "success" && data.user) {
-    userId = data.user.id;
-    loadSavings();
-  } else {
-    alert("User not found");
-  }
-}
-
-// Fetch savings
-async function loadSavings() {
-  if (!userId) return;
-  const res = await fetch(`https://payme-update.onrender.com/savings/list/${userId}`);
-  const data = await res.json();
-  if (data.status === "success") {
-    const table = document.getElementById("savingsTable");
-    table.innerHTML = "";
-    data.savings.forEach(s => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${s.amount}</td>
-        <td>${s.savings_type}</td>
-        <td>${new Date(s.end_date).toLocaleDateString()}</td>
-        <td id="timer-${s.id}"></td>
-        <td>
-          <button onclick="withdraw(${s.id})">Withdraw</button>
-        </td>
-      `;
-      table.appendChild(row);
-      startCountdown(s.id, s.end_date);
-    });
-  }
-}
-
-// Countdown
-function startCountdown(id, endDate) {
-  const timerElement = document.getElementById(`timer-${id}`);
-  function update() {
-    const now = new Date();
-    const distance = new Date(endDate) - now;
-    if (distance <= 0) {
-      timerElement.innerHTML = "Completed";
-      return;
+    if (!userId) {
+      alert("You must log in first!");
+      window.location.href = "login.html";
     }
-    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((distance / (1000 * 60 * 60)) % 24);
-    const mins = Math.floor((distance / (1000 * 60)) % 60);
-    timerElement.innerHTML = `${days}d ${hours}h ${mins}m`;
-  }
-  update();
-  setInterval(update, 60000);
-}
 
-// Withdraw savings
-async function withdraw(id) {
-  const res = await fetch("https://payme-update.onrender.com/savings/withdraw", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, savings_id: id })
-  });
-  const data = await res.json();
-  alert(data.message || `Payout: ${data.payout}`);
-  loadSavings();
-}
+    // Fetch savings
+    async function loadSavings() {
+      const res = await fetch(`https://payme-update.onrender.com/savings/list/${userId}`);
+      const data = await res.json();
+      if (data.status === "success") {
+        const table = document.getElementById("savingsTable");
+        table.innerHTML = "";
+        data.savings.forEach(s => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>₦${s.amount}</td>
+            <td>${s.savings_type}</td>
+            <td>${new Date(s.end_date).toLocaleDateString()}</td>
+            <td id="timer-${s.id}"></td>
+            <td>${s.status}</td>
+            <td>
+              ${s.status === "active" 
+                ? `<button onclick="withdraw(${s.id})">Withdraw</button>` 
+                : "—"}
+            </td>
+          `;
+          table.appendChild(row);
+          if (s.status === "active") {
+            startCountdown(s.id, s.end_date);
+          }
+        });
+      } else {
+        alert(data.message || "Failed to load savings");
+      }
+    }
 
-// Handle form submit
-document.getElementById("savingsForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const amount = document.getElementById("amount").value;
-  const savingsType = document.getElementById("savingsType").value;
-  const duration = document.getElementById("duration").value;
+    // Countdown
+    function startCountdown(id, endDate) {
+      const timerElement = document.getElementById(`timer-${id}`);
+      function update() {
+        const now = new Date();
+        const distance = new Date(endDate) - now;
+        if (distance <= 0) {
+          timerElement.innerHTML = "Completed";
+          return;
+        }
+        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((distance / (1000 * 60 * 60)) % 24);
+        const mins = Math.floor((distance / (1000 * 60)) % 60);
+        timerElement.innerHTML = `${days}d ${hours}h ${mins}m`;
+      }
+      update();
+      setInterval(update, 60000);
+    }
 
-  const res = await fetch("https://payme-update.onrender.com/savings/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, amount, savings_type: savingsType, duration_days: duration })
-  });
-  const data = await res.json();
-  alert(data.message);
-  loadSavings();
-});
+    // Withdraw savings
+    async function withdraw(id) {
+      const res = await fetch("https://payme-update.onrender.com/savings/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, savings_id: id })
+      });
+      const data = await res.json();
+      alert(data.message || `Payout: ${data.payout}`);
+      loadSavings();
+    }
 
-// Initialize
-getUserId();
+    // Handle form submit
+    document.getElementById("savingsForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const amount = document.getElementById("amount").value;
+      const savingsType = document.getElementById("savingsType").value;
+      const duration = document.getElementById("duration").value;
 
+      const res = await fetch("https://payme-update.onrender.com/savings/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, amount, savings_type: savingsType, duration_days: duration })
+      });
+      const data = await res.json();
+      alert(data.message);
+      loadSavings();
+    });
+
+    loadSavings();
   </script>
 </body>
 </html>
