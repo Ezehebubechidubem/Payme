@@ -558,12 +558,7 @@ def savings_create():
 
 @app.route("/savings/list/<int:user_id>", methods=["GET"])
 def savings_list(user_id: int):
-    """
-    Returns: { status, savings: [ {id, amount, type, start_date, end_date, duration_days, status} ] }
-    Auto-credits matured fixed savings (if due).
-    """
     with get_conn() as conn:
-        # Auto credit matured savings
         _sweep_matured_savings_for_user(conn, user_id)
 
         cur = conn.cursor()
@@ -590,9 +585,12 @@ def savings_list(user_id: int):
             "end_date": r["end_date"],
             "duration_days": r["duration_days"],
             "status": r["status"],
+            # ✅ only allow withdraw if still active
             "can_withdraw": (
-                r["type"] == "flexible" or 
-                (r["type"] == "fixed" and datetime.fromisoformat(r["end_date"]) <= now)
+                r["status"] == "active" and (
+                    r["type"] == "flexible" or 
+                    (r["type"] == "fixed" and datetime.fromisoformat(r["end_date"]) <= now)
+                )
             )
         })
 
