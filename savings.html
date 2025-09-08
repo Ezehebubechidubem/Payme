@@ -158,7 +158,7 @@ const user_id = user.id;
 // Fetch savings
 async function loadSavings() {
   try {
-    const res = await fetch(`https://payme-update.onrender.com/savings/list/${user.id}`);
+    const res = await fetch(`https://payme-update.onrender.com/savings/list/${user_id}`);
     const data = await res.json();
 
     const table = document.getElementById("savingsTable");
@@ -174,20 +174,23 @@ async function loadSavings() {
     savingsList.forEach(s => {
       const row = document.createElement("tr");
 
+      // Handle field name differences
+      const type = s.savings_type || s.type;
+      const end = new Date(s.end_date || s.endDate);
+
       // Check if withdraw is allowed
       let canWithdraw = false;
       const now = new Date();
-      const end = new Date(s.end_date || s.endDate);
 
-      if (s.savings_type === "flexible") {
+      if (type === "flexible") {
         canWithdraw = true; // always withdrawable
-      } else if (s.savings_type === "fixed" && end <= now) {
+      } else if (type === "fixed" && end <= now) {
         canWithdraw = true; // only after maturity
       }
 
       row.innerHTML = `
         <td>${s.amount}</td>
-        <td>${s.savings_type || s.type}</td>
+        <td>${type}</td>
         <td>${end.toLocaleDateString()}</td>
         <td id="timer-${s.id}">Loading...</td>
         <td>
@@ -232,7 +235,7 @@ async function withdraw(id) {
     const res = await fetch("https://payme-update.onrender.com/savings/withdraw", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: phone, user_id: user_id, savings_id: id })
+      body: JSON.stringify({ user_id: user_id, savings_id: id })
     });
     const data = await res.json();
     alert(data.message || `Payout: ${data.payout}`);
