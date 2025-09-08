@@ -71,7 +71,7 @@
 
   .action-container {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     gap: 8px;
   }
@@ -83,6 +83,11 @@
 
   .back-btn:hover {
     background: #0056b3;
+  }
+
+  .disabled-btn {
+    background: #ccc !important;
+    cursor: not-allowed;
   }
   </style>
 </head>
@@ -159,7 +164,6 @@ async function loadSavings() {
     const table = document.getElementById("savingsTable");
     table.innerHTML = "";
 
-    // check the correct array name (try data.savings || data.data)
     const savingsList = data.savings || data.data || [];
 
     if (savingsList.length === 0) {
@@ -169,26 +173,40 @@ async function loadSavings() {
 
     savingsList.forEach(s => {
       const row = document.createElement("tr");
+
+      // Check if withdraw is allowed
+      let canWithdraw = false;
+      const now = new Date();
+      const end = new Date(s.end_date || s.endDate);
+
+      if (s.savings_type === "flexible") {
+        canWithdraw = true; // always withdrawable
+      } else if (s.savings_type === "fixed" && end <= now) {
+        canWithdraw = true; // only after maturity
+      }
+
       row.innerHTML = `
         <td>${s.amount}</td>
         <td>${s.savings_type || s.type}</td>
-        <td>${new Date(s.end_date || s.endDate).toLocaleDateString()}</td>
+        <td>${end.toLocaleDateString()}</td>
         <td id="timer-${s.id}">Loading...</td>
         <td>
           <div class="action-container">
-            <button onclick="withdraw(${s.id})">Withdraw</button>
+            ${canWithdraw 
+              ? `<button onclick="withdraw(${s.id})">Withdraw</button>` 
+              : `<button class="disabled-btn" disabled>Withdraw</button>`}
           </div>
         </td>
       `;
       table.appendChild(row);
-      startCountdown(s.id, s.end_date || s.endDate);
+      startCountdown(s.id, end);
     });
   } catch (err) {
     console.error("Error loading savings:", err);
   }
 }
 
-// Countdown (tick every second for clarity)
+// Countdown
 function startCountdown(id, endDate) {
   const timerElement = document.getElementById(`timer-${id}`);
   function update() {
@@ -205,7 +223,7 @@ function startCountdown(id, endDate) {
     timerElement.innerHTML = `${days}d ${hours}h ${mins}m ${secs}s`;
   }
   update();
-  setInterval(update, 1000); // tick every 1s
+  setInterval(update, 1000);
 }
 
 // Withdraw savings
