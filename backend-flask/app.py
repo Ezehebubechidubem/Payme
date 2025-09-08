@@ -550,15 +550,14 @@ def savings_create():
     return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
 
 
-
 @app.route("/savings/list/<int:user_id>", methods=["GET"])
 def savings_list(user_id: int):
     """
-    Returns: { status, savings: [ {id, amount, savings_type, end_date, status, start_date, duration_days} ] }
-    Auto-credits any matured savings before returning.
+    Returns: { status, savings: [ {id, amount, type, end_date, status, start_date, duration_days, can_withdraw} ] }
+    Auto-credits matured fixed savings (if due).
     """
     with get_conn() as conn:
-        # Sweep matured first (auto-credit on interaction)
+        # Sweep matured fixed (auto-credit only those at/after maturity)
         _sweep_matured_savings_for_user(conn, user_id)
 
         cur = conn.cursor()
@@ -574,82 +573,104 @@ def savings_list(user_id: int):
         rows = cur.fetchall()
 
     savings = []
+    now = datetime.now()
+
     for r in rows:
+        start = datetime.fromisoformat(r["start_date"])
+        end = datetime.fromisoformat(r["end_date"])
+        can_withdraw = False
+
+        if r["status"] == "active":
+            if r["type"] == "flexible":
+                # Flexible → always withdrawable
+                can_withdraw = True
+            elif r["type"] == "fixed":
+                # Fixed → only at/after maturity
+                if now >= end:
+                    can_withdraw = True
+
         savings.append({
             "id": r["id"],
             "amount": r["amount"],
-            "savings_type": r["type"],
+            "type": r["type"],
             "start_date": r["start_date"],
             "duration_days": r["duration_days"],
             "end_date": r["end_date"],
             "status": r["status"],
+            "can_withdraw": can_withdraw
         })
 
     return jsonify({"status": "success", "savings": savings}), 200
 
+@app.route("/savings/withdraw", methods=["POST"])
+def savings_withdraw():
+    """
+    Body: { user_id, savings_id }
+    Flexible:
+        - Withdraw anytime
+        - If early: only principal
+        - If matured: principal + interest
+    Fixed:
+        - Only withdraw at maturity
+    """
+    data, err, code = json_required(["user_id", "savings_id"])
+    if err:
+        return err, code
 
-@app.route("/savings/withdraw/<int:savings_id>", methods=["POST"])
-def savings_withdraw(savings_id: int):
-    """
-    Withdraw a savings record.
-    - Flexible: can withdraw anytime with accrued interest to date.
-    - Fixed: if early, forfeits interest (principal only). If matured, full tenure interest.
-    Responds with {status, message, payout}
-    """
+    try:
+        user_id = int(data["user_id"])
+        savings_id = int(data["savings_id"])
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid payload"}), 400
+
     with get_conn() as conn:
         cur = conn.cursor()
 
-        # Get savings and user
+        # Get savings record
         cur.execute(
-            """
-            SELECT s.id, s.user_id, s.amount, s.type, s.start_date, s.duration_days, s.end_date, s.status
-            FROM savings s
-            WHERE s.id = ?
-            """,
-            (savings_id,),
+            "SELECT id, amount, type, start_date, duration_days, end_date, status "
+            "FROM savings WHERE id = ? AND user_id = ?",
+            (savings_id, user_id),
         )
         s = cur.fetchone()
+
         if not s:
             return jsonify({"status": "error", "message": "Savings not found"}), 404
-
         if s["status"] != "active":
             return jsonify({"status": "error", "message": "Already withdrawn"}), 400
 
-        user_id = int(s["user_id"])
-        now = datetime.now()
+        amount = float(s["amount"])
         start = datetime.fromisoformat(s["start_date"])
         end = datetime.fromisoformat(s["end_date"])
-        amount = float(s["amount"])
-        duration_days = int(s["duration_days"])
+        now = datetime.now()
 
-        # If matured, pay full tenure interest.
-        if now >= end:
-            interest = _calc_interest(amount, duration_days)
+        payout = amount  # default principal only
+
+        # Flexible logic
+        if s["type"] == "flexible":
+            if now >= end:
+                # matured → add interest
+                interest = _calc_interest(amount, s["duration_days"])
+                payout += interest
+        # Fixed logic
+        elif s["type"] == "fixed":
+            if now < end:
+                return jsonify({"status": "error", "message": "Fixed savings cannot be withdrawn before maturity"}), 400
+            # matured → add interest
+            interest = _calc_interest(amount, s["duration_days"])
+            payout += interest
         else:
-            # Early withdrawal:
-            if s["type"] == "fixed":
-                # fixed early withdrawal: no interest
-                interest = 0.0
-            else:
-                # flexible early: pro-rata interest to date
-                held_days = max(0, (now - start).days)
-                interest = _calc_interest(amount, held_days)
+            return jsonify({"status": "error", "message": "Invalid savings type"}), 400
 
-        payout = amount + interest
-
-        # Update record and credit user
-        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (savings_id,))
+        # Update DB: mark withdrawn, credit user, record transaction
+        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (s["id"],))
         cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (payout, user_id))
         cur.execute(
             "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
-            (user_id, "Savings Withdrawal", payout, s["type"], datetime.now().isoformat()),
+            (user_id, "Savings Withdraw", payout, s["type"], datetime.now().isoformat()),
         )
 
-    return jsonify({
-        "status": "success",
-        "message": f"₦{payout:.2f} credited (principal ₦{amount:.2f} + interest ₦{interest:.2f})",
-        "payout": round(payout, 2)
-    }), 200
+    return jsonify({"status": "success", "message": f"₦{payout} credited to main balance"}), 200
 
 
 # -------------------------------------------------
