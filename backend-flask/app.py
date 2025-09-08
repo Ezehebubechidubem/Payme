@@ -495,21 +495,7 @@ def list_savings(phone: str):
     return jsonify([dict(r) for r in rows]), 200
 
 
-@app.route("/savings/withdraw", methods=["POST"])
-def withdraw_savings():
-    data, err, code = json_required(["phone", "savings_id"])
-    if err:
-        return err, code
 
-    phone = str(data["phone"]).strip()
-    sid = int(data["savings_id"])
-
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
-        user = cur.fetchone()
-        if not user:
-            return
 @app.route("/savings/withdraw", methods=["POST"])
 def withdraw_savings():
     data, err, code = json_required(["phone", "savings_id"])
