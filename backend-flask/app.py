@@ -550,6 +550,7 @@ def savings_create():
     return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
 
 
+
 @app.route("/savings/list/<int:user_id>", methods=["GET"])
 def savings_list(user_id: int):
     """
@@ -575,4 +576,86 @@ def savings_list(user_id: int):
     savings = []
     for r in rows:
         savings.append({
-            
+            "id": r["id"],
+            "amount": r["amount"],
+            "savings_type": r["type"],
+            "start_date": r["start_date"],
+            "duration_days": r["duration_days"],
+            "end_date": r["end_date"],
+            "status": r["status"],
+        })
+
+    return jsonify({"status": "success", "savings": savings}), 200
+
+
+@app.route("/savings/withdraw/<int:savings_id>", methods=["POST"])
+def savings_withdraw(savings_id: int):
+    """
+    Withdraw a savings record.
+    - Flexible: can withdraw anytime with accrued interest to date.
+    - Fixed: if early, forfeits interest (principal only). If matured, full tenure interest.
+    Responds with {status, message, payout}
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # Get savings and user
+        cur.execute(
+            """
+            SELECT s.id, s.user_id, s.amount, s.type, s.start_date, s.duration_days, s.end_date, s.status
+            FROM savings s
+            WHERE s.id = ?
+            """,
+            (savings_id,),
+        )
+        s = cur.fetchone()
+        if not s:
+            return jsonify({"status": "error", "message": "Savings not found"}), 404
+
+        if s["status"] != "active":
+            return jsonify({"status": "error", "message": "Already withdrawn"}), 400
+
+        user_id = int(s["user_id"])
+        now = datetime.now()
+        start = datetime.fromisoformat(s["start_date"])
+        end = datetime.fromisoformat(s["end_date"])
+        amount = float(s["amount"])
+        duration_days = int(s["duration_days"])
+
+        # If matured, pay full tenure interest.
+        if now >= end:
+            interest = _calc_interest(amount, duration_days)
+        else:
+            # Early withdrawal:
+            if s["type"] == "fixed":
+                # fixed early withdrawal: no interest
+                interest = 0.0
+            else:
+                # flexible early: pro-rata interest to date
+                held_days = max(0, (now - start).days)
+                interest = _calc_interest(amount, held_days)
+
+        payout = amount + interest
+
+        # Update record and credit user
+        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (savings_id,))
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (payout, user_id))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Savings Withdrawal", payout, s["type"], datetime.now().isoformat()),
+        )
+
+    return jsonify({
+        "status": "success",
+        "message": f"₦{payout:.2f} credited (principal ₦{amount:.2f} + interest ₦{interest:.2f})",
+        "payout": round(payout, 2)
+    }), 200
+
+
+# -------------------------------------------------
+# Startup
+# -------------------------------------------------
+if __name__ == "__main__":
+    init_db()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
