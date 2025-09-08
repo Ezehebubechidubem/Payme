@@ -6,6 +6,9 @@ import os
 import sys
 import traceback
 import requests
+from math import floor
+
+INTEREST_RATE
 NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
 
 
@@ -427,6 +430,147 @@ def resolve_account():
 
     except Exception as e:
         return jsonify({"status": "error", "message": f"Request failed: {str(e)}"}), 500
+
+
+
+INTEREST_RATE = 0.20  # 20% p.a.
+
+# -------------------------------------------------
+# Savings Helpers
+# -------------------------------------------------
+def daily_interest(amount, days):
+    return amount * INTEREST_RATE * (days / 365)
+
+def apply_matured_savings():
+    """Auto credit matured savings"""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        today = datetime.now().date().isoformat()
+
+        cur.execute("""
+            SELECT s.id, s.user_id, s.amount, s.start_date, s.end_date, s.duration_days, u.balance
+            FROM savings s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.status='active' AND date(s.end_date) <= date(?)
+        """, (today,))
+        rows = cur.fetchall()
+
+        for r in rows:
+            # calculate interest
+            interest = daily_interest(r["amount"], r["duration_days"])
+            total = r["amount"] + interest
+
+            # update user balance
+            cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (total, r["user_id"]))
+
+            # mark savings as matured
+            cur.execute("UPDATE savings SET status='matured' WHERE id=?", (r["id"],))
+
+            # record transaction
+            cur.execute(
+                "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                (r["user_id"], "Savings Matured", total, "System", datetime.now().isoformat())
+            )
+
+
+@app.before_request
+def run_before_request():
+    apply_matured_savings()
+
+
+# -------------------------------------------------
+# Savings Endpoints
+# -------------------------------------------------
+@app.route("/savings/create", methods=["POST"])
+def create_savings():
+    data, err, code = json_required(["phone", "amount", "plan", "duration_days"])
+    if err: return err, code
+
+    phone, amount, plan = data["phone"], float(data["amount"]), data["plan"].lower()
+    duration_days = int(data["duration_days"])
+
+    if plan not in ("fixed", "flexible"):
+        return jsonify({"status": "error", "message": "Plan must be fixed or flexible"}), 400
+
+    if duration_days not in (7, 30, 60, 180, 365, 730, 1095):
+        return jsonify({"status": "error", "message": "Invalid duration"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, balance FROM users WHERE phone=?", (phone,))
+        user = cur.fetchone()
+        if not user or user["balance"] < amount:
+            return jsonify({"status": "error", "message": "Insufficient balance"}), 400
+
+        # Deduct from main balance
+        cur.execute("UPDATE users SET balance=balance-? WHERE id=?", (amount, user["id"]))
+
+        # Insert savings
+        start_date = datetime.now().date()
+        end_date = (datetime.now().date() + timedelta(days=duration_days))
+        cur.execute(
+            "INSERT INTO savings (user_id, amount, plan, duration_days, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?)",
+            (user["id"], amount, plan, duration_days, start_date.isoformat(), end_date.isoformat())
+        )
+
+    return jsonify({"status": "success", "message": "Savings created"}), 200
+
+
+@app.route("/savings/withdraw", methods=["POST"])
+def withdraw_savings():
+    data, err, code = json_required(["phone", "savings_id"])
+    if err: return err, code
+
+    phone, sid = data["phone"], int(data["savings_id"])
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone=?", (phone,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        cur.execute("SELECT * FROM savings WHERE id=? AND user_id=? AND status='active'", (sid, user["id"]))
+        s = cur.fetchone()
+        if not s:
+            return jsonify({"status": "error", "message": "Savings not active"}), 400
+
+        today = datetime.now().date()
+        end_date = datetime.fromisoformat(s["end_date"]).date()
+
+        payout = s["amount"]
+
+        if today < end_date:  # early withdrawal
+            if s["plan"] == "fixed":
+                penalty = 0.02 * s["amount"]
+                payout -= penalty
+            # flexible → no penalty but no interest
+        else:
+            payout += daily_interest(s["amount"], s["duration_days"])
+
+        # update balance
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id=?", (payout, user["id"]))
+        cur.execute("UPDATE savings SET status='withdrawn' WHERE id=?", (sid,))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user["id"], "Savings Withdraw", payout, "System", datetime.now().isoformat())
+        )
+
+    return jsonify({"status": "success", "payout": payout}), 200
+
+
+@app.route("/savings/my/<phone>", methods=["GET"])
+def my_savings(phone):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, amount, plan, duration_days, start_date, end_date, status
+            FROM savings WHERE user_id=(SELECT id FROM users WHERE phone=?)
+            ORDER BY id DESC
+        """, (phone,))
+        rows = cur.fetchall()
+
+    return jsonify([dict(r) for r in rows]), 200
 
 if __name__ == "__main__":
     init_db()
