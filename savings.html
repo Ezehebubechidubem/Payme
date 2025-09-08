@@ -158,7 +158,7 @@ const user_id = user.id;
 // Fetch savings
 async function loadSavings() {
   try {
-    const res = await fetch(`https://payme-update.onrender.com/savings/list/${user_id}`);
+    const res = await fetch(`https://payme-update.onrender.com/savings/list/int${user.id}`);
     const data = await res.json();
 
     const table = document.getElementById("savingsTable");
