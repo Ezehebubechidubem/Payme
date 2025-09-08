@@ -5,4 +5,4 @@ gunicorn==21.2.0
 Werkzeug==3.0.3
 PyJWT
 requests
-python-dotenv==1.0.1
+
