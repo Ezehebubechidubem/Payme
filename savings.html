@@ -170,40 +170,45 @@ async function loadSavings() {
       table.innerHTML = `<tr><td colspan="5">No savings found</td></tr>`;
       return;
     }
+savingsList.forEach(s => {
+  const row = document.createElement("tr");
 
-    savingsList.forEach(s => {
-      const row = document.createElement("tr");
+  // Handle field name differences
+  const type = s.savings_type || s.type;
+  const end = new Date(s.end_date || s.endDate);
+  const status = s.status || "active"; // backend sends "active" or "withdrawn"
 
-      // Handle field name differences
-      const type = s.savings_type || s.type;
-      const end = new Date(s.end_date || s.endDate);
+  let actionCell = "";
+  const now = new Date();
 
-      // Check if withdraw is allowed
-      let canWithdraw = false;
-      const now = new Date();
+  if (status === "withdrawn") {
+    actionCell = `<span style="color: red; font-weight: bold;">Withdrawn</span>`;
+  } else if (type === "flexible") {
+    actionCell = `<button onclick="withdraw(${s.id})">Withdraw</button>`;
+  } else if (type === "fixed" && end <= now) {
+    actionCell = `<button onclick="withdraw(${s.id})">Withdraw</button>`;
+  } else {
+    actionCell = `<button class="disabled-btn" disabled>Locked</button>`;
+  }
 
-      if (type === "flexible") {
-        canWithdraw = true; // always withdrawable
-      } else if (type === "fixed" && end <= now) {
-        canWithdraw = true; // only after maturity
-      }
+  row.innerHTML = `
+    <td>${s.amount}</td>
+    <td>${type}</td>
+    <td>${end.toLocaleDateString()}</td>
+    <td id="timer-${s.id}">${status === "withdrawn" ? "✅ Withdrawn" : "Loading..."}</td>
+    <td>
+      <div class="action-container">
+        ${actionCell}
+      </div>
+    </td>
+  `;
+  document.getElementById("savingsTable").appendChild(row);
 
-      row.innerHTML = `
-        <td>${s.amount}</td>
-        <td>${type}</td>
-        <td>${end.toLocaleDateString()}</td>
-        <td id="timer-${s.id}">Loading...</td>
-        <td>
-          <div class="action-container">
-            ${canWithdraw 
-              ? `<button onclick="withdraw(${s.id})">Withdraw</button>` 
-              : `<button class="disabled-btn" disabled>Withdraw</button>`}
-          </div>
-        </td>
-      `;
-      table.appendChild(row);
-      startCountdown(s.id, end);
-    });
+  // Start countdown only if not withdrawn
+  if (status !== "withdrawn") {
+    startCountdown(s.id, end);
+  }
+});
   } catch (err) {
     console.error("Error loading savings:", err);
   }
