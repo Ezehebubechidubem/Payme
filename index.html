@@ -79,8 +79,7 @@
       <input type="text" id="login" placeholder="Enter username or phone" required>
 
       <label for="password">Password</label>
-      <input type="password" id="password" minlength="10"
-maxlength="15" placeholder="Enter password" required>
+      <input type="password" id="password" placeholder="Enter password" required>
 
       <button type="submit">Login</button>
     </form>
@@ -90,47 +89,45 @@ maxlength="15" placeholder="Enter password" required>
   </div>
 
   <script>
+  document.getElementById("loginForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
 
-document.getElementById("loginForm").addEventListener("submit", async function(e) {
-  e.preventDefault();
+    const login = document.getElementById("login").value.trim();
+    const password = document.getElementById("password").value;
 
-  const login = document.getElementById("login").value.trim();
-  const password = document.getElementById("password").value;
+    try {
+      const response = await fetch("https://payme-update.onrender.com/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login, password })
+      });
 
-  try {
-    const response = await fetch("https://payme-update.onrender.com/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ login, password })
-    });
+      const data = await response.json();
 
-    const data = await response.json();
+      if (data.status === "success") {
+        // ✅ Save full user object (includes id, username, phone, etc.)
+        const user = {
+          id: data.user.id, // important for savings.html
+          username: data.user.username,
+          phone: data.user.phone,
+          accountNumber: data.user.account_number,
+          password: password // keep password so profile/settings don’t break
+        };
 
-    if (data.status === "success") {
-      // Save logged-in user details, including user_id
-      const user = {
-        id: data.user.id,                 // ✅ add user_id
-        username: data.user.username,
-        phone: data.user.phone,
-        password: password,               // keep for profile/settings
-        accountNumber: data.user.account_number
-      };
+        // Store in both keys for compatibility
+        localStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("loggedInUser", JSON.stringify(user));
 
-      localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("loggedInUser", JSON.stringify(user));
-      localStorage.setItem("user_id", user.id); // ✅ save user_id separately
-
-      alert("✅ Login successful!");
-      window.location.href = "paymelogin.html"; // redirect to dashboard
-    } else {
-      alert("❌ " + data.message);
+        alert("✅ Login successful!");
+        window.location.href = "index.html"; // redirect to dashboard
+      } else {
+        alert("❌ " + data.message);
+      }
+    } catch (error) {
+      alert("⚠️ Server error. Please try again later.");
+      console.error(error);
     }
-  } catch (error) {
-    alert("⚠️ Server error. Please try again later.");
-    console.error(error);
-  }
-});
-
+  });
   </script>
 </body>
 </html>
