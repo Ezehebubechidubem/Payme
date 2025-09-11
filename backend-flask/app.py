@@ -393,3 +393,284 @@ BANKS = {
     "000009": "CITI BANK"
     # 👉 Add the full NubAPI list you have
 }
+
+@app.route("/banks", methods=["GET"])
+def get_banks():
+    """Return available banks (code -> name)"""
+    return jsonify(BANKS), 200
+
+@app.route("/resolve_account", methods=["GET"])
+def resolve_account():
+    """Proxy NubAPI account verification"""
+    account_number = request.args.get("account_number", "").strip()
+    bank_code = request.args.get("bank_code", "").strip()
+
+    if not account_number.isdigit() or len(account_number) != 10:
+        return jsonify({"status": "error", "message": "Invalid account number"}), 400
+    if bank_code not in BANKS:
+        return jsonify({"status": "error", "message": "Unknown bank code"}), 400
+
+    NUBAPI_KEY = os.environ.get("NUBAPI_KEY")
+    if not NUBAPI_KEY:
+        return jsonify({"status": "error", "message": "NUBAPI_KEY not set"}), 500
+
+    # ✅ Fixed NubAPI call
+    try:
+        url = f"https://nubapi.com/api/verify?account_number={account_number}&bank_code={bank_code}&api_key={NUBAPI_KEY}"
+        res = requests.get(url, timeout=10)
+
+        if res.status_code != 200:
+            return jsonify({"status": "error", "message": f"NubAPI error {res.status_code}"}), 502
+
+        # 🔑 Safely parse JSON
+        try:
+            data = res.json()
+        except ValueError:
+            return jsonify({"status": "error", "message": "Invalid response from NubAPI"}), 502
+
+        if data.get("status") == "success" and data.get("account_name"):
+            return jsonify({
+                "status": "success",
+                "account_name": data["account_name"],
+                "account_number": account_number,
+                "bank_code": bank_code
+            }), 200
+
+        return jsonify({
+            "status": "error",
+            "message": data.get("message", "Unable to verify account")
+        }), 400
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Request failed: {str(e)}"}), 500
+
+
+# -------------------------------------------------
+# Savings (added, routes match your front-end)
+# -------------------------------------------------
+INTEREST_RATE = 0.20  # 20% annual simple interest
+
+def _calc_interest(amount: float, days: int) -> float:
+    if days <= 0:
+        return 0.0
+    return amount * INTEREST_RATE * (days / 365.0)
+
+def _sweep_matured_savings_for_user(conn, user_id: int):
+    """
+    Auto-credit matured savings for a user.
+    Pays principal + full scheduled interest at maturity.
+    Marks savings as withdrawn and logs a transaction.
+    """
+    cur = conn.cursor()
+    now = datetime.now()
+
+    # Find active savings that have matured
+    cur.execute(
+        """
+        SELECT id, amount, type, start_date, duration_days, end_date
+        FROM savings
+        WHERE user_id = ? AND status = 'active' AND datetime(end_date) <= ?
+        """,
+        (user_id, now.isoformat()),
+    )
+    matured = cur.fetchall()
+
+    for s in matured:
+        amount = float(s["amount"])
+        duration_days = int(s["duration_days"])
+        # full tenure interest paid at maturity
+        interest = _calc_interest(amount, duration_days)
+        payout = amount + interest
+
+        # Mark withdrawn
+        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (s["id"],))
+        # Credit user
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (payout, user_id))
+        # Transaction
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Savings Maturity", payout, "System", datetime.now().isoformat()),
+        )
+
+    return len(matured)
+
+
+@app.route("/savings/create", methods=["POST"])
+def savings_create():
+    """
+    Body: { user_id OR phone, amount, savings_type, duration_days }
+    """
+    data = request.get_json()
+
+    # Accept either user_id or phone
+    user_id = data.get("user_id")
+    phone = data.get("phone")
+    amount = data.get("amount")
+    savings_type = str(data.get("savings_type", "")).strip().lower()
+    duration_days = int(data.get("duration_days", 0))
+
+    if not (user_id or phone):
+        return jsonify({"status": "error", "message": "user_id or phone required"}), 400
+    if not amount or float(amount) <= 0:
+        return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
+    if savings_type not in ("flexible", "fixed"):
+        return jsonify({"status": "error", "message": "savings_type must be 'flexible' or 'fixed'"}), 400
+    if duration_days <= 0:
+        return jsonify({"status": "error", "message": "duration_days must be > 0"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # Look up user either by id or phone
+        if user_id:
+            cur.execute("SELECT id, balance FROM users WHERE id = ?", (user_id,))
+        else:
+            cur.execute("SELECT id, balance FROM users WHERE phone = ?", (phone,))
+
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        user_id = row["id"]
+        balance = float(row["balance"])
+        if balance < float(amount):
+            return jsonify({"status": "error", "message": "Insufficient balance"}), 400
+
+        start = datetime.now()
+        end = start + timedelta(days=duration_days)
+
+        # Deduct and create savings
+        cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, user_id))
+        cur.execute(
+            """
+            INSERT INTO savings (user_id, amount, type, start_date, duration_days, end_date, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'active')
+            """,
+            (user_id, amount, savings_type, start.isoformat(), duration_days, end.isoformat()),
+        )
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Savings Start", amount, savings_type, datetime.now().isoformat()),
+        )
+
+    return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
+
+
+@app.route("/savings/list/<int:user_id>", methods=["GET"])
+def savings_list(user_id: int):
+    with get_conn() as conn:
+        _sweep_matured_savings_for_user(conn, user_id)
+
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, amount, type, start_date, duration_days, end_date, status
+            FROM savings
+            WHERE user_id = ?
+            ORDER BY id DESC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    savings = []
+    now = datetime.now()
+
+    for r in rows:
+        savings.append({
+            "id": r["id"],
+            "amount": r["amount"],
+            "savings_type": r["type"],
+            "start_date": r["start_date"],
+            "end_date": r["end_date"],
+            "duration_days": r["duration_days"],
+            "status": r["status"],
+            # ✅ only allow withdraw if still active
+            "can_withdraw": (
+                r["status"] == "active" and (
+                    r["type"] == "flexible" or 
+                    (r["type"] == "fixed" and datetime.fromisoformat(r["end_date"]) <= now)
+                )
+            )
+        })
+
+    return jsonify({"status": "success", "savings": savings}), 200
+
+@app.route("/savings/withdraw", methods=["POST"])
+def savings_withdraw():
+    """
+    Body: { user_id, savings_id }
+    Flexible:
+        - Withdraw anytime
+        - If early: only principal
+        - If matured: principal + interest
+    Fixed:
+        - Only withdraw at maturity
+    """
+    data, err, code = json_required(["user_id", "savings_id"])
+    if err:
+        return err, code
+
+    try:
+        user_id = int(data["user_id"])
+        savings_id = int(data["savings_id"])
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid payload"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # Get savings record
+        cur.execute(
+            "SELECT id, amount, type, start_date, duration_days, end_date, status "
+            "FROM savings WHERE id = ? AND user_id = ?",
+            (savings_id, user_id),
+        )
+        s = cur.fetchone()
+
+        if not s:
+            return jsonify({"status": "error", "message": "Savings not found"}), 404
+        if s["status"] != "active":
+            return jsonify({"status": "error", "message": "Already withdrawn"}), 400
+
+        amount = float(s["amount"])
+        start = datetime.fromisoformat(s["start_date"])
+        end = datetime.fromisoformat(s["end_date"])
+        now = datetime.now()
+
+        payout = amount  # default principal only
+
+        # Flexible logic
+        if s["type"] == "flexible":
+            if now >= end:
+                # matured → add interest
+                interest = _calc_interest(amount, s["duration_days"])
+                payout += interest
+        # Fixed logic
+        elif s["type"] == "fixed":
+            if now < end:
+                return jsonify({"status": "error", "message": "Fixed savings cannot be withdrawn before maturity"}), 400
+            # matured → add interest
+            interest = _calc_interest(amount, s["duration_days"])
+            payout += interest
+        else:
+            return jsonify({"status": "error", "message": "Invalid savings type"}), 400
+
+        # Update DB: mark withdrawn, credit user, record transaction
+        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (s["id"],))
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (payout, user_id))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Savings Withdraw", payout, s["type"], datetime.now().isoformat()),
+        )
+
+    return jsonify({"status": "success", "message": f"₦{payout} credited to main balance"}), 200
+
+
+# -------------------------------------------------
+# Startup
+# -------------------------------------------------
+if __name__ == "__main__":
+    init_db()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
