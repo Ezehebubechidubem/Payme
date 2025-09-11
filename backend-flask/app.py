@@ -1,3 +1,212 @@
+from flask import Flask, request, jsonify, make_response
+from flask_cors import CORS
+import sqlite3
+from datetime import datetime, timedelta  # + timedelta added to support savings durations
+import os
+import sys
+import traceback
+import requests
+
+# -------------------------------------------------
+# Postgres Support
+# -------------------------------------------------
+DATABASE_URL = os.environ.get("DATABASE_URL")  # ✅ only use DATABASE_URL
+if DATABASE_URL:
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except Exception as e:
+        # If psycopg2 isn't installed, we'll raise an informative error later when trying to use Postgres.
+        psycopg2 = None
+        psycopg2_extras = None
+
+NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
+
+
+# -------------------------------------------------
+# App & CORS
+# -------------------------------------------------
+app = Flask(__name__)
+
+cors_origins = os.environ.get("CORS_ORIGINS", "*")
+CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
+
+DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
+
+
+# -------------------------------------------------
+# DB helpers
+# -------------------------------------------------
+# We provide a get_conn() context manager that supports both sqlite3 and psycopg2.
+# It returns an object with cursor() that supports execute(...), fetchone(), fetchall() etc.
+# For psycopg2 we wrap execute to convert "?" placeholders -> "%s" so existing SQL works.
+
+class PGCursorWrapper:
+    """Wrap a psycopg2 cursor and convert ? -> %s in SQL automatically."""
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql, params=None):
+        if params is None:
+            return self._cur.execute(sql)
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.execute(safe_sql, params)
+
+    def executemany(self, sql, seq_of_params):
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.executemany(safe_sql, seq_of_params)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
+class PGConnectionContext:
+    def __init__(self, dsn):
+        self.dsn = dsn
+        self.conn = None
+
+    def __enter__(self):
+        if psycopg2 is None:
+            raise RuntimeError("psycopg2 not installed; cannot use PostgreSQL. Install psycopg2-binary.")
+        self.conn = psycopg2.connect(self.dsn)
+        self.conn.autocommit = False
+        return self
+
+    def cursor(self):
+        raw_cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        return PGCursorWrapper(raw_cur)
+
+    def commit(self):
+        if self.conn:
+            self.conn.commit()
+
+    def rollback(self):
+        if self.conn:
+            self.conn.rollback()
+
+    def close(self):
+        if self.conn:
+            try:
+                self.conn.close()
+            except:
+                pass
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc:
+            try:
+                self.conn.rollback()
+            except:
+                pass
+        else:
+            try:
+                self.conn.commit()
+            except:
+                pass
+        try:
+            self.conn.close()
+        except:
+            pass
+
+
+def get_conn():
+    if DATABASE_URL:
+        return PGConnectionContext(DATABASE_URL)
+    else:
+        conn = sqlite3.connect(DB, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        with conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA foreign_keys=ON;")
+        return conn
+
+
+def init_db():
+    if DATABASE_URL:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users(
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE,
+                    phone TEXT UNIQUE,
+                    password TEXT,
+                    account_number TEXT UNIQUE,
+                    balance NUMERIC DEFAULT 0
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS transactions(
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    type TEXT,
+                    amount NUMERIC,
+                    other_party TEXT,
+                    date TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS savings(
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    amount NUMERIC,
+                    type TEXT CHECK(type IN ('flexible','fixed')),
+                    start_date TEXT,
+                    duration_days INTEGER,
+                    end_date TEXT,
+                    status TEXT DEFAULT 'active',
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+    else:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE,
+                    phone TEXT UNIQUE,
+                    password TEXT,
+                    account_number TEXT UNIQUE,
+                    balance REAL DEFAULT 0
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS transactions(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    type TEXT,
+                    amount REAL,
+                    other_party TEXT,
+                    date TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS savings(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    amount REAL,
+                    type TEXT CHECK(type IN ('flexible','fixed')),
+                    start_date TEXT,
+                    duration_days INTEGER,
+                    end_date TEXT,
+                    status TEXT DEFAULT 'active',
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+
+
+# -------------------------------------------------
+# Utilities, Error handlers, Routes...
+# (Your original code continues below — unchanged)
+# -------------------------------------------------
 
 def json_required(keys):
     if not request.is_json:
