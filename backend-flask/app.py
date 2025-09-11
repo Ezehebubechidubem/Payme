@@ -7,8 +7,10 @@ import sys
 import traceback
 import requests
 
-# Optional Postgres support - used when DATABASE_URL is set
-DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or None
+# -------------------------------------------------
+# Postgres Support
+# -------------------------------------------------
+DATABASE_URL = os.environ.get("DATABASE_URL")  # ✅ only use DATABASE_URL
 if DATABASE_URL:
     try:
         import psycopg2
@@ -46,10 +48,7 @@ class PGCursorWrapper:
 
     def execute(self, sql, params=None):
         if params is None:
-            # no params; just execute
             return self._cur.execute(sql)
-        # Replace ? placeholders with %s for psycopg2
-        # Simple replacement is OK because your SQL uses ? for parameters.
         safe_sql = sql.replace("?", "%s")
         return self._cur.execute(safe_sql, params)
 
@@ -75,15 +74,11 @@ class PGConnectionContext:
     def __enter__(self):
         if psycopg2 is None:
             raise RuntimeError("psycopg2 not installed; cannot use PostgreSQL. Install psycopg2-binary.")
-        # connect using the provided DATABASE_URL/DSN
-        # allow connection parameters in URL form
         self.conn = psycopg2.connect(self.dsn)
-        # We'll use RealDictCursor for dict-like rows (so r["id"] works)
         self.conn.autocommit = False
         return self
 
     def cursor(self):
-        # Return a wrapped cursor that converts placeholders
         raw_cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         return PGCursorWrapper(raw_cur)
 
@@ -120,23 +115,11 @@ class PGConnectionContext:
 
 
 def get_conn():
-    """
-    Returns a context manager usable like:
-        with get_conn() as conn:
-            cur = conn.cursor()
-            cur.execute(...)
-            rows = cur.fetchall()
-    Behavior:
-      - If DATABASE_URL is set we use Postgres (psycopg2).
-      - Else we use sqlite3 (existing behavior).
-    """
     if DATABASE_URL:
         return PGConnectionContext(DATABASE_URL)
     else:
-        # sqlite3 Connection is itself a context manager in Python3, and we preserve existing behavior.
         conn = sqlite3.connect(DB, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        # Set pragmas
         with conn:
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA foreign_keys=ON;")
@@ -144,13 +127,9 @@ def get_conn():
 
 
 def init_db():
-    # Keep same SQL schema; when using Postgres the PRAGMA calls are skipped (not run).
-    # For Postgres the CREATE TABLE IF NOT EXISTS SQL below is compatible.
     if DATABASE_URL:
-        # Create tables in Postgres
         with get_conn() as conn:
             cur = conn.cursor()
-            # Use standard SQL; note: CHECK(type IN ...) works in Postgres
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users(
                     id SERIAL PRIMARY KEY,
@@ -185,14 +164,10 @@ def init_db():
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
             """)
-            # commit handled by context manager
     else:
-        # existing sqlite init
         with get_conn() as conn:
             cur = conn.cursor()
-            # Users table
-            cur.execute(
-                """
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS users(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE,
@@ -201,11 +176,8 @@ def init_db():
                     account_number TEXT UNIQUE,
                     balance REAL DEFAULT 0
                 )
-                """
-            )
-            # Transactions table
-            cur.execute(
-                """
+            """)
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS transactions(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
@@ -215,11 +187,8 @@ def init_db():
                     date TEXT,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
-                """
-            )
-            # Savings table (added)
-            cur.execute(
-                """
+            """)
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS savings(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
@@ -231,12 +200,12 @@ def init_db():
                     status TEXT DEFAULT 'active',
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
-                """
-            )
+            """)
 
 
 # -------------------------------------------------
-# Utilities
+# Utilities, Error handlers, Routes...
+# (Your original code continues below — unchanged)
 # -------------------------------------------------
 def json_required(keys):
     if not request.is_json:
