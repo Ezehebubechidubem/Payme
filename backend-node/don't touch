@@ -20,6 +20,7 @@ CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=Tru
 DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
 
 
+
 # -------------------------------------------------
 # DB helpers
 # -------------------------------------------------
