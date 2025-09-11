@@ -49,6 +49,7 @@ class PGCursorWrapper:
     def execute(self, sql, params=None):
         if params is None:
             return self._cur.execute(sql)
+        # Replace ? placeholders with %s for psycopg2
         safe_sql = sql.replace("?", "%s")
         return self._cur.execute(safe_sql, params)
 
@@ -74,11 +75,15 @@ class PGConnectionContext:
     def __enter__(self):
         if psycopg2 is None:
             raise RuntimeError("psycopg2 not installed; cannot use PostgreSQL. Install psycopg2-binary.")
+        # connect using the provided DATABASE_URL/DSN
+        # allow connection parameters in URL form
         self.conn = psycopg2.connect(self.dsn)
+        # We'll use transactions and commit at the end of the context
         self.conn.autocommit = False
         return self
 
     def cursor(self):
+        # Return a wrapped cursor that converts placeholders
         raw_cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         return PGCursorWrapper(raw_cur)
 
@@ -206,10 +211,8 @@ def init_db():
 
 
 # -------------------------------------------------
-# Utilities, Error handlers, Routes...
-# (Your original code continues below — unchanged)
+# Utilities
 # -------------------------------------------------
-
 def json_required(keys):
     if not request.is_json:
         return None, jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
@@ -282,7 +285,8 @@ def register():
                 (username, phone, password, account_number, 0.0),
             )
         return jsonify({"status": "success", "account_number": account_number}), 200
-    except sqlite3.IntegrityError as ie:
+    except Exception as ie:
+        # Try to provide the same messages as original (works for sqlite and Postgres)
         msg = "User already exists"
         if "username" in str(ie).lower():
             msg = "Username already exists"
@@ -520,6 +524,7 @@ BANKS = {
     # 👉 Add the full NubAPI list you have
 }
 
+
 @app.route("/banks", methods=["GET"])
 def get_banks():
     """Return available banks (code -> name)"""
@@ -577,7 +582,7 @@ def resolve_account():
 INTEREST_RATE = 0.20  # 20% annual simple interest
 
 def _calc_interest(amount: float, days: int) -> float:
-    if days <= 0:
+   if days <= 0:
         return 0.0
     return amount * INTEREST_RATE * (days / 365.0)
 
@@ -590,15 +595,24 @@ def _sweep_matured_savings_for_user(conn, user_id: int):
     cur = conn.cursor()
     now = datetime.now()
 
-    # Find active savings that have matured
-    cur.execute(
+    # Use different SQL for SQLite vs Postgres because sqlite has datetime() function,
+    # while Postgres requires casting the text to timestamp.
+    if DATABASE_URL:
+        # Postgres: cast end_date (stored as ISO text) to timestamp for comparison
+        sql = """
+            SELECT id, amount, type, start_date, duration_days, end_date
+            FROM savings
+            WHERE user_id = ? AND status = 'active' AND CAST(end_date AS timestamp) <= ?
         """
-        SELECT id, amount, type, start_date, duration_days, end_date
-        FROM savings
-        WHERE user_id = ? AND status = 'active' AND datetime(end_date) <= ?
-        """,
-        (user_id, now.isoformat()),
-    )
+    else:
+        # SQLite: use datetime() wrapper
+        sql = """
+            SELECT id, amount, type, start_date, duration_days, end_date
+            FROM savings
+            WHERE user_id = ? AND status = 'active' AND datetime(end_date) <= ?
+        """
+
+    cur.execute(sql, (user_id, now.isoformat()))
     matured = cur.fetchall()
 
     for s in matured:
@@ -799,3 +813,4 @@ def savings_withdraw():
 if __name__ == "__main__":
     init_db()  # ✅ Ensure tables exist on startup
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
