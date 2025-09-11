@@ -116,8 +116,10 @@ class PGConnectionContext:
 
 def get_conn():
     if DATABASE_URL:
+        print("✅ Using Postgres", flush=True)
         return PGConnectionContext(DATABASE_URL)
     else:
+        print("⚠️ Using SQLite fallback", flush=True)
         conn = sqlite3.connect(DB, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         with conn:
