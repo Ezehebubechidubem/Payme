@@ -145,20 +145,20 @@
 
   <script>
   (function(){
-    // <-- CONFIG: point this to your backend (kept as your deployed Render address)
+    // CONFIG: your backend base URL (unchanged)
     const API_BASE = "https://payme-update.onrender.com";
 
-    // map of countdown intervals so we can clear when reloading
+    // countdown intervals map
     const countdownMap = new Map();
 
-    // read user from localStorage (try both keys used in your app)
+    // read stored user from localStorage (both keys for compatibility)
     function readStoredUser() {
       const raw = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
       if (!raw) return null;
       try { return JSON.parse(raw); } catch (e) { return null; }
     }
 
-    // persist user object to both keys so other pages see it
+    // persist user to both keys so other pages pick updated balance/id
     function persistUser(userObj) {
       try {
         localStorage.setItem("loggedInUser", JSON.stringify(userObj));
@@ -168,11 +168,11 @@
       }
     }
 
-    // If login didn't save id, fetch user details by phone to get id and balance
+    // If login didn't save id, fetch /user/:phone to get id and balance
     async function ensureUserHasId(u) {
       if (!u) return null;
       if (u.id) return u;
-      if (!u.phone) return null;
+      if (!u.phone) return u;
       try {
         const res = await fetch(`${API_BASE}/user/${encodeURIComponent(u.phone)}`);
         if (!res.ok) {
@@ -180,7 +180,7 @@
           return u;
         }
         const data = await res.json();
-        if (data.status === "success" && data.user) {
+        if (data && data.status === "success" && data.user) {
           const newUser = Object.assign({}, u, data.user);
           persistUser(newUser);
           return newUser;
@@ -192,7 +192,6 @@
       }
     }
 
-    // safe parse number helpers
     function toFloat(v) {
       const n = parseFloat(v);
       return isNaN(n) ? 0 : n;
@@ -202,7 +201,7 @@
       return isNaN(n) ? 0 : n;
     }
 
-    // utility to update stored balance from backend
+    // refresh stored balance from backend
     async function refreshStoredBalance(user) {
       if (!user || !user.phone) return;
       try {
@@ -214,11 +213,11 @@
           persistUser(user);
         }
       } catch (err) {
-        // ignore
+        // ignore network error
       }
     }
 
-    // Clear countdown intervals
+    // clear countdown intervals
     function clearCountdowns() {
       for (const id of countdownMap.keys()) {
         clearInterval(countdownMap.get(id));
@@ -226,108 +225,11 @@
       countdownMap.clear();
     }
 
-    // Load savings list for the current user (uses user.id)
-    async function loadSavings(user) {
-      if (!user || !user.id) {
-        console.error("loadSavings called without user id");
-        return;
-      }
-
-      clearCountdowns();
-
-      const table = document.getElementById("savingsTable");
-      table.innerHTML = `<tr><td colspan="5">Loading...</td></tr>`;
-
-      try {
-        const res = await fetch(`${API_BASE}/savings/list/${user.id}`);
-        const json = await res.json();
-
-        // backend returns { status: "success", savings: [...] }
-        const rows = (json && json.savings) ? json.savings : [];
-
-        // filter out withdrawn items so savings list shows only active ones
-        const active = rows.filter(r => (r.status || r.state || "").toLowerCase() !== "withdrawn");
-
-        if (!active.length) {
-          table.innerHTML = `<tr><td colspan="5">No savings found</td></tr>`;
-          return;
-        }
-
-        // render active savings
-        table.innerHTML = "";
-        active.forEach(s => {
-          const type = s.savings_type || s.type || "flexible";
-          const endRaw = s.end_date || s.endDate || s.end;
-          const endDate = endRaw ? new Date(endRaw) : null;
-          const id = s.id;
-          const amount = s.amount;
-
-          const now = new Date();
-          let statusText = "Active";
-          if (endDate && endDate <= now) statusText = "Completed";
-
-          // action: flexible -> withdraw anytime; fixed -> only if matured (our list will have matured removed by sweep,
-          // but we also double-check)
-          let actionHtml = '';
-          if ((s.status || "").toLowerCase() === "withdrawn") {
-            actionHtml = `<button class="disabled-btn" disabled>Withdrawn</button>`;
-          } else if (type === "flexible") {
-            actionHtml = `<button data-id="${id}" class="withdraw-btn">Withdraw</button>`;
-          } else if (type === "fixed") {
-            // If endDate passed we let button be available (but backend's sweep should already handle)
-            if (endDate && endDate <= now) {
-              actionHtml = `<button data-id="${id}" class="withdraw-btn">Withdraw</button>`;
-            } else {
-              actionHtml = `<button class="disabled-btn" disabled>Locked</button>`;
-            }
-          } else {
-            actionHtml = `<button class="disabled-btn" disabled>Locked</button>`;
-          }
-
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${amount}</td>
-            <td>${type}</td>
-            <td>${endDate ? endDate.toLocaleString() : "-"}</td>
-            <td id="timer-${id}">${statusText}</td>
-            <td>
-              <div class="action-container">
-                ${actionHtml}
-              </div>
-            </td>
-          `;
-          table.appendChild(tr);
-
-          // attach click handler for newly inserted withdraw button (if any)
-          const btn = tr.querySelector("button.withdraw-btn");
-          if (btn) {
-            btn.addEventListener("click", async function (ev) {
-              const sid = toInt(this.getAttribute("data-id"));
-              // disable immediately to prevent double-click
-              this.disabled = true;
-              this.classList.add("disabled-btn");
-              await handleWithdraw(user, sid, amount, type, id);
-            });
-          }
-
-          // start countdown for the row if not withdrawn
-          if ((s.status || "").toLowerCase() !== "withdrawn" && endDate) {
-            startCountdownForRow(id, endDate, user);
-          }
-        });
-
-      } catch (err) {
-        console.error("Error loading savings:", err);
-        table.innerHTML = `<tr><td colspan="5">Error loading savings</td></tr>`;
-      }
-    }
-
-    // countdown per row (updates seconds). When reaches zero we call loadSavings to allow backend sweep.
+    // Start countdown for a row; when finishes reload savings to allow backend sweep
     function startCountdownForRow(id, endDate, user) {
       const timerEl = document.getElementById(`timer-${id}`);
       if (!timerEl) return;
 
-      // clear existing interval for id if present
       if (countdownMap.has(id)) {
         clearInterval(countdownMap.get(id));
         countdownMap.delete(id);
@@ -338,16 +240,14 @@
         const distance = new Date(endDate) - now;
         if (distance <= 0) {
           timerEl.innerText = "✅ Completed";
-          // clear and refresh list to let backend sweep matured fixed deposits
           if (countdownMap.has(id)) {
             clearInterval(countdownMap.get(id));
             countdownMap.delete(id);
           }
-          // small delay to ensure backend time alignment, then reload list (which triggers sweep)
+          // small delay to let backend sweep matured savings, then reload
           setTimeout(() => loadSavings(user), 600);
           return;
         }
-
         const days = Math.floor(distance / (1000 * 60 * 60 * 24));
         const hours = Math.floor((distance / (1000 * 60 * 60)) % 24);
         const mins = Math.floor((distance / (1000 * 60)) % 60);
@@ -360,7 +260,125 @@
       countdownMap.set(id, iv);
     }
 
-    // withdraw handler: posts to /savings/withdraw with { user_id, savings_id }
+    // render savings table using exactly what backend returns (no aggressive filtering)
+    function renderSavingsTable(rows, user) {
+      const table = document.getElementById("savingsTable");
+      table.innerHTML = "";
+
+      if (!rows || rows.length === 0) {
+        table.innerHTML = `<tr><td colspan="5">No savings found</td></tr>`;
+        return;
+      }
+
+      rows.forEach(s => {
+        const id = s.id;
+        const amount = s.amount;
+        // backend uses "type" but some code earlier used "savings_type" - support both
+        const type = s.savings_type || s.type || "flexible";
+        const endRaw = s.end_date || s.endDate || s.end || null;
+        const endDate = endRaw ? new Date(endRaw) : null;
+        const status = (s.status || "").toString().toLowerCase();
+        // backend now returns can_withdraw boolean — prefer that when available
+        const canWithdraw = typeof s.can_withdraw !== "undefined" ? !!s.can_withdraw : null;
+
+        // status text
+        let statusText = "Active";
+        if (status === "withdrawn") statusText = "✅ Withdrawn";
+        else if (endDate && endDate <= new Date()) statusText = "Completed";
+
+        // Decide action button:
+        // - If already withdrawn -> disabled Withdrawn
+        // - Else if backend says can_withdraw === true -> show Withdraw
+        // - Else fallback to type/endDate checks (flexible always withdrawable, fixed only if matured)
+        let actionHtml = "";
+        if (status === "withdrawn") {
+          actionHtml = `<button class="disabled-btn" disabled>Withdrawn</button>`;
+        } else if (canWithdraw === true) {
+          actionHtml = `<button data-id="${id}" class="withdraw-btn">Withdraw</button>`;
+        } else if (canWithdraw === false) {
+          actionHtml = `<button class="disabled-btn" disabled>Locked</button>`;
+        } else {
+          // fallback behavior (maintains original UX)
+          if (type === "flexible") {
+            actionHtml = `<button data-id="${id}" class="withdraw-btn">Withdraw</button>`;
+          } else if (type === "fixed") {
+            if (endDate && endDate <= new Date()) {
+              actionHtml = `<button data-id="${id}" class="withdraw-btn">Withdraw</button>`;
+            } else {
+              actionHtml = `<button class="disabled-btn" disabled>Locked</button>`;
+            }
+          } else {
+            actionHtml = `<button class="disabled-btn" disabled>Locked</button>`;
+          }
+        }
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${amount}</td>
+          <td>${type}</td>
+          <td>${endDate ? endDate.toLocaleString() : "-"}</td>
+          <td id="timer-${id}">${statusText}</td>
+          <td>
+            <div class="action-container">
+              ${actionHtml}
+            </div>
+          </td>
+        `;
+        table.appendChild(tr);
+
+        // attach withdraw handler if button exists
+        const btn = tr.querySelector("button.withdraw-btn");
+        if (btn) {
+          btn.addEventListener("click", async function () {
+            const sid = toInt(this.getAttribute("data-id"));
+            // disable right away to avoid double-click
+            this.disabled = true;
+            this.classList.add("disabled-btn");
+            await handleWithdraw(user, sid, amount, type, id);
+          });
+        }
+
+        // start countdown if there is an end date and not withdrawn
+        if (status !== "withdrawn" && endDate) {
+          startCountdownForRow(id, endDate, user);
+        }
+      });
+    }
+
+    // load savings call
+    async function loadSavings(user) {
+      if (!user || !user.id) {
+        console.error("loadSavings called without user id");
+        return;
+      }
+
+      clearCountdowns();
+      const table = document.getElementById("savingsTable");
+      table.innerHTML = `<tr><td colspan="5">Loading...</td></tr>`;
+
+      try {
+        const res = await fetch(`${API_BASE}/savings/list/${encodeURIComponent(user.id)}`);
+        if (!res.ok) {
+          // try to surface server error if provided
+          let errText = `Failed to load savings (${res.status})`;
+          try {
+            const j = await res.json();
+            if (j && j.message) errText = j.message;
+          } catch(e){}
+          table.innerHTML = `<tr><td colspan="5">${errText}</td></tr>`;
+          return;
+        }
+
+        const json = await res.json();
+        const rows = (json && json.savings) ? json.savings : [];
+        renderSavingsTable(rows, user);
+      } catch (err) {
+        console.error("Error loading savings:", err);
+        table.innerHTML = `<tr><td colspan="5">Error loading savings</td></tr>`;
+      }
+    }
+
+    // withdraw handler
     async function handleWithdraw(user, savingsId, amount, type, rowId) {
       if (!user || !user.id) {
         alert("User not ready. Try logging in again.");
@@ -376,29 +394,20 @@
         const json = await res.json();
 
         if (json && json.status === "success") {
-          // show immediate feedback on UI: set row to Withdrawn, then reload list shortly (so it's removed)
+          // immediate UI feedback
           const timerEl = document.getElementById(`timer-${savingsId}`);
           if (timerEl) timerEl.innerText = "✅ Withdrawn";
+          const btn = document.querySelector(`button[data-id="${savingsId}"]`);
+          if (btn) { btn.disabled = true; btn.classList.add("disabled-btn"); btn.innerText = "Withdrawn"; }
 
-          // replace the button in that row with disabled Withdrawn
-          const row = document.querySelector(`button[data-id="${savingsId}"]`);
-          if (row) {
-            row.disabled = true;
-            row.classList.add("disabled-btn");
-            row.innerText = "Withdrawn";
-          }
-
-          // update stored balance (fetch from backend)
+          // refresh stored balance so dashboard sees updated balance
           await refreshStoredBalance(user);
 
           alert(json.message || `₦${amount} withdrawn and credited to main balance.`);
-
-          // reload list after short delay (backend marks it withdrawn)
           setTimeout(() => loadSavings(user), 800);
         } else {
           const msg = (json && json.message) ? json.message : "Withdrawal failed";
           alert("❌ " + msg);
-          // refresh list to reflect real state
           setTimeout(() => loadSavings(user), 500);
         }
       } catch (err) {
@@ -408,13 +417,12 @@
       }
     }
 
-    // create savings form submit
+    // create savings
     async function handleCreateSavings(user, amount, savingsType, durationDays) {
       if (!user) {
         alert("Please login first");
         return;
       }
-      // basic validation
       if (toFloat(amount) <= 0) {
         return alert("Amount must be > 0");
       }
@@ -443,14 +451,12 @@
         const json = await res.json();
 
         if (json && json.status === "success") {
-          // update balance by fetching from server
+          // Update balance from backend and reload savings to show new entry
           await refreshStoredBalance(user);
-
           alert(json.message || "Savings created");
-          // reload savings to show new entry
           setTimeout(() => loadSavings(user), 300);
         } else {
-          alert("❌ " + (json.message || "Could not create savings"));
+          alert("❌ " + (json && json.message ? json.message : "Could not create savings"));
         }
       } catch (err) {
         console.error("Create savings error:", err);
@@ -458,12 +464,13 @@
       }
     }
 
-    // back button (preserve your original destination)
+    // goBack preserved (some variants of your markup call window.goBack)
     function goBack() {
       window.location.href = "paymelogin.html";
     }
+    window.goBack = goBack;
 
-    // wires form submit + initial load
+    // init wiring
     async function init() {
       let stored = readStoredUser();
       if (!stored) {
@@ -472,17 +479,15 @@
         return;
       }
 
-      // ensure we have an id (login may have saved only phone)
+      // ensure we have an id
       const user = await ensureUserHasId(stored);
-
-      // guard
       if (!user || !user.id) {
         alert("Could not determine your user id. Please login again.");
         window.location.href = "login.html";
         return;
       }
 
-      // attach form submit
+      // wire form submit
       const form = document.getElementById("savingsForm");
       form.addEventListener("submit", async function (e) {
         e.preventDefault();
@@ -492,11 +497,14 @@
         await handleCreateSavings(user, amount, savingsType, duration);
       });
 
-      // attach back function to global so your markup still calls it
-      window.goBack = goBack;
+      // refresh balance so stored user object is up-to-date
+      await refreshStoredBalance(user);
 
-      // initial load
+      // initial load of savings
       await loadSavings(user);
+
+      // clear timers when user navigates away (prevent leaking intervals)
+      window.addEventListener("beforeunload", () => clearCountdowns());
     }
 
     // start
