@@ -393,6 +393,8 @@ BANKS = {
     # 👉 Add the full NubAPI list you have
 }
 
+
+
 @app.route("/banks", methods=["GET"])
 def get_banks():
     """Return available banks (code -> name)"""
