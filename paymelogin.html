@@ -107,7 +107,7 @@
       <div class="avatar" aria-hidden="true"></div>
       <div class="hello">
         <div class="hi"><a href="profile.html" id="hiUser">Hi, User</a></div>
-        <div class="sub">Welcome to fast and reliable app!</div>
+        <div class="sub">Welcome, let's make payments!</div>
       </div>
       <div class="topbar-actions">
         <div class="icon-btn" title="Help"><i class="fa-solid fa-headset"></i></div>
@@ -126,7 +126,7 @@
           <div class="amount" id="balance">₦0.00</div>
         </div>
         <div style="text-align:right">
-          <a class="chip-link" href="transactions.html"><span>Transaction History</span> <i class="fa-solid fa-angle-right"></i></a>
+          <a iclass="chip-link" href="transactions.html"><span>Transaction History</span> <i class="fa-solid fa-angle-right"></i></a>
           <div style="margin-top:8px">
             <a href="addmoney.html"class="btn">Add Money</a>
           </div>
@@ -144,8 +144,7 @@
     <section class="quick">
       <div class="qa">
         <i class="fa-solid fa-building-columns"></i>
-<a href="toWallet.html">
-        <div>To Bank <span class="fee">0 Fee</span></div></a>
+        <div>To Bank <span class="fee">0 Fee</span></div>
       </div>
       <div class="qa">
         <i class="fa-solid fa-user"></i>
@@ -214,30 +213,100 @@
   </nav>
 
 <script>
-  async function loadDashboard() {
-    let user = JSON.parse(localStorage.getItem("loggedInUser"));
+  // Backend base
+  const API_BASE = "https://payme-update.onrender.com";
 
-    if (!user) return;
-
+  // Utility: try to get user from either key used in your app
+  function getStoredUser() {
+    const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
     try {
-      // Get latest balance from backend
-      const response = await fetch(`https://payme-update.onrender.com/balance/${user.phone}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        user.balance = data.balance;
-        localStorage.setItem("loggedInUser", JSON.stringify(user));
-      }
-    } catch (err) {
-      console.warn("Backend not reachable, using local data.");
+      return j ? JSON.parse(j) : null;
+    } catch (e) {
+      return null;
     }
-
-    document.getElementById("hiUser").innerText = "Hi, " + user.username;
-    document.getElementById("balance").innerText = "₦" + (user.balance || 0).toFixed(2);
   }
 
-  // ✅ Run when dashboard loads
-  window.onload = loadDashboard;
+  // Update UI elements for user and balance
+  function updateUIWithUser(user) {
+    if (!user) return;
+    const hi = document.getElementById("hiUser");
+    if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
+    const balEl = document.getElementById("balance");
+    if (balEl) {
+      const b = typeof user.balance !== "undefined" ? Number(user.balance) : 0;
+      balEl.innerText = "₦" + b.toFixed(2);
+    }
+  }
+
+  // Fetch balance from backend and persist to storage
+  async function fetchAndUpdateBalance() {
+    const user = getStoredUser();
+    if (!user || !user.phone) return;
+    try {
+      const res = await fetch(`${API_BASE}/balance/${encodeURIComponent(user.phone)}`, { cache: "no-store" });
+      if (!res.ok) {
+        // still update UI from stored user
+        updateUIWithUser(user);
+        return;
+      }
+      const data = await res.json();
+      // backend returns { balance: <number> }
+      if (data && (typeof data.balance === "number" || !isNaN(Number(data.balance)))) {
+        user.balance = Number(data.balance);
+        // store in both keys to remain compatible across your app
+        localStorage.setItem("loggedInUser", JSON.stringify(user));
+        localStorage.setItem("user", JSON.stringify(user));
+        updateUIWithUser(user);
+      } else {
+        // fallback UI update
+        updateUIWithUser(user);
+      }
+    } catch (err) {
+      // offline or backend unreachable
+      console.warn("Could not fetch balance:", err);
+      // still show whatever stored value we have
+      updateUIWithUser(user);
+    }
+  }
+
+  // Initial load
+  window.addEventListener("load", () => {
+    const user = getStoredUser();
+    if (!user) {
+      // keep behavior consistent with original (do not redirect here)
+      return;
+    }
+    // show stored values immediately, then fetch latest
+    updateUIWithUser(user);
+    fetchAndUpdateBalance();
+  });
+
+  // Refresh when tab gets focus (user likely returned from add-money)
+  window.addEventListener("focus", () => {
+    fetchAndUpdateBalance();
+  });
+
+  // Refresh when page becomes visible
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      fetchAndUpdateBalance();
+    }
+  });
+
+  // Listen for storage changes (e.g., another tab updated loggedInUser after add-money)
+  window.addEventListener("storage", (e) => {
+    if (!e) return;
+    if (e.key === "loggedInUser" || e.key === "user") {
+      // small debounce
+      setTimeout(fetchAndUpdateBalance, 50);
+    }
+  });
+
+  // Poll every 15s as an extra guard (won't run if user not logged)
+  setInterval(() => {
+    const user = getStoredUser();
+    if (user && user.phone) fetchAndUpdateBalance();
+  }, 15000);
 </script>
 </body>
 </html>
