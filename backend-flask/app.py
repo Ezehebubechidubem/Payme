@@ -582,7 +582,7 @@ def resolve_account():
 INTEREST_RATE = 0.20  # 20% annual simple interest
 
 def _calc_interest(amount: float, days: int) -> float:
-   if days <= 0:
+    if days <= 0:
         return 0.0
     return amount * INTEREST_RATE * (days / 365.0)
 
