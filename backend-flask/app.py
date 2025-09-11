@@ -6,6 +6,18 @@ import os
 import sys
 import traceback
 import requests
+
+# Optional Postgres support - used when DATABASE_URL is set
+DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or None
+if DATABASE_URL:
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except Exception as e:
+        # If psycopg2 isn't installed, we'll raise an informative error later when trying to use Postgres.
+        psycopg2 = None
+        psycopg2_extras = None
+
 NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
 
 
@@ -23,61 +35,204 @@ DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
 # -------------------------------------------------
 # DB helpers
 # -------------------------------------------------
+# We provide a get_conn() context manager that supports both sqlite3 and psycopg2.
+# It returns an object with cursor() that supports execute(...), fetchone(), fetchall() etc.
+# For psycopg2 we wrap execute to convert "?" placeholders -> "%s" so existing SQL works.
+
+class PGCursorWrapper:
+    """Wrap a psycopg2 cursor and convert ? -> %s in SQL automatically."""
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql, params=None):
+        if params is None:
+            # no params; just execute
+            return self._cur.execute(sql)
+        # Replace ? placeholders with %s for psycopg2
+        # Simple replacement is OK because your SQL uses ? for parameters.
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.execute(safe_sql, params)
+
+    def executemany(self, sql, seq_of_params):
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.executemany(safe_sql, seq_of_params)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
+class PGConnectionContext:
+    def __init__(self, dsn):
+        self.dsn = dsn
+        self.conn = None
+
+    def __enter__(self):
+        if psycopg2 is None:
+            raise RuntimeError("psycopg2 not installed; cannot use PostgreSQL. Install psycopg2-binary.")
+        # connect using the provided DATABASE_URL/DSN
+        # allow connection parameters in URL form
+        self.conn = psycopg2.connect(self.dsn)
+        # We'll use RealDictCursor for dict-like rows (so r["id"] works)
+        self.conn.autocommit = False
+        return self
+
+    def cursor(self):
+        # Return a wrapped cursor that converts placeholders
+        raw_cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        return PGCursorWrapper(raw_cur)
+
+    def commit(self):
+        if self.conn:
+            self.conn.commit()
+
+    def rollback(self):
+        if self.conn:
+            self.conn.rollback()
+
+    def close(self):
+        if self.conn:
+            try:
+                self.conn.close()
+            except:
+                pass
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc:
+            try:
+                self.conn.rollback()
+            except:
+                pass
+        else:
+            try:
+                self.conn.commit()
+            except:
+                pass
+        try:
+            self.conn.close()
+        except:
+            pass
+
+
 def get_conn():
-    conn = sqlite3.connect(DB, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    with conn:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+    """
+    Returns a context manager usable like:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(...)
+            rows = cur.fetchall()
+    Behavior:
+      - If DATABASE_URL is set we use Postgres (psycopg2).
+      - Else we use sqlite3 (existing behavior).
+    """
+    if DATABASE_URL:
+        return PGConnectionContext(DATABASE_URL)
+    else:
+        # sqlite3 Connection is itself a context manager in Python3, and we preserve existing behavior.
+        conn = sqlite3.connect(DB, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        # Set pragmas
+        with conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA foreign_keys=ON;")
+        return conn
 
 
 def init_db():
-    with get_conn() as conn:
-        cur = conn.cursor()
-        # Users table
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                phone TEXT UNIQUE,
-                password TEXT,
-                account_number TEXT UNIQUE,
-                balance REAL DEFAULT 0
+    # Keep same SQL schema; when using Postgres the PRAGMA calls are skipped (not run).
+    # For Postgres the CREATE TABLE IF NOT EXISTS SQL below is compatible.
+    if DATABASE_URL:
+        # Create tables in Postgres
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # Use standard SQL; note: CHECK(type IN ...) works in Postgres
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users(
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE,
+                    phone TEXT UNIQUE,
+                    password TEXT,
+                    account_number TEXT UNIQUE,
+                    balance NUMERIC DEFAULT 0
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS transactions(
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    type TEXT,
+                    amount NUMERIC,
+                    other_party TEXT,
+                    date TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS savings(
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    amount NUMERIC,
+                    type TEXT CHECK(type IN ('flexible','fixed')),
+                    start_date TEXT,
+                    duration_days INTEGER,
+                    end_date TEXT,
+                    status TEXT DEFAULT 'active',
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            # commit handled by context manager
+    else:
+        # existing sqlite init
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # Users table
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE,
+                    phone TEXT UNIQUE,
+                    password TEXT,
+                    account_number TEXT UNIQUE,
+                    balance REAL DEFAULT 0
+                )
+                """
             )
-            """
-        )
-        # Transactions table
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS transactions(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                type TEXT,
-                amount REAL,
-                other_party TEXT,
-                date TEXT,
-                FOREIGN KEY(user_id) REFERENCES users(id)
+            # Transactions table
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS transactions(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    type TEXT,
+                    amount REAL,
+                    other_party TEXT,
+                    date TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                """
             )
-            """
-        )
-        # Savings table (added)
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS savings(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                amount REAL,
-                type TEXT CHECK(type IN ('flexible','fixed')),
-                start_date TEXT,
-                duration_days INTEGER,
-                end_date TEXT,
-                status TEXT DEFAULT 'active',
-                FOREIGN KEY(user_id) REFERENCES users(id)
+            # Savings table (added)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS savings(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    amount REAL,
+                    type TEXT CHECK(type IN ('flexible','fixed')),
+                    start_date TEXT,
+                    duration_days INTEGER,
+                    end_date TEXT,
+                    status TEXT DEFAULT 'active',
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                """
             )
-            """
-        )
 
 
 # -------------------------------------------------
@@ -147,21 +302,24 @@ def register():
 
     account_number = phone[-10:]
 
-    try:
-        with get_conn() as conn:
-            cur = conn.cursor()
+    with get_conn() as conn:
+        cur = conn.cursor()
+        try:
             cur.execute(
                 "INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
                 (username, phone, password, account_number, 0.0),
             )
-        return jsonify({"status": "success", "account_number": account_number}), 200
-    except sqlite3.IntegrityError as ie:
-        msg = "User already exists"
-        if "username" in str(ie).lower():
-            msg = "Username already exists"
-        elif "phone" in str(ie).lower():
-            msg = "Phone already exists"
-        return jsonify({"status": "error", "message": msg}), 400
+        except Exception as ie:
+            # Try to provide the same messages as original
+            msg = "User already exists"
+            if "username" in str(ie).lower():
+                msg = "Username already exists"
+            elif "phone" in str(ie).lower():
+                msg = "Phone already exists"
+            # On Postgres the error might be different; return 400
+            return jsonify({"status": "error", "message": msg}), 400
+
+    return jsonify({"status": "success", "account_number": account_number}), 200
 
 
 @app.route("/login", methods=["POST"])
@@ -185,6 +343,7 @@ def login():
     if not row:
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
+    # row may be sqlite3.Row or dict (psycopg2 RealDictCursor)
     user = {
         "id": row["id"],
         "username": row["username"],
@@ -306,6 +465,7 @@ def transactions(phone: str):
     ]
     return jsonify(result), 200
 
+
 @app.route("/user_by_account/<account_number>", methods=["GET"])
 def user_by_account(account_number: str):
     if not account_number.isdigit() or len(account_number) != 10:
@@ -324,6 +484,7 @@ def user_by_account(account_number: str):
         "username": row["username"],
         "phone": row["phone"]
     }), 200
+
 
 @app.route("/user/<phone>", methods=["GET"])
 def get_user(phone: str):
@@ -357,7 +518,7 @@ def update_user():
             return jsonify({"status": "error", "message": "User not found"}), 404
 
         if new_phone:
-            cur.execute("UPDATE users SET phone = ?, account_number = ? WHERE id = ?", 
+            cur.execute("UPDATE users SET phone = ?, account_number = ? WHERE id = ?",
                         (new_phone, new_phone[-10:], user["id"]))
         if new_password:
             cur.execute("UPDATE users SET password = ? WHERE id = ?", (new_password, user["id"]))
@@ -367,14 +528,6 @@ def update_user():
         updated = dict(cur.fetchone())
 
     return jsonify({"status": "success", "user": updated}), 200
-
-# -------------------------------------------------
-# Entry
-# -------------------------------------------------
-if __name__ != "__main__":
-    with app.app_context():
-        init_db()
-
 
 
 # -------------------------------------------------
@@ -398,6 +551,7 @@ BANKS = {
 def get_banks():
     """Return available banks (code -> name)"""
     return jsonify(BANKS), 200
+
 
 @app.route("/resolve_account", methods=["GET"])
 def resolve_account():
@@ -426,7 +580,7 @@ def resolve_account():
         try:
             data = res.json()
         except ValueError:
-            return jsonify({"status": "error", "message": "Invalid response from NubAPI"}), 502
+                      return jsonify({"status": "error", "message": "Invalid response from NubAPI"}), 502
 
         if data.get("status") == "success" and data.get("account_name"):
             return jsonify({
@@ -450,10 +604,12 @@ def resolve_account():
 # -------------------------------------------------
 INTEREST_RATE = 0.20  # 20% annual simple interest
 
+
 def _calc_interest(amount: float, days: int) -> float:
     if days <= 0:
         return 0.0
     return amount * INTEREST_RATE * (days / 365.0)
+
 
 def _sweep_matured_savings_for_user(conn, user_id: int):
     """
@@ -464,12 +620,12 @@ def _sweep_matured_savings_for_user(conn, user_id: int):
     cur = conn.cursor()
     now = datetime.now()
 
-    # Find active savings that have matured
+    # NOTE: use plain end_date <= ? comparison (ISO datetime string ordering)
     cur.execute(
         """
         SELECT id, amount, type, start_date, duration_days, end_date
         FROM savings
-        WHERE user_id = ? AND status = 'active' AND datetime(end_date) <= ?
+        WHERE user_id = ? AND status = 'active' AND end_date <= ?
         """,
         (user_id, now.isoformat()),
     )
@@ -481,7 +637,6 @@ def _sweep_matured_savings_for_user(conn, user_id: int):
         # full tenure interest paid at maturity
         interest = _calc_interest(amount, duration_days)
         payout = amount + interest
-
         # Mark withdrawn
         cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (s["id"],))
         # Credit user
@@ -595,6 +750,20 @@ def savings_list(user_id: int):
         })
 
     return jsonify({"status": "success", "savings": savings}), 200
+
+# Compatibility route: allow listing savings by phone (front-ends that pass phone will work)
+@app.route("/savings/list/phone/<phone>", methods=["GET"])
+def savings_list_by_phone(phone: str):
+    # Lookup user's id by phone then reuse the same logic
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+        user_id = row["id"]
+    return savings_list(user_id)
+
 
 @app.route("/savings/withdraw", methods=["POST"])
 def savings_withdraw():
