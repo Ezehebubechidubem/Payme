@@ -7,6 +7,8 @@
 
   <!-- ethers (v6 UMD) -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+  <!-- bip39 (browser) - used only as a robust fallback to convert mnemonic -> seed -->
+  <script src="https://cdn.jsdelivr.net/npm/bip39@3.0.4/browser.js"></script>
 
   <style>
     :root{
@@ -142,7 +144,7 @@
   </div>
 
   <script>
-    // Minimal behavior: validate, derive locally with ethers, store and redirect to cryptoboard.html
+    // Robust derivation + save + redirect (keeps all UI exactly the same)
     (function(){
       const importBtn = document.getElementById("importBtn");
       const clearBtn  = document.getElementById("clearBtn");
@@ -152,7 +154,13 @@
       const STORAGE_KEY = "payme_wallet";
       const DEFAULT_PATH = "m/44'/60'/0'/0/0";
 
+      // normalize with NFKD, lowercase, single spaces
       function normalize(txt){
+        if(!txt) return "";
+        try {
+          // some browsers support normalize; safe-guard it
+          txt = txt.normalize ? txt.normalize('NFKD') : txt;
+        } catch(e) {}
         return (txt || "").trim().toLowerCase().replace(/\s+/g," ").trim();
       }
       function wordCount(txt){
@@ -160,40 +168,179 @@
         return normalize(txt).split(" ").filter(Boolean).length;
       }
 
-      async function deriveAndSave(phrase){
-        // derive using HDNode, attempt selected path (default)
+      function looksLikePrivateKey(s){
+        const t = s.trim();
+        if(/^0x[0-9a-fA-F]{64}$/.test(t)) return true;
+        if(/^[0-9a-fA-F]{64}$/.test(t)) return true;
+        return false;
+      }
+
+      // convert seed buffer/uint8array to hex string 0x...
+      function toHex0x(buf){
+        if(!buf) return null;
+        if(typeof Buffer !== 'undefined' && Buffer.isBuffer(buf)){
+          return "0x" + buf.toString('hex');
+        }
+        // Uint8Array
+        if(buf instanceof Uint8Array){
+          return "0x" + Array.from(buf).map(b=>b.toString(16).padStart(2,'0')).join('');
+        }
+        // fallback: string
         try {
-          const hd = ethers.HDNode.fromPhrase(phrase);
-          const derived = hd.derivePath(DEFAULT_PATH);
-          const wallet = new ethers.Wallet(derived.privateKey);
-
-          const payload = {
-            address: ethers.getAddress(wallet.address),
-            privateKey: wallet.privateKey,
-            mnemonic: phrase,
-            derivationPath: DEFAULT_PATH,
-            createdAt: Date.now()
-          };
-
-          // store locally (user wanted local-only behavior)
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-          return payload;
-        } catch (err) {
-          throw new Error("Could not derive wallet from phrase");
+          return "0x" + String(buf);
+        } catch(e){
+          return null;
         }
       }
 
-      importBtn.addEventListener("click", async ()=>{
-        const raw = passEl.value || "";
-        const phrase = normalize(raw);
-        const n = wordCount(raw);
+      async function deriveFromPrivateKey(key){
+        try {
+          let pk = key.trim();
+          if(!pk.startsWith("0x")) pk = "0x" + pk;
+          const wallet = new ethers.Wallet(pk);
+          return {
+            address: ethers.getAddress(wallet.address),
+            privateKey: wallet.privateKey,
+            mnemonic: null,
+            derivationPath: null,
+            createdAt: Date.now()
+          };
+        } catch(e){
+          throw new Error("Invalid private key");
+        }
+      }
 
-        if(n === 0){
-          statusEl.textContent = "Please paste your passphrase.";
+      async function tryEthersFromPhrase(phrase){
+        // fast path: ethers.Wallet.fromPhrase (v6)
+        try {
+          if (ethers && ethers.Wallet && typeof ethers.Wallet.fromPhrase === 'function') {
+            const w = ethers.Wallet.fromPhrase(phrase);
+            return {
+              address: ethers.getAddress(w.address),
+              privateKey: w.privateKey,
+              mnemonic: phrase,
+              derivationPath: "m/44'/60'/0'/0/0",
+              createdAt: Date.now()
+            };
+          }
+        } catch(e){ /* continue to other methods */ }
+        return null;
+      }
+
+      async function tryHDNodeDerive(phrase){
+        try {
+          if(ethers && ethers.HDNode && typeof ethers.HDNode.fromPhrase === 'function'){
+            const hd = ethers.HDNode.fromPhrase(phrase);
+            const derived = hd.derivePath(DEFAULT_PATH);
+            const w = new ethers.Wallet(derived.privateKey);
+            return {
+              address: ethers.getAddress(w.address),
+              privateKey: w.privateKey,
+              mnemonic: phrase,
+              derivationPath: DEFAULT_PATH,
+              createdAt: Date.now()
+            };
+          }
+        } catch(e){
+          // ignore, fallback later
+        }
+        return null;
+      }
+
+      async function tryBip39SeedDerive(phrase){
+        try {
+          // bip39 may expose mnemonicToSeed (async) or mnemonicToSeedSync (sync)
+          let seedBuf = null;
+          if (typeof bip39 !== 'undefined') {
+            if (typeof bip39.mnemonicToSeed === 'function') {
+              seedBuf = await bip39.mnemonicToSeed(phrase); // returns Buffer/Uint8Array
+            } else if (typeof bip39.mnemonicToSeedSync === 'function') {
+              seedBuf = bip39.mnemonicToSeedSync(phrase);
+            }
+          }
+          if(!seedBuf) throw new Error("bip39 seed conversion failed");
+
+          const seedHex = toHex0x(seedBuf);
+          if(!seedHex) throw new Error("could not convert seed to hex");
+
+          // ethers.HDNode.fromSeed accepts hex string or bytes in many builds
+          if(ethers && ethers.HDNode && typeof ethers.HDNode.fromSeed === 'function'){
+            const hd = ethers.HDNode.fromSeed(seedHex);
+            const derived = hd.derivePath(DEFAULT_PATH);
+            const w = new ethers.Wallet(derived.privateKey);
+            return {
+              address: ethers.getAddress(w.address),
+              privateKey: w.privateKey,
+              mnemonic: phrase,
+              derivationPath: DEFAULT_PATH,
+              createdAt: Date.now()
+            };
+          } else {
+            // As last resort, attempt HDNode.fromPhrase again (some builds differ)
+            const hd2 = ethers.HDNode.fromPhrase ? ethers.HDNode.fromPhrase(phrase) : null;
+            if(hd2){
+              const d = hd2.derivePath(DEFAULT_PATH);
+              const w = new ethers.Wallet(d.privateKey);
+              return {
+                address: ethers.getAddress(w.address),
+                privateKey: w.privateKey,
+                mnemonic: phrase,
+                derivationPath: DEFAULT_PATH,
+                createdAt: Date.now()
+              };
+            }
+          }
+        } catch(e){
+          // fail silently to try other attempts
+        }
+        return null;
+      }
+
+      async function deriveAndSave(phraseOrKey){
+        const raw = (phraseOrKey || "").trim();
+        // 1) Accept raw private key quickly
+        if(looksLikePrivateKey(raw)){
+          return await deriveFromPrivateKey(raw);
+        }
+
+        const phrase = normalize(raw);
+
+        // 2) Try fast ethers method
+        let result = null;
+        result = await tryEthersFromPhrase(phrase);
+        if(result) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+          return result;
+        }
+
+        // 3) Try HDNode.fromPhrase
+        result = await tryHDNodeDerive(phrase);
+        if(result) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+          return result;
+        }
+
+        // 4) Fallback: use bip39 to build seed and derive HD from seed (more tolerant)
+        result = await tryBip39SeedDerive(phrase);
+        if(result) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+          return result;
+        }
+
+        // nothing worked
+        throw new Error("Could not derive wallet from phrase");
+      }
+
+      importBtn.addEventListener("click", async ()=>{
+        const rawInput = passEl.value || "";
+        const n = wordCount(rawInput);
+
+        if(n === 0 && !looksLikePrivateKey(rawInput)){
+          statusEl.textContent = "Please paste your passphrase or private key.";
           statusEl.style.color = "#f2c6c6";
           return;
         }
-        if (![12,15,18,21,24].includes(n)){
+        if(!looksLikePrivateKey(rawInput) && ![12,15,18,21,24].includes(n)){
           if(!confirm("This doesn't look like a typical 12/24-word seed. Continue anyway?")) {
             statusEl.textContent = "Import cancelled.";
             statusEl.style.color = "#f2c6c6";
@@ -205,7 +352,7 @@
         statusEl.style.color = "#9fe6c8";
 
         try {
-          const saved = await deriveAndSave(phrase);
+          const saved = await deriveAndSave(rawInput);
           statusEl.textContent = "Imported. Redirecting to dashboard…";
           statusEl.style.color = "#9fe6c8";
 
@@ -216,7 +363,7 @@
 
         } catch (err) {
           console.error(err);
-          statusEl.textContent = "Import failed: " + (err.message || err);
+          statusEl.textContent = "Import failed: " + (err && err.message ? err.message : err);
           statusEl.style.color = "#f2c6c6";
         }
       });
