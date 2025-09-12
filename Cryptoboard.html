@@ -69,6 +69,20 @@
     }
     .symbol { font-weight: bold; }
     .price { color: #00ffae; font-weight: bold; }
+
+    /* small helper for add-token button placement */
+    .add-token-btn {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: #1e90ff;
+      color: #fff;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      border: none;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -98,47 +112,191 @@
   <div id="tokens" class="card token-list"></div>
 
   <script>
-    const wallet = JSON.parse(localStorage.getItem("payme_wallet") || "{}");
+    /***********************
+     * Data & storage keys
+     ***********************/
+    const STORAGE_WALLET = "payme_wallet";
+    const STORAGE_TOKENS = "payme_tokens"; // structure: { mainnet: { coinId: { symbol,name,balance } }, testnet: { PYM: { balance } } }
+
+    // show derived wallet address (if any)
+    const wallet = JSON.parse(localStorage.getItem(STORAGE_WALLET) || "{}");
     document.getElementById("walletAddr").innerText = wallet.address || "0x1234...abcd";
 
-    const TOKENS = {
-      mainnet: [
-        { symbol: "ETH", name: "Ethereum", price: 1600 },
-        { symbol: "BNB", name: "Binance Coin", price: 220 }
-      ],
-      testnet: [
-        { symbol: "PYM", name: "Testnet Token", price: 0.5 }
-      ]
-    };
+    // default mainnet tokens (CoinGecko ids)
+    const DEFAULT_MAINNET_IDS = ["ethereum", "binancecoin"]; // CoinGecko ids for ETH and BNB
 
-    function renderTokens(net){
-      const container = document.getElementById("tokens");
-      container.innerHTML = "";
-      let tokens = TOKENS[net] || [];
-
-      // If PYM was added, fetch from storage
-      if(net==="testnet"){
-        const stored = JSON.parse(localStorage.getItem("payme_tokens") || "{}");
-        if(stored.testnet && stored.testnet.PYM){
-          let bal = stored.testnet.PYM.balance;
-          tokens = [{symbol:"PYM", name:"Testnet Token", price:0.5, balance:bal}];
-        }
+    // helper to read stored tokens object
+    function readStoredTokens(){
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_TOKENS) || "{}");
+      } catch(e){
+        return {};
       }
-
-      tokens.forEach(t=>{
-        let row = document.createElement("div");
-        row.className="token-item";
-        row.innerHTML=`
-          <div>
-            <div class="symbol">${t.symbol}</div>
-            <div class="muted">${t.name}</div>
-          </div>
-          <div class="price">$${t.price}${t.balance ? " | "+t.balance+" PYM" : ""}</div>
-        `;
-        container.appendChild(row);
-      });
+    }
+    function writeStoredTokens(obj){
+      localStorage.setItem(STORAGE_TOKENS, JSON.stringify(obj));
     }
 
+    // Add the "Add Token" button into tokens card (we avoid changing the rest)
+    (function insertAddButton(){
+      const tokensCard = document.getElementById("tokens");
+      // We'll place the add button at the top of the tokens card
+      const addBtn = document.createElement("button");
+      addBtn.innerText = "+ Add Token (CoinGecko)";
+      addBtn.className = "add-token-btn";
+      addBtn.onclick = onAddTokenClicked;
+      // We'll add it as the first child so token rows appear below
+      tokensCard.appendChild(addBtn);
+      // also add a small status area
+      const statusEl = document.createElement("div");
+      statusEl.id = "addTokenStatus";
+      statusEl.style.marginTop = "8px";
+      tokensCard.appendChild(statusEl);
+    })();
+
+    /***********************
+     * Render tokens & balances
+     ***********************/
+    // Utility: format number
+    function fmt(n){ return Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 8}); }
+
+    // Render tokens for a network
+    async function renderTokens(net){
+      const tokenContainer = document.getElementById("tokens");
+      // preserve the Add button and status (first two children). Remove all existing token rows leaving the first two nodes.
+      while(tokenContainer.childNodes.length > 2){
+        tokenContainer.removeChild(tokenContainer.lastChild);
+      }
+
+      const stored = readStoredTokens();
+
+      // Build list depending on network
+      if(net === "mainnet"){
+        // Build list of coin ids to fetch (stored ones + defaults)
+        const storedMain = (stored.mainnet) ? Object.keys(stored.mainnet) : [];
+        const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
+        const ids = Array.from(idsSet);
+        if(ids.length === 0){
+          // nothing to show
+        } else {
+          try {
+            // Fetch market data from CoinGecko
+            const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + encodeURIComponent(ids.join(",")));
+            const markets = await res.json();
+            // For quick lookup by id
+            const map = {};
+            (markets || []).forEach(m => { map[m.id] = m; });
+
+            let totalUsd = 0;
+
+            // Render each id in same order as ids
+            ids.forEach(id => {
+              const m = map[id];
+              // If CoinGecko did not return this id (maybe user used a non-existing id), skip gracefully
+              const symbol = m ? (m.symbol || id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
+              const name = m ? (m.name || id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name || id : id);
+              const price = m ? Number(m.current_price || 0) : 0;
+
+              const bal = (stored.mainnet && stored.mainnet[id] && Number(stored.mainnet[id].balance)) ? Number(stored.mainnet[id].balance) : 0;
+              const usdVal = bal * price;
+              totalUsd += usdVal;
+
+              // create row DOM
+              const row = document.createElement("div");
+              row.className = "token-item";
+              row.innerHTML = `
+                <div>
+                  <div class="symbol">${symbol}</div>
+                  <div class="muted" style="font-size:13px">${name}</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-weight:800">${fmt(bal)} ${symbol}</div>
+                  <div class="price">$${fmt(price)}</div>
+                </div>
+              `;
+              tokenContainer.appendChild(row);
+            });
+
+            // update big balance
+            document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
+          } catch (err) {
+            console.error("CoinGecko error:", err);
+            // fallback: render stored tokens without price
+            let totalUsd = 0;
+            const storedMainObj = stored.mainnet || {};
+            Object.keys(storedMainObj).forEach(id => {
+              const item = storedMainObj[id];
+              const symbol = (item.symbol || id).toUpperCase();
+              const name = item.name || id;
+              const bal = Number(item.balance || 0);
+              const price = Number(item.price || 0);
+              totalUsd += bal * price;
+              const row = document.createElement("div");
+              row.className = "token-item";
+              row.innerHTML = `
+                <div>
+                  <div class="symbol">${symbol}</div>
+                  <div class="muted" style="font-size:13px">${name}</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-weight:800">${fmt(bal)} ${symbol}</div>
+                  <div class="price">$${fmt(price)}</div>
+                </div>
+              `;
+              tokenContainer.appendChild(row);
+            });
+            document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
+          }
+        }
+      } else { // testnet
+        // For testnet we'll show tokens stored in stored.testnet (like PYM). PYM price fixed to 0.5
+        const storedTest = stored.testnet || {};
+        let totalUsd = 0;
+        const keys = Object.keys(storedTest);
+        if(keys.length === 0){
+          // nothing to show; balance remains $0.00 (Testnet)
+        } else {
+          keys.forEach(k => {
+            const item = storedTest[k];
+            const symbol = k.toUpperCase();
+            const name = item.name || (k === "PYM" ? "Testnet Token" : k);
+            const bal = Number(item.balance || 0);
+            const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
+            totalUsd += bal * price;
+            const row = document.createElement("div");
+            row.className = "token-item";
+            row.innerHTML = `
+              <div>
+                <div class="symbol">${symbol}</div>
+                <div class="muted" style="font-size:13px">${name}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-weight:800">${fmt(bal)} ${symbol}</div>
+                <div class="price">$${fmt(price)}</div>
+              </div>
+            `;
+            tokenContainer.appendChild(row);
+          });
+        }
+        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Testnet)`;
+      }
+    }
+
+    // Initial render default mainnet
+    renderTokens("mainnet");
+
+    // Keep prices live for mainnet tokens (refresh every 15s)
+    setInterval(async ()=>{
+      // only refresh if mainnet active
+      const mainActive = document.getElementById("mainBtn").classList.contains("active");
+      if(mainActive){
+        await renderTokens("mainnet");
+      }
+    }, 15000);
+
+    /***********************
+     * Network switching
+     ***********************/
     function switchNetwork(net){
       document.getElementById("mainBtn").classList.remove("active");
       document.getElementById("testBtn").classList.remove("active");
@@ -152,8 +310,78 @@
       renderTokens(net);
     }
 
-    // Default render mainnet
-    renderTokens("mainnet");
+    /***********************
+     * Add token flow (CoinGecko)
+     * - prompt for search text (name or symbol)
+     * - uses /search to find coins, pick first match
+     * - ask user for balance amount and store under stored.mainnet[coinId]
+     ***********************/
+    async function onAddTokenClicked(){
+      const status = document.getElementById("addTokenStatus");
+      status.innerText = "";
+      try {
+        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
+        if(!q) return;
+
+        status.innerText = "Searching CoinGecko...";
+        // call search endpoint
+        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
+        const sjson = await sres.json();
+        const coins = sjson.coins || [];
+        if(coins.length === 0){
+          alert("No matching token found on CoinGecko.");
+          status.innerText = "";
+          return;
+        }
+
+        // show top 5 candidates for user to choose (simple prompt)
+        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
+        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
+        let idx = 0;
+        if(pick){
+          const p = parseInt(pick,10);
+          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
+        }
+        const coin = coins[idx];
+        if(!coin || !coin.id){
+          alert("Invalid selection.");
+          status.innerText = "";
+          return;
+        }
+
+        // ask for balance amount
+        let balStr = prompt(`Enter how many ${coin.symbol.toUpperCase()} you hold (e.g. 0.5):`, "0");
+        if(balStr === null) { status.innerText = ""; return; }
+        const bal = Number(balStr || 0);
+        if(isNaN(bal) || bal < 0){
+          alert("Invalid balance amount.");
+          status.innerText = "";
+          return;
+        }
+
+        // store in localStorage under mainnet
+        const stored = readStoredTokens();
+        stored.mainnet = stored.mainnet || {};
+        stored.mainnet[coin.id] = {
+          symbol: coin.symbol.toUpperCase(),
+          name: coin.name,
+          balance: bal
+        };
+        writeStoredTokens(stored);
+        status.innerText = `Added ${coin.symbol.toUpperCase()} with balance ${bal}.`;
+        // re-render (mainnet)
+        renderTokens("mainnet");
+      } catch (err) {
+        console.error("Add token error", err);
+        alert("Failed to add token.");
+        document.getElementById("addTokenStatus").innerText = "";
+      }
+    }
+
+    // Expose switchNetwork globally (keep same behavior as before)
+    window.switchNetwork = switchNetwork;
+
+    // Default render mainnet already called above
   </script>
 </body>
 </html>
