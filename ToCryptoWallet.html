@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payme - Main Page</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px;
+    }
+    header h2 { font-size: 18px; }
+    .balance { text-align: center; margin: 15px 0; }
+    .balance h1 { font-size: 26px; }
+    .actions { display: flex; justify-content: space-around; padding: 10px 0; }
+    .actions div { text-align: center; }
+    .actions i { font-size: 20px; margin-bottom: 5px; }
+    .banner {
+      margin: 15px; padding: 15px; background: #1c1c1c;
+      border-radius: 10px; text-align: center; font-size: 14px;
+    }
+    .token-list { margin: 15px; }
+    .token {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid #222;
+    }
+    .token-left { display: flex; align-items: center; }
+    .token-left img {
+      width: 32px; height: 32px; margin-right: 10px; border-radius: 50%;
+    }
+    .token-left div { display: flex; flex-direction: column; }
+    .token-left div span:first-child { font-weight: bold; }
+    .token-right { text-align: right; }
+    .token-right span { display: block; font-size: 14px; }
+    .add-btn {
+      margin: 15px auto; padding: 10px;
+      background: #222; color: white; border: none;
+      border-radius: 5px; cursor: pointer; display: block; width: 90%;
+    }
+    .add-form {
+      display: none; margin: 15px; padding: 15px; background: #1c1c1c; border-radius: 10px;
+    }
+    .add-form input {
+      width: 100%; padding: 8px; margin: 5px 0;
+      border: none; border-radius: 5px; background: #222; color: white;
+    }
+    footer {
+      display: flex; justify-content: space-around; padding: 10px 0;
+      border-top: 1px solid #222; position: fixed; bottom: 0; left: 0; right: 0;
+      background: #111;
+    }
+    footer div { text-align: center; font-size: 12px; }
+    footer i { font-size: 18px; margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h2>bewise</h2>
+    <i class="fa-solid fa-gear"></i>
+  </header>
+
+  <div class="balance">
+    <h1>$0.10</h1>
+  </div>
+
+  <div class="actions">
+    <div><i class="fa-solid fa-arrow-up"></i><br>Send</div>
+    <div><i class="fa-solid fa-arrow-down"></i><br>Receive</div>
+    <div><i class="fa-solid fa-credit-card"></i><br>Buy</div>
+    <div><i class="fa-solid fa-bank"></i><br>Sell</div>
+    <div><i class="fa-solid fa-clock-rotate-left"></i><br>History</div>
+  </div>
+
+  <div class="banner">
+    Earn up to 30% yield on-chain → Start earning
+  </div>
+
+  <div class="token-list" id="tokenList">
+    <div class="token">
+      <div class="token-right">
+        <span>0.00</span>
+        <span>$0.00</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="add-btn" onclick="toggleForm()">+ Add Token</button>
+
+  <div class="add-form" id="addForm">
+    <input type="text" id="symbol" placeholder="Symbol (e.g. BTC)">
+    <button class="add-btn" onclick="addToken()">Add</button>
+  </div>
+
+  <footer>
+    <div><i class="fa-solid fa-house"></i><br>Home</div>
+    <div><i class="fa-solid fa-chart-line"></i><br>Trending</div>
+    <div><i class="fa-solid fa-shuffle"></i><br>Swap</div>
+    <div><i class="fa-solid fa-coins"></i><br>Earn</div>
+    <div><i class="fa-solid fa-compass"></i><br>Discover</div>
+  </footer>
+
+  <script>
+    const tokens = {}; // store added tokens
+
+    function toggleForm() {
+      const form = document.getElementById("addForm");
+      form.style.display = form.style.display === "block" ? "none" : "block";
+    }
+
+    async function addToken() {
+      const symbol = document.getElementById("symbol").value.trim().toUpperCase();
+      if (!symbol) return;
+
+      if (tokens[symbol]) {
+        alert(symbol + " already added!");
+        return;
+      }
+
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&symbols=${symbol.toLowerCase()}`);
+        const data = await res.json();
+        if (data.length === 0) {
+          alert("Token not found on CoinGecko");
+          return;
+        }
+
+        const tokenData = data[0];
+        tokens[symbol] = tokenData;
+
+        const tokenList = document.getElementById("tokenList");
+        const div = document.createElement("div");
+        div.className = "token";
+        div.id = `token-${symbol}`;
+        div.innerHTML = `
+          <div class="token-left">
+            <img src="${tokenData.image}" alt="${symbol}">
+            <div>
+              <span>${symbol}</span>
+              <span id="price-${symbol}">$${tokenData.current_price}</span>
+            </div>
+          </div>
+          <div class="token-right">
+            <span>0.00</span>
+            <span>$0.00</span>
+          </div>
+        `;
+        tokenList.appendChild(div);
+
+        toggleForm(); // hide form
+        document.getElementById("symbol").value = "";
+      } catch (e) {
+        console.error("Error fetching from CoinGecko", e);
+      }
+    }
+
+    // live price updater
+    setInterval(async () => {
+      const symbols = Object.keys(tokens);
+      if (symbols.length === 0) return;
+
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&symbols=${symbols.join(",").toLowerCase()}`);
+        const data = await res.json();
+        data.forEach(tokenData => {
+          const symbol = tokenData.symbol.toUpperCase();
+          tokens[symbol] = tokenData;
+          const priceEl = document.getElementById(`price-${symbol}`);
+          if (priceEl) {
+            priceEl.textContent = "$" + tokenData.current_price;
+          }
+        });
+      } catch (e) {
+        console.error("Price update failed", e);
+      }
+    }, 15000); // update every 15s
+  </script>
+
+</body>
+</html>
