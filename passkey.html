@@ -1,9 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Payme Crypto — Import Passphrase</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payme Crypto</title>
+
+  <!-- ethers (v6 UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
+
   <style>
     :root{
       --bg: linear-gradient(180deg,#031620,#072a34);
@@ -138,12 +142,15 @@
   </div>
 
   <script>
-    // Minimal behavior: simple validation and UX only (no network, no server).
+    // Minimal behavior: validate, derive locally with ethers, store and redirect to cryptoboard.html
     (function(){
       const importBtn = document.getElementById("importBtn");
       const clearBtn  = document.getElementById("clearBtn");
       const passEl    = document.getElementById("passphrase");
       const statusEl  = document.getElementById("status");
+
+      const STORAGE_KEY = "payme_wallet";
+      const DEFAULT_PATH = "m/44'/60'/0'/0/0";
 
       function normalize(txt){
         return (txt || "").trim().toLowerCase().replace(/\s+/g," ").trim();
@@ -153,23 +160,65 @@
         return normalize(txt).split(" ").filter(Boolean).length;
       }
 
-      importBtn.addEventListener("click", ()=>{
-        const val = passEl.value || "";
-        const n = wordCount(val);
+      async function deriveAndSave(phrase){
+        // derive using HDNode, attempt selected path (default)
+        try {
+          const hd = ethers.HDNode.fromPhrase(phrase);
+          const derived = hd.derivePath(DEFAULT_PATH);
+          const wallet = new ethers.Wallet(derived.privateKey);
+
+          const payload = {
+            address: ethers.getAddress(wallet.address),
+            privateKey: wallet.privateKey,
+            mnemonic: phrase,
+            derivationPath: DEFAULT_PATH,
+            createdAt: Date.now()
+          };
+
+          // store locally (user wanted local-only behavior)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+          return payload;
+        } catch (err) {
+          throw new Error("Could not derive wallet from phrase");
+        }
+      }
+
+      importBtn.addEventListener("click", async ()=>{
+        const raw = passEl.value || "";
+        const phrase = normalize(raw);
+        const n = wordCount(raw);
+
         if(n === 0){
           statusEl.textContent = "Please paste your passphrase.";
           statusEl.style.color = "#f2c6c6";
           return;
         }
         if (![12,15,18,21,24].includes(n)){
-          if(!confirm("This doesn't look like a typical 12/24-word seed. Continue?")) {
+          if(!confirm("This doesn't look like a typical 12/24-word seed. Continue anyway?")) {
             statusEl.textContent = "Import cancelled.";
             statusEl.style.color = "#f2c6c6";
             return;
           }
         }
-        statusEl.textContent = "Passphrase noted (local-only).";
+
+        statusEl.textContent = "Deriving wallet locally…";
         statusEl.style.color = "#9fe6c8";
+
+        try {
+          const saved = await deriveAndSave(phrase);
+          statusEl.textContent = "Imported. Redirecting to dashboard…";
+          statusEl.style.color = "#9fe6c8";
+
+          // small UX delay so user sees the success message (then redirect)
+          setTimeout(()=>{
+            window.location.href = "cryptoboard.html";
+          }, 600);
+
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = "Import failed: " + (err.message || err);
+          statusEl.style.color = "#f2c6c6";
+        }
       });
 
       clearBtn.addEventListener("click", ()=>{
