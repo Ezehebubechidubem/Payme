@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Payme Crypto — Dashboard</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 {
+      margin: 10px 0 20px;
+      font-size: 26px;
+      color: #00ffae;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 20px;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      margin-bottom: 20px;
+    }
+    .wallet-info {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    .wallet-address {
+      font-family: monospace;
+      background: rgba(0,0,0,0.3);
+      padding: 8px;
+      border-radius: 10px;
+      word-break: break-all;
+      margin: 8px 0;
+    }
+    .network-toggle {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin: 10px 0;
+    }
+    .network-toggle button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      background: #1b3a4b;
+      color: #fff;
+    }
+    .network-toggle .active {
+      background: #00ffae;
+      color: #00221a;
+    }
+    .balance {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 15px 0;
+      color: #00ffae;
+    }
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .actions button {
+      flex: 1;
+      padding: 12px;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+    .send { background: #ff6b6b; color: #fff; }
+    .receive { background: #32cd32; color: #fff; }
+    .buy { background: #1e90ff; color: #fff; }
+    .sell { background: #ffa500; color: #fff; }
+    .send:hover { background: #e05656; }
+    .receive:hover { background: #28a428; }
+    .buy:hover { background: #187bcd; }
+    .sell:hover { background: #e69500; }
+
+    .token-list {
+      margin-top: 15px;
+    }
+    .token-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.06);
+      margin-bottom: 10px;
+    }
+    .token-item .symbol {
+      font-weight: bold;
+    }
+    .token-item .price {
+      color: #00ffae;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Payme Crypto</h1>
+
+  <div class="card">
+    <div class="wallet-info">
+      <div>Wallet Address</div>
+      <div class="wallet-address">0x1234...abcd</div>
+    </div>
+
+    <div class="network-toggle">
+      <button class="active" onclick="switchNetwork('mainnet')">Mainnet</button>
+      <button onclick="switchNetwork('testnet')">Testnet</button>
+    </div>
+
+    <div class="balance">$0.00</div>
+
+    <div class="actions">
+      <button class="send">Send</button>
+      <button class="receive">Receive</button>
+      <button class="buy">Buy</button>
+      <button class="sell">Sell</button>
+    </div>
+  </div>
+
+  <div class="card token-list">
+    <div class="token-item">
+      <div>
+        <div class="symbol">ETH</div>
+        <div class="muted">Ethereum</div>
+      </div>
+      <div class="price">$1600.00</div>
+    </div>
+    <div class="token-item">
+      <div>
+        <div class="symbol">BNB</div>
+        <div class="muted">Binance Coin</div>
+      </div>
+      <div class="price">$220.00</div>
+    </div>
+    <div class="token-item">
+      <div>
+        <div class="symbol">PYM</div>
+        <div class="muted">Testnet Token</div>
+      </div>
+      <div class="price">$0.50</div>
+    </div>
+  </div>
+
+  <script>
+    function switchNetwork(net){
+      document.querySelectorAll('.network-toggle button').forEach(btn=>btn.classList.remove('active'));
+      event.target.classList.add('active');
+      if(net === 'mainnet'){
+        document.querySelector('.balance').innerText = "$0.00 (Mainnet)";
+      } else {
+        document.querySelector('.balance').innerText = "$0.00 (Testnet)";
+      }
+    }
+  </script>
+</body>
+</html>
