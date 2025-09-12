@@ -90,6 +90,7 @@
       border-radius: 10px;
       background: rgba(255,255,255,0.06);
       margin-bottom: 10px;
+      transition: background 160ms;
     }
 
     /* Left column: token symbol (with optional logo) on first line, full name below */
@@ -180,6 +181,7 @@
   <div id="tokens" class="card token-list">
     <button class="add-token-btn" onclick="onAddTokenClicked()">+ Add Token (CoinGecko)</button>
     <div id="addTokenStatus" style="margin-top:8px;"></div>
+    <!-- token rows will be appended below -->
   </div>
 
   <script>
@@ -187,86 +189,390 @@
      * Data & storage keys
      ***********************/
     const STORAGE_WALLET = "payme_wallet";
-    const STORAGE_TOKENS = "payme_tokens";
+    const STORAGE_TOKENS = "payme_tokens"; // structure: { mainnet: { coinId: { symbol,name,balance } }, testnet: { PYM: { balance } } }
     const wallet = JSON.parse(localStorage.getItem(STORAGE_WALLET) || "{}");
     const walletAddress = wallet?.address || null;
     document.getElementById("walletAddr").innerText = walletAddress || "0x1234...abcd";
 
+    // default mainnet tokens (CoinGecko ids)
     const DEFAULT_MAINNET_IDS = ["ethereum","binancecoin"];
 
+    // minimal ERC20 ABI for balanceOf/decimals
+    const ERC20_ABI = [
+      "function balanceOf(address) view returns (uint256)",
+      "function decimals() view returns (uint8)"
+    ];
+
+    // RPC providers
+    const PROVIDERS = {
+      eth: new ethers.JsonRpcProvider("https://cloudflare-eth.com"),
+      bsc: new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/"),
+      polygon: new ethers.JsonRpcProvider("https://rpc.ankr.com/polygon"),
+      avax: new ethers.JsonRpcProvider("https://rpc.ankr.com/avalanche")
+    };
+
+    // Map some known CoinGecko platform keys to our providers
+    const PLATFORM_TO_PROVIDER = {
+      "ethereum": PROVIDERS.eth,
+      "binance-smart-chain": PROVIDERS.bsc,
+      "polygon-pos": PROVIDERS.polygon,
+      "avalanche": PROVIDERS.avax
+    };
+
+    // Try to obtain a contract address for a coin ID (prefer ethereum, then bsc, polygon, avax)
+    async function findContractForCoinId(coinId){
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`);
+        if(!res.ok) return null;
+        const detail = await res.json();
+        const platforms = detail.platforms || {};
+        // priority order
+        const order = ["ethereum","binance-smart-chain","polygon-pos","avalanche"];
+        for(const pf of order){
+          if(platforms[pf] && platforms[pf] !== ""){
+            // platforms[pf] may be a contract address or empty string
+            return { contract: platforms[pf], platform: pf };
+          }
+        }
+      } catch (e) {
+        console.warn("findContractForCoinId failed", coinId, e);
+      }
+      return null;
+    }
+
+    // localStorage helpers
     function readStoredTokens(){
-      try { return JSON.parse(localStorage.getItem(STORAGE_TOKENS) || "{}"); }
-      catch(e){ return {}; }
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_TOKENS) || "{}");
+      } catch(e){
+        return {};
+      }
     }
     function writeStoredTokens(obj){
       localStorage.setItem(STORAGE_TOKENS, JSON.stringify(obj));
     }
+
     function fmt(n){ return Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8}); }
 
-    async function renderTokens(net){
-      const tokenContainer = document.getElementById("tokens");
-      while(tokenContainer.childNodes.length>2) tokenContainer.removeChild(tokenContainer.lastChild);
+    // Keep DOM rows (avoid re-creating to prevent blinking)
+    const tokenRows = new Map(); // key -> {rowEl, amountEl, priceEl, changeEl, lastPrice}
 
-      const stored = readStoredTokens();
-      if(net==="mainnet"){
-        const ids = [...DEFAULT_MAINNET_IDS, ...(stored.mainnet ? Object.keys(stored.mainnet) : [])];
-        if(ids.length===0) return;
-        let markets = [];
-        try{
-          const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids="+encodeURIComponent(ids.join(",")));
-          markets = await res.json();
-        } catch(err){
-          markets = [];
-          console.warn("CoinGecko fetch failed", err);
+    // Ensure token row exists (mainnet coin id)
+    function ensureMainnetRow(id, symbol, name, image){
+      if(tokenRows.has("m:"+id)) return tokenRows.get("m:"+id);
+      const tokenContainer = document.getElementById("tokens");
+      const row = document.createElement("div");
+      row.className = "token-item";
+
+      // create elements
+      const left = document.createElement("div");
+      const symbolRow = document.createElement("div");
+      symbolRow.className = "symbol";
+      const imgHtml = image ? `<img class="token-img" src="${image}" alt="${symbol}">` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+      symbolRow.innerHTML = `${imgHtml}${symbol}`;
+      const nameRow = document.createElement("div");
+      nameRow.className = "muted";
+      nameRow.style.fontSize = "13px";
+      nameRow.textContent = name;
+
+      left.appendChild(symbolRow);
+      left.appendChild(nameRow);
+
+      const right = document.createElement("div");
+      const amountEl = document.createElement("div");
+      amountEl.className = "token-amount";
+      amountEl.textContent = `0 ${symbol}`;
+      const priceEl = document.createElement("div");
+      priceEl.className = "price";
+      priceEl.textContent = `$0.00`;
+      const changeEl = document.createElement("span");
+      changeEl.style.marginLeft = "8px";
+      // put price and change inline
+      priceEl.appendChild(changeEl);
+
+      right.appendChild(amountEl);
+      right.appendChild(priceEl);
+
+      row.appendChild(left);
+      row.appendChild(right);
+
+      tokenContainer.appendChild(row);
+
+      const rec = { rowEl: row, amountEl, priceEl, changeEl, lastPrice: null };
+      tokenRows.set("m:"+id, rec);
+      return rec;
+    }
+
+    // Ensure testnet row
+    function ensureTestnetRow(key, name){
+      if(tokenRows.has("t:"+key)) return tokenRows.get("t:"+key);
+      const tokenContainer = document.getElementById("tokens");
+      const row = document.createElement("div");
+      row.className = "token-item";
+
+      const left = document.createElement("div");
+      const symbolRow = document.createElement("div");
+      symbolRow.className = "symbol";
+      symbolRow.innerHTML = `<span class="payme-badge">PY</span>${key}`;
+      const nameRow = document.createElement("div");
+      nameRow.className = "muted";
+      nameRow.style.fontSize = "13px";
+      nameRow.textContent = name || "Testnet Token";
+
+      left.appendChild(symbolRow);
+      left.appendChild(nameRow);
+
+      const right = document.createElement("div");
+      const amountEl = document.createElement("div");
+      amountEl.className = "token-amount";
+      amountEl.textContent = `0 ${key}`;
+      const priceEl = document.createElement("div");
+      priceEl.className = "price";
+      priceEl.textContent = `$0.00`;
+
+      right.appendChild(amountEl);
+      right.appendChild(priceEl);
+
+      row.appendChild(left);
+      row.appendChild(right);
+
+      tokenContainer.appendChild(row);
+
+      const rec = { rowEl: row, amountEl, priceEl, lastPrice: null };
+      tokenRows.set("t:"+key, rec);
+      return rec;
+    }
+
+    // Smooth numeric update (small animation)
+    function animateNumeric(el, start, end, formatFn, duration = 400){
+      // cancel any previous animation stored on element
+      if(el._animFrame) cancelAnimationFrame(el._animFrame);
+
+      start = Number(start) || 0;
+      end = Number(end) || 0;
+      const startTime = performance.now();
+      function step(now){
+        const t = Math.min(1, (now - startTime) / duration);
+        const value = start + (end - start) * t;
+        el.textContent = formatFn(value);
+        if(t < 1){
+          el._animFrame = requestAnimationFrame(step);
+        } else {
+          el._animFrame = null;
+          el.textContent = formatFn(end);
         }
-        let total=0;
-        markets.forEach(m=>{
-          const bal = Number(stored.mainnet?.[m.id]?.balance || 0);
-          total += bal * Number(m.current_price || 0);
-          const row=document.createElement("div");
-          row.className="token-item";
-          row.innerHTML=`
-            <div>
-              <div class="symbol">
-                <img class="token-img" src="${m.image}" alt="${m.symbol}">
-                ${m.symbol.toUpperCase()}
-              </div>
-              <div class="muted">${m.name}</div>
-            </div>
-            <div>
-              <div class="token-amount">${fmt(bal)} ${m.symbol.toUpperCase()}</div>
-              <div class="price">$${fmt(m.current_price)}</div>
-            </div>`;
-          tokenContainer.appendChild(row);
-        });
-        document.getElementById("balance").innerText=`$${fmt(total)} (Mainnet)`;
+      }
+      el._animFrame = requestAnimationFrame(step);
+    }
+
+    // Update or create mainnet token row with fresh data
+    async function updateMainnetToken(id, marketObj, storedItem){
+      // marketObj: object from CoinGecko markets (may be undefined)
+      const symbol = marketObj ? (marketObj.symbol || id).toUpperCase() : (storedItem?.symbol || id).toUpperCase();
+      const name = marketObj ? (marketObj.name || id) : (storedItem?.name || id);
+      const image = marketObj ? marketObj.image : null;
+      const price = marketObj ? Number(marketObj.current_price || 0) : Number(storedItem?.price || 0);
+
+      const rec = ensureMainnetRow(id, symbol, name, image);
+
+      // determine balance: attempt on-chain if wallet present
+      let bal = 0;
+      try {
+        if(walletAddress){
+          if(id === "ethereum"){
+            const balWei = await PROVIDERS.eth.getBalance(walletAddress);
+            bal = Number(ethers.formatEther(balWei));
+          } else if(id === "binancecoin"){
+            const balWei = await PROVIDERS.bsc.getBalance(walletAddress);
+            bal = Number(ethers.formatEther(balWei));
+          } else {
+            // try to find contract and query balanceOf
+            const found = await findContractForCoinId(id);
+            if(found && found.contract){
+              const contractAddr = found.contract;
+              const provider = PLATFORM_TO_PROVIDER[found.platform] || PROVIDERS.eth;
+              const tokenContract = new ethers.Contract(contractAddr, ERC20_ABI, provider);
+              let decimals = 18;
+              try { decimals = Number(await tokenContract.decimals()); } catch(e){ }
+              const raw = await tokenContract.balanceOf(walletAddress);
+              bal = Number(ethers.formatUnits(raw, decimals));
+            } else {
+              // fallback to stored
+              bal = Number(storedItem?.balance || 0);
+            }
+          }
+        } else {
+          bal = Number(storedItem?.balance || 0);
+        }
+      } catch (err) {
+        console.warn("balance fetch failed for", id, err);
+        bal = Number(storedItem?.balance || 0);
+      }
+
+      // update amount (animated)
+      const amountText = value => `${fmt(value)} ${symbol}`;
+      // animate numeric portion (we'll set whole text but animate number inside)
+      // strip symbol at the end: update only left number displayed in rec.amountEl
+      const oldAmount = parseFloat((rec.amountEl.textContent || "").split(" ")[0].replace(/,/g,"")) || 0;
+      animateNumeric(rec.amountEl, oldAmount, bal, v => `${fmt(v)} ${symbol}`, 350);
+
+      // update price and percent change
+      const priceVal = price;
+      // show price (no animation of price for simplicity; animate if desired)
+      const change = marketObj?.price_change_percentage_24h;
+      let changeText = "";
+      if(change !== undefined && change !== null){
+        const ch = Number(change).toFixed(2);
+        changeText = ` (${ch}%)`;
+        rec.changeEl.style.color = (Number(change) >= 0 ? "lime" : "#ff7b7b");
       } else {
-        const t = readStoredTokens().testnet || {};
-        let total=0;
-        Object.keys(t).forEach(k=>{
-          const bal = Number(t[k].balance || 0);
-          const price = k === "PYM" ? 0.5 : (t[k].price || 0);
-          total += bal * price;
-          const row=document.createElement("div");
-          row.className="token-item";
-          row.innerHTML=`
-            <div>
-              <div class="symbol">
-                <span class="payme-badge">PY</span>
-                ${k}
-              </div>
-              <div class="muted">${t[k].name || "Testnet Token"}</div>
-            </div>
-            <div>
-              <div class="token-amount">${fmt(bal)} ${k}</div>
-              <div class="price">$${fmt(price)}</div>
-            </div>`;
-          tokenContainer.appendChild(row);
-        });
-        document.getElementById("balance").innerText=`$${fmt(total)} (Testnet)`;
+        changeText = "";
+        rec.changeEl.style.color = "#9fb6bf";
+      }
+      rec.priceEl.childNodes[0] && rec.priceEl.childNodes[0].remove?.(); // ensure previous text unaffected
+      // We will set priceEl's text and append change span
+      // But priceEl contains change span (rec.changeEl) appended earlier; instead update its innerText carefully
+      // Update numeric portion (without touching the appended change span)
+      rec.priceEl.firstChild && rec.priceEl.removeChild(rec.priceEl.firstChild);
+      const priceNode = document.createTextNode(`$${fmt(priceVal)} `);
+      rec.priceEl.insertBefore(priceNode, rec.changeEl);
+      rec.changeEl.textContent = changeText;
+
+      rec.lastPrice = priceVal;
+    }
+
+    // Update or create testnet token row
+    function updateTestnetToken(key, info){
+      const name = info.name || (key === "PYM" ? "Testnet Token" : key);
+      const price = key === "PYM" ? 0.5 : Number(info.price || 0);
+      const bal = Number(info.balance || 0);
+      const rec = ensureTestnetRow(key, name);
+      // animate amount
+      const symbol = key.toUpperCase();
+      const oldAmount = parseFloat((rec.amountEl.textContent || "").split(" ")[0].replace(/,/g,"")) || 0;
+      animateNumeric(rec.amountEl, oldAmount, bal, v => `${fmt(v)} ${symbol}`, 350);
+      // price text
+      if(rec.lastPrice !== price){
+        rec.priceEl.textContent = `$${fmt(price)}`;
+        rec.lastPrice = price;
       }
     }
 
+    // Render loop (build/refresh tokens; updates in-place to avoid blinking)
+    async function renderTokens(net){
+      const stored = readStoredTokens();
+
+      if(net === "mainnet"){
+        // Build list of coin ids to fetch (stored ones + defaults)
+        const storedMain = (stored.mainnet) ? Object.keys(stored.mainnet) : [];
+        const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
+        const ids = Array.from(idsSet);
+        if(ids.length === 0){
+          // nothing to show
+          document.getElementById("balance").innerText = `$0.00 (Mainnet)`;
+          return;
+        }
+
+        // Request markets including 24h percentage
+        let markets = [];
+        try {
+          const url = "https://api.coingecko.com/api/v3/coins/markets"
+                    + "?vs_currency=usd&price_change_percentage=24h&per_page=250&ids="
+                    + encodeURIComponent(ids.join(","));
+          const res = await fetch(url);
+          markets = await res.json();
+        } catch (err) {
+          console.warn("CoinGecko markets fetch failed", err);
+          markets = [];
+        }
+
+        // map by id
+        const marketMap = {};
+        (markets || []).forEach(m => marketMap[m.id] = m);
+
+        // For ids that are not returned by the markets endpoint (rare), keep a placeholder market object from stored metadata
+        // We'll process tokens sequentially but do not block UI: create an array of promises for balances, then await them all
+        const tasks = ids.map(async (id) => {
+          const m = marketMap[id];
+          // If market object exists, pass it; otherwise synthesize with stored info
+          const storedItem = stored.mainnet && stored.mainnet[id] ? stored.mainnet[id] : null;
+          await updateMainnetToken(id, m, storedItem);
+        });
+
+        // Wait for all tokens to update (balances fetched as part of updateMainnetToken)
+        await Promise.allSettled(tasks);
+
+        // Compute total (from DOM values to avoid double-fetch)
+        let total = 0;
+        for(const id of ids){
+          const rec = tokenRows.get("m:"+id);
+          if(!rec) continue;
+          const priceTextNode = rec.priceEl.firstChild ? rec.priceEl.firstChild.nodeValue : (rec.priceEl.textContent || "");
+          const priceVal = parseFloat((priceTextNode || "").replace(/[^0-9.\-]+/g,"")) || 0;
+          const amountText = rec.amountEl.textContent || "";
+          const amountVal = parseFloat(amountText.split(" ")[0].replace(/,/g,"")) || 0;
+          total += amountVal * priceVal;
+        }
+            // animate the big balance change
+        const balEl = document.getElementById("balance");
+        const oldBal = parseFloat((balEl._lastValue) || 0);
+        balEl._lastValue = oldBal || 0;
+        animateNumeric(balEl, oldBal, total, v => `$${fmt(v)} (Mainnet)`, 420);
+        balEl._lastValue = total;
+      } else {
+        // testnet
+        const storedTest = stored.testnet || {};
+        const keys = Object.keys(storedTest);
+        let total = 0;
+        for(const k of keys){
+          const info = storedTest[k] || {};
+          updateTestnetToken(k, info);
+          const bal = Number(info.balance || 0);
+          const price = k === "PYM" ? 0.5 : Number(info.price || 0);
+          total += bal * price;
+        }
+        const balEl = document.getElementById("balance");
+        const oldBal = parseFloat((balEl._lastValue) || 0);
+        animateNumeric(balEl, oldBal, total, v => `$${fmt(v)} (Testnet)`, 420);
+        balEl._lastValue = total;
+      }
+    }
+
+    // Add token flow (CoinGecko) — NO BALANCE PROMPT
+    async function onAddTokenClicked(){
+      const status=document.getElementById("addTokenStatus");
+      status.innerText="";
+      try{
+        const q=prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
+        if(!q) return;
+        status.innerText="Searching CoinGecko...";
+        const sres=await fetch("https://api.coingecko.com/api/v3/search?query="+encodeURIComponent(q));
+        const sjson=await sres.json();
+        const coins=sjson.coins||[];
+        if(coins.length===0){alert("No token found.");status.innerText="";return;}
+        let choices=coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
+        let pick=prompt("Choose a token by number (or press Cancel to pick first):\n\n"+choices,"1");
+        let idx=0;if(pick){const p=parseInt(pick,10);if(!isNaN(p)&&p>=1&&p<=Math.min(6,coins.length))idx=p-1;}
+        const coin=coins[idx];
+        if(!coin||!coin.id){alert("Invalid.");status.innerText="";return;}
+        const stored=readStoredTokens();
+        stored.mainnet=stored.mainnet||{};
+        // store basic metadata only; balance will be detected from wallet (if available)
+        stored.mainnet[coin.id]={symbol:coin.symbol.toUpperCase(),name:coin.name};
+        writeStoredTokens(stored);
+        status.innerText=`Added ${coin.symbol.toUpperCase()}`;
+        // immediately create a UI row (will be updated when renderTokens runs)
+        ensureMainnetRow(coin.id, coin.symbol.toUpperCase(), coin.name, null);
+        // refresh tokens list (non-blocking)
+        renderTokens("mainnet");
+      }catch(e){
+        console.error("Add token error", e);
+        alert("Error adding token");
+        status.innerText="";
+      }
+    }
+
+    // Switch network handler
     function switchNetwork(net){
       document.getElementById("mainBtn").classList.remove("active");
       document.getElementById("testBtn").classList.remove("active");
@@ -275,41 +581,22 @@
       renderTokens(net);
     }
 
-    async function onAddTokenClicked(){
-      const status=document.getElementById("addTokenStatus");
-      status.innerText="";
-      try{
-        const q=prompt("Search token on CoinGecko by name or symbol:");
-        if(!q) return;
-        status.innerText="Searching CoinGecko...";
-        const sres=await fetch("https://api.coingecko.com/api/v3/search?query="+encodeURIComponent(q));
-        const sjson=await sres.json();
-        const coins=sjson.coins||[];
-        if(coins.length===0){alert("No token found.");status.innerText="";return;}
-        let choices=coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol})`).join("\n");
-        let pick=prompt("Choose a token by number:\n\n"+choices,"1");
-        let idx=0;if(pick){const p=parseInt(pick,10);if(!isNaN(p)&&p>=1&&p<=Math.min(6,coins.length))idx=p-1;}
-        const coin=coins[idx];
-        if(!coin||!coin.id){alert("Invalid.");status.innerText="";return;}
-        const stored=readStoredTokens();
-        stored.mainnet=stored.mainnet||{};
-        stored.mainnet[coin.id]={symbol:coin.symbol.toUpperCase(),name:coin.name,balance:0};
-        writeStoredTokens(stored);
-        status.innerText=`Added ${coin.symbol.toUpperCase()}`;
-        renderTokens("mainnet");
-      }catch(e){alert("Error adding token");status.innerText="";}
-    }
+    // initial render and live refresh
+    (async function initial(){
+      renderTokens("mainnet");
+      // live refresh faster, but avoid API thrashing — 5000ms is reasonable
+      setInterval(async () => {
+        const mainActive = document.getElementById("mainBtn").classList.contains("active");
+        if(mainActive) {
+          await renderTokens("mainnet");
+        } else {
+          await renderTokens("testnet");
+        }
+      }, 5000);
+      // expose switchNetwork globally
+      window.switchNetwork = switchNetwork;
+    })();
 
-    // initial render
-    renderTokens("mainnet");
-
-    // refresh prices regularly (mainnet)
-    setInterval(()=>{ 
-      const mainActive = document.getElementById("mainBtn").classList.contains("active");
-      if(mainActive) renderTokens("mainnet");
-    }, 15000);
-
-    window.switchNetwork = switchNetwork;
   </script>
 </body>
 </html>
