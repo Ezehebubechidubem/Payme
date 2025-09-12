@@ -703,4 +703,167 @@ async function buyToken(chainId, tokenContract, amountNative){ // amountNative i
   }
 }
 
+// sell token -> receive native
+async function sellToken(chainId, tokenContract, amountTokenHuman){
+  if(!provider || !signer) return alert("Connect wallet first");
+  const routerAddr = CHAIN[chainId].router;
+  const wethAddr = CHAIN[chainId].weth;
+  const token = new ethers.Contract(tokenContract, ERC20_ABI, signer);
+  try{
+    const decimals = await token.decimals();
+    const amountIn = ethers.utils.parseUnits(String(amountTokenHuman), decimals);
+    // allowance check
+    const allowance = await token.allowance(userAddress, routerAddr);
+    if(allowance.lt(amountIn)){
+      logModal("Approving token to router...");
+      const appr = await token.approve(routerAddr, ethers.constants.MaxUint256);
+      await appr.wait();
+      logModal("Approved");
+    }
+    const router = new ethers.Contract(routerAddr, UNISWAP_ROUTER_ABI, signer);
+    const path = [tokenContract, wethAddr];
+    const amounts = await router.getAmountsOut(amountIn, path);
+    const out = amounts[1];
+    const slippagePct = Number(slippageEl.value) || 1;
+    const minOut = out.mul(100 - Math.floor(slippagePct)).div(100);
+    const deadline = Math.floor(Date.now()/1000) + (20*60);
+    logModal("Swapping token -> min native out: " + minOut.toString());
+    const tx = await router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+      amountIn,
+      minOut,
+      path,
+      userAddress,
+      deadline,
+      { gasLimit: 900000 }
+    );
+    logModal("Tx submitted: " + tx.hash);
+    await tx.wait();
+    logModal("Sell confirmed");
+    await refreshTokenHoldings(chainId, tokenContract);
+    await refreshAllPrices();
+  }catch(e){
+    console.error("sell error", e);
+    logModal("Sell error: " + (e.message||e));
+    alert("Sell failed: " + (e.message||e));
+  }
+}
+
+/* refresh token holdings by reading on-chain balances for connected user - best-effort */
+async function refreshTokenHoldings(chainId, tokenContract){
+  if(!provider || !signer || !userAddress) return;
+  try{
+    const token = new ethers.Contract(tokenContract, ERC20_ABI, provider);
+    const dec = await token.decimals().catch(()=>18);
+    const balance = await token.balanceOf(userAddress);
+    const human = Number(ethers.utils.formatUnits(balance, dec));
+    // find symbol in tokens by contract
+    const sym = Object.keys(tokens).find(k=> {
+      const t = tokens[k];
+      const cEth = (t.contract_eth||"")?.toLowerCase();
+      const cBsc = (t.contract_bsc||"")?.toLowerCase();
+      return (cEth && cEth === tokenContract.toLowerCase()) || (cBsc && cBsc === tokenContract.toLowerCase());
+    });
+    if(sym){
+      tokens[sym].holdings = human;
+      persistTokens();
+      renderTokens();
+    }
+  }catch(e){}
+}
+
+/* -------------------------
+   Wiring UI events
+   ------------------------- */
+
+document.getElementById("walletBtn").addEventListener("click", async ()=>{
+  if(!provider) await connectWallet();
+  else await disconnectWallet();
+});
+
+// Add token UI
+document.getElementById("addTokenBtn").addEventListener("click", ()=>{
+  const area = document.getElementById("addArea");
+  area.style.display = area.style.display === "block" ? "none" : "block";
+  document.getElementById("addSymbol").focus();
+});
+document.getElementById("doAdd").addEventListener("click", async ()=>{
+  const sym = document.getElementById("addSymbol").value.trim();
+  if(!sym) return;
+  document.getElementById("doAdd").innerText = "Adding...";
+  try{
+    await addTokenBySymbol(sym);
+    document.getElementById("addSymbol").value = "";
+    renderTokens();
+  }catch(e){
+    alert("Add failed");
+    console.error(e);
+  }finally{
+    document.getElementById("doAdd").innerText = "Add";
+  }
+});
+
+// open modal buy/sell handlers
+buyBtn.addEventListener("click", async ()=>{
+  const amount = tradeAmountEl.value.trim();
+  if(!amount) return alert("Enter amount to buy (native currency, e.g. ETH/BNB)");
+  const chainId = Number(tradeNetworkEl.value);
+  const sym = activeModalSymbol;
+  if(!sym) return;
+  const token = tokens[sym];
+  // pick contract for chain
+  const contract = chainId === 1 ? token.contract_eth : token.contract_bsc;
+  if(!contract) return alert("Token contract not available for this network");
+  await buyToken(chainId, contract, amount);
+});
+
+sellBtn.addEventListener("click", async ()=>{
+  const amount = tradeAmountEl.value.trim();
+  if(!amount) return alert("Enter amount of token to sell");
+  const chainId = Number(tradeNetworkEl.value);
+  const sym = activeModalSymbol;
+  if(!sym) return;
+  const token = tokens[sym];
+  const contract = chainId === 1 ? token.contract_eth : token.contract_bsc;
+  if(!contract) return alert("Token contract not available for this network");
+  await sellToken(chainId, contract, amount);
+});
+
+// when opening modal, refresh holdings if wallet connected
+modalBackdrop.addEventListener("transitionend", ()=>{ if(userAddress){} });
+
+// initial render
+renderTokens();
+
+/* -------------------------
+   Auto-update token holdings if wallet connected
+   ------------------------- */
+
+async function tryRefreshHoldingsForConnected(){
+  if(!provider || !userAddress) return;
+  for(const sym of Object.keys(tokens)){
+    const t = tokens[sym];
+    // prefer ethereum then bsc
+    const chainId = connectedChainId || 1;
+    const contract = (chainId === 1 ? t.contract_eth : t.contract_bsc) || t.contract_eth || t.contract_bsc;
+    if(contract){
+      await refreshTokenHoldings(chainId, contract);
+    }
+  }
+}
+setInterval(tryRefreshHoldingsForConnected, 20000);
+tryRefreshHoldingsForConnected();
+
+/* -------------------------
+   Start-up: if web3Modal cached provider, auto-connect
+   ------------------------- */
+(async function startup(){
+  if(web3Modal && web3Modal.cachedProvider){
+    try{ await connectWallet(); }catch(e){}
+  }
+})();
+</script>
+</body>
+</html>
+
+
   
