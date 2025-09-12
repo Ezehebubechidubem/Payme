@@ -1,189 +1,534 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Payme - Main Page</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: white;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 15px;
-    }
-    header h2 { font-size: 18px; }
-    .balance { text-align: center; margin: 15px 0; }
-    .balance h1 { font-size: 26px; }
-    .actions { display: flex; justify-content: space-around; padding: 10px 0; }
-    .actions div { text-align: center; }
-    .actions i { font-size: 20px; margin-bottom: 5px; }
-    .banner {
-      margin: 15px; padding: 15px; background: #1c1c1c;
-      border-radius: 10px; text-align: center; font-size: 14px;
-    }
-    .token-list { margin: 15px; }
-    .token {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 0; border-bottom: 1px solid #222;
-    }
-    .token-left { display: flex; align-items: center; }
-    .token-left img {
-      width: 32px; height: 32px; margin-right: 10px; border-radius: 50%;
-    }
-    .token-left div { display: flex; flex-direction: column; }
-    .token-left div span:first-child { font-weight: bold; }
-    .token-right { text-align: right; }
-    .token-right span { display: block; font-size: 14px; }
-    .add-btn {
-      margin: 15px auto; padding: 10px;
-      background: #222; color: white; border: none;
-      border-radius: 5px; cursor: pointer; display: block; width: 90%;
-    }
-    .add-form {
-      display: none; margin: 15px; padding: 15px; background: #1c1c1c; border-radius: 10px;
-    }
-    .add-form input {
-      width: 100%; padding: 8px; margin: 5px 0;
-      border: none; border-radius: 5px; background: #222; color: white;
-    }
-    footer {
-      display: flex; justify-content: space-around; padding: 10px 0;
-      border-top: 1px solid #222; position: fixed; bottom: 0; left: 0; right: 0;
-      background: #111;
-    }
-    footer div { text-align: center; font-size: 12px; }
-    footer i { font-size: 18px; margin-bottom: 5px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Payme - Crypto Wallet (Uniswap / PancakeSwap)</title>
+
+<!-- Font Awesome -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet"/>
+
+<!-- TradingView widget (for supported exchange pairs) -->
+<script src="https://s3.tradingview.com/tv.js"></script>
+
+<!-- Ethers -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+
+<!-- WalletConnect provider (UMD) -->
+<script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+
+<!-- Web3Modal (UMD build) -->
+<script src="https://unpkg.com/web3modal@1.9.12/dist/index.js"></script>
+
+<style>
+  /* keep your original styling, only small additions to support new UI pieces */
+  :root{
+    --primary:#00c853;
+    --bg:#111;
+    --card:#1c1c1c;
+    --muted:#aaa;
+  }
+  html,body{height:100%;margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:#fff}
+  header{display:flex;justify-content:space-between;align-items:center;padding:15px}
+  header h2{font-size:18px;margin:0}
+  .balance{text-align:center;margin:15px 0}
+  .balance h1{font-size:26px;margin:0}
+  .actions{display:flex;justify-content:space-around;padding:10px 0}
+  .actions div{text-align:center}
+  .actions i{font-size:20px;margin-bottom:5px}
+  .banner{margin:15px;padding:15px;background:var(--card);border-radius:10px;text-align:center;font-size:14px}
+  .token-list{margin:15px}
+  .token{display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #222; background:linear-gradient(180deg,#151515,#0f0f0f); border-radius:8px;margin-bottom:8px; position:relative; overflow:hidden; touch-action:pan-y;}
+  .token-left{display:flex;align-items:center;gap:12px}
+  .token-left img{width:44px;height:44px;border-radius:50%}
+  .token-left .meta{display:flex;flex-direction:column}
+  .token-left .meta .sym{font-weight:800;font-size:16px}
+  .token-left .meta .name{font-size:12px;color:var(--muted)}
+  .token-right{text-align:right}
+  .token-right .amt{font-weight:700}
+  .token-right .usd{font-size:12px;color:var(--muted)}
+  .swipe-delete{position:absolute;right:8px;top:8px;background:#ff3b30;color:#fff;border:none;padding:8px 10px;border-radius:8px;display:none}
+  .reveal-delete .swipe-delete{display:block}
+  .reveal-delete .token-content{transform:translateX(-80px); transition: transform .18s ease}
+  .add-btn{margin:15px auto;padding:10px;background:#222;color:#fff;border-radius:6px;border:none;width:90%;display:block}
+  .footer{display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid #222;position:fixed;bottom:0;left:0;right:0;background:#0b0b0b}
+  .footer div{text-align:center;font-size:12px}
+  .footer i{font-size:18px;margin-bottom:5px}
+  /* connect button */
+  #walletBtn{background:var(--primary);border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+  /* token modal */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:2000}
+  .modal{width:95%;max-width:920px;background:#0b0b0b;border-radius:10px;padding:12px;color:#fff}
+  .modal .header{display:flex;align-items:center;justify-content:space-between}
+  .modal .chart{height:360px;background:#0b0b0b;margin-top:8px;border-radius:6px;overflow:hidden}
+  .timeframe{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .timeframe button{padding:6px 10px;border-radius:6px;border:1px solid #222;background:transparent;color:#fff;cursor:pointer}
+  .trade-row{display:flex;gap:8px;margin-top:10px}
+  .trade-row input{flex:1;padding:8px;border-radius:6px;border:1px solid #222;background:#111;color:#fff}
+  .trade-row button{padding:8px 12px;border-radius:6px;border:none;cursor:pointer}
+  .trade-buy{background:#0f9d58;color:#fff}
+  .trade-sell{background:#e53935;color:#fff}
+  .small-muted{font-size:12px;color:var(--muted);margin-top:6px}
+  /* responsive */
+  @media (min-width:700px){
+    .modal .chart{height:480px}
+  }
+</style>
 </head>
 <body>
 
-  <header>
-    <h2>bewise</h2>
-    <i class="fa-solid fa-gear"></i>
-  </header>
-
-  <div class="balance">
-    <h1>$0.10</h1>
+<header>
+  <h2>bewise</h2>
+  <div>
+    <button id="walletBtn">Connect Wallet</button>
   </div>
+</header>
 
-  <div class="actions">
-    <div><i class="fa-solid fa-arrow-up"></i><br>Send</div>
-    <div><i class="fa-solid fa-arrow-down"></i><br>Receive</div>
-    <div><i class="fa-solid fa-credit-card"></i><br>Buy</div>
-    <div><i class="fa-solid fa-bank"></i><br>Sell</div>
-    <div><i class="fa-solid fa-clock-rotate-left"></i><br>History</div>
-  </div>
+<div class="balance">
+  <h1 id="totalBalance">$0.00</h1>
+</div>
 
-  <div class="banner">
-    Earn up to 30% yield on-chain → Start earning
-  </div>
+<div class="actions">
+  <div><i class="fa-solid fa-arrow-up"></i><br>Send</div>
+  <div><i class="fa-solid fa-arrow-down"></i><br>Receive</div>
+  <div><i class="fa-solid fa-credit-card"></i><br>Buy</div>
+  <div><i class="fa-solid fa-bank"></i><br>Sell</div>
+  <div><i class="fa-solid fa-clock-rotate-left"></i><br>History</div>
+</div>
 
-  <div class="token-list" id="tokenList">
-    <div class="token">
-      <div class="token-right">
-        <span>0.00</span>
-        <span>$0.00</span>
+<div class="banner">
+  Earn up to 30% yield on-chain → Start earning
+</div>
+
+<!-- Token list -->
+<div class="token-list" id="tokenList">
+  <!-- JS will populate -->
+</div>
+
+<button class="add-btn" id="addTokenBtn">+ Add Token</button>
+
+<!-- Simple search add input (we removed contract manual entry per your request) -->
+<div id="addArea" style="display:none;margin:15px">
+  <input id="addSymbol" placeholder="Symbol (e.g. ETH, BTC, USDT)" style="width:70%;padding:10px;border-radius:6px;border:1px solid #222;background:#0a0a0a;color:#fff"/>
+  <button id="doAdd" class="add-btn" style="width:26%;display:inline-block">Add</button>
+  <div class="small-muted">Tokens are added via CoinGecko (we fetch contract address & platform automatically when available)</div>
+</div>
+
+<!-- Token detail / trade modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="header">
+      <div>
+        <strong id="modalSymbol">ETH</strong>
+        <div id="modalName" style="font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div>
+        <button id="closeModal" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer">&times;</button>
       </div>
     </div>
+
+    <div class="small-muted" id="modalPrice">Price: $0.00</div>
+
+    <div class="timeframe" id="timeframeBtns">
+      <!-- timeframe buttons -->
+    </div>
+
+    <div class="chart" id="chartContainer">
+      <!-- TradingView or fallback canvas will go here -->
+    </div>
+
+    <div class="trade-row" style="margin-top:12px">
+      <input id="tradeAmount" placeholder="Amount (native for Buy / token for Sell)" />
+      <select id="tradeNetwork">
+        <option value="1">Ethereum</option>
+        <option value="56">BSC</option>
+      </select>
+      <button id="buyBtn" class="trade-buy">Buy</button>
+      <button id="sellBtn" class="trade-sell">Sell</button>
+    </div>
+
+    <div class="small-muted" id="tradeInfo">Slippage: <input id="slippage" type="number" value="1" style="width:60px"/> % &nbsp; Deadline: 20 minutes</div>
+
+    <div id="modalLogs" class="small-muted" style="margin-top:8px"></div>
   </div>
+</div>
 
-  <button class="add-btn" onclick="toggleForm()">+ Add Token</button>
+<div class="footer">
+  <div><i class="fa-solid fa-house"></i><br>Home</div>
+  <div><i class="fa-solid fa-chart-line"></i><br>Trending</div>
+  <div><i class="fa-solid fa-shuffle"></i><br>Swap</div>
+  <div><i class="fa-solid fa-coins"></i><br>Earn</div>
+  <div><i class="fa-solid fa-compass"></i><br>Discover</div>
+</div>
 
-  <div class="add-form" id="addForm">
-    <input type="text" id="symbol" placeholder="Symbol (e.g. BTC)">
-    <button class="add-btn" onclick="addToken()">Add</button>
-  </div>
+<script>
+/*
+  Full-featured frontend:
+   - Add token by symbol (CoinGecko search) — prevents duplicates
+   - Live price updates
+   - Token detail modal with TradingView fallback, timeframe selector
+   - Wallet connect (Web3Modal + WalletConnect)
+   - Swap using Uniswap V2 / PancakeSwap routers (ETH <-> token)
+   - Swipe left to reveal delete
+   - Important: test very carefully on testnets first!
+*/
 
-  <footer>
-    <div><i class="fa-solid fa-house"></i><br>Home</div>
-    <div><i class="fa-solid fa-chart-line"></i><br>Trending</div>
-    <div><i class="fa-solid fa-shuffle"></i><br>Swap</div>
-    <div><i class="fa-solid fa-coins"></i><br>Earn</div>
-    <div><i class="fa-solid fa-compass"></i><br>Discover</div>
-  </footer>
+/* -------------------------
+   CONFIG & CONSTANTS
+   ------------------------- */
 
-  <script>
-    const tokens = {}; // store added tokens
+// CoinGecko base
+const CG_BASE = "https://api.coingecko.com/api/v3";
 
-    function toggleForm() {
-      const form = document.getElementById("addForm");
-      form.style.display = form.style.display === "block" ? "none" : "block";
+// WalletConnect RPC (optional). Replace INFURA_ID with your own for best reliability.
+const WALLETCONNECT_RPC = {
+  1: "https://mainnet.infura.io/v3/INFURA_ID",              // replace INFURA_ID
+  56: "https://bsc-dataseed.binance.org/"
+};
+
+// Routers + WETH addresses (commonly used mainnet addresses)
+// VERIFY these addresses before using with real funds.
+const CHAIN = {
+  1: { // Ethereum Mainnet
+    name: "Ethereum",
+    router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2 Router
+    weth:   "0xC02aaA39b223FE8D0a0e5C4F27eAD9083C756Cc2",
+    nativeSymbol: "ETH"
+  },
+  56: { // BSC Mainnet
+    name: "BSC",
+    router: "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap Router V2
+    weth:   "0xBB4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // WBNB
+    nativeSymbol: "BNB"
+  }
+};
+
+// ABIs (minimal)
+const UNISWAP_ROUTER_ABI = [
+  "function getAmountsOut(uint amountIn, address[] memory path) view returns (uint[] memory amounts)",
+  "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable",
+  "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)"
+];
+const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address who) view returns (uint256)"
+];
+
+/* -------------------------
+   App state
+   ------------------------- */
+
+let tokens = {};        // symbol => token object (persisted in localStorage)
+let provider = null;    // ethers provider after connection
+let signer = null;
+let userAddress = null;
+let web3Modal = null;
+let connectedChainId = null;
+
+/* -------------------------
+   Utilities: storage & DOM
+   ------------------------- */
+
+function persistTokens(){
+  localStorage.setItem("payme_tokens_v1", JSON.stringify(tokens));
+}
+function loadTokens(){
+  const raw = localStorage.getItem("payme_tokens_v1");
+  if(raw){
+    try{ tokens = JSON.parse(raw) || {}; }catch(e){ tokens = {}; }
+  }
+}
+function formatUSD(n){
+  if(n === null || n === undefined) return "$0.00";
+  const v = Number(n);
+  if(isNaN(v)) return "$0.00";
+  return "$" + v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8});
+}
+function short(n){
+  return (''+n).slice(0,12);
+}
+
+/* -------------------------
+   Init web3modal
+   ------------------------- */
+
+function initWeb3Modal(){
+  const providerOptions = {
+    walletconnect: {
+      package: window.WalletConnectProvider.default,
+      options: {
+        rpc: WALLETCONNECT_RPC,
+        // bridge: "https://bridge.walletconnect.org", // default
+      }
     }
+  };
+  web3Modal = new window.Web3Modal.default({
+    cacheProvider: true,
+    providerOptions
+  });
+}
 
-    async function addToken() {
-      const symbol = document.getElementById("symbol").value.trim().toUpperCase();
-      if (!symbol) return;
+/* -------------------------
+   Wallet connect / disconnect
+   ------------------------- */
 
-      if (tokens[symbol]) {
-        alert(symbol + " already added!");
-        return;
-      }
-
-      try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&symbols=${symbol.toLowerCase()}`);
-        const data = await res.json();
-        if (data.length === 0) {
-          alert("Token not found on CoinGecko");
-          return;
-        }
-
-        const tokenData = data[0];
-        tokens[symbol] = tokenData;
-
-        const tokenList = document.getElementById("tokenList");
-        const div = document.createElement("div");
-        div.className = "token";
-        div.id = `token-${symbol}`;
-        div.innerHTML = `
-          <div class="token-left">
-            <img src="${tokenData.image}" alt="${symbol}">
-            <div>
-              <span>${symbol}</span>
-              <span id="price-${symbol}">$${tokenData.current_price}</span>
-            </div>
-          </div>
-          <div class="token-right">
-            <span>0.00</span>
-            <span>$0.00</span>
-          </div>
-        `;
-        tokenList.appendChild(div);
-
-        toggleForm(); // hide form
-        document.getElementById("symbol").value = "";
-      } catch (e) {
-        console.error("Error fetching from CoinGecko", e);
-      }
+async function connectWallet(){
+  try{
+    const instance = await web3Modal.connect();
+    provider = new ethers.providers.Web3Provider(instance);
+    signer = provider.getSigner();
+    userAddress = await signer.getAddress();
+    const network = await provider.getNetwork();
+    connectedChainId = network.chainId;
+    document.getElementById("walletBtn").innerText = `${short(userAddress)} (${CHAIN[connectedChainId]?CHAIN[connectedChainId].nativeSymbol:connectedChainId})`;
+    // listen for chain changes & account changes
+    if(instance.on){
+      instance.on("accountsChanged", (accounts) => {
+        userAddress = accounts && accounts[0] || null;
+        document.getElementById("walletBtn").innerText = userAddress ? short(userAddress) : "Connect Wallet";
+      });
+      instance.on("chainChanged", (chainIdHex) => {
+        const cid = parseInt(chainIdHex.toString(), 16);
+        connectedChainId = cid;
+        document.getElementById("walletBtn").innerText = `${short(userAddress)} (${CHAIN[cid]?CHAIN[cid].nativeSymbol:cid})`;
+      });
     }
+    await refreshAllPrices();
+  }catch(err){
+    console.error("connect error", err);
+  }
+}
 
-    // live price updater
-    setInterval(async () => {
-      const symbols = Object.keys(tokens);
-      if (symbols.length === 0) return;
+async function disconnectWallet(){
+  if(web3Modal) await web3Modal.clearCachedProvider();
+  provider = null; signer = null; userAddress = null; connectedChainId = null;
+  document.getElementById("walletBtn").innerText = "Connect Wallet";
+}
 
-      try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&symbols=${symbols.join(",").toLowerCase()}`);
-        const data = await res.json();
-        data.forEach(tokenData => {
-          const symbol = tokenData.symbol.toUpperCase();
-          tokens[symbol] = tokenData;
-          const priceEl = document.getElementById(`price-${symbol}`);
-          if (priceEl) {
-            priceEl.textContent = "$" + tokenData.current_price;
-          }
-        });
-      } catch (e) {
-        console.error("Price update failed", e);
+/* -------------------------
+   Token add / render / delete
+   ------------------------- */
+
+loadTokens();
+initWeb3Modal();
+
+const tokenListEl = document.getElementById("tokenList");
+const totalBalanceEl = document.getElementById("totalBalance");
+
+function renderTokens(){
+  tokenListEl.innerHTML = "";
+  const keys = Object.keys(tokens);
+  if(keys.length === 0){
+    tokenListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">No tokens — use + Add Token</div>`;
+    totalBalanceEl.innerText = "$0.00";
+    return;
+  }
+  let total = 0;
+  keys.forEach(sym=>{
+    const t = tokens[sym];
+    const usd = Number(t.price_usd || 0) * Number(t.holdings || 0);
+    total += usd;
+    const wrapper = document.createElement("div");
+    wrapper.className = "token";
+    wrapper.innerHTML = `
+      <div class="token-content" style="display:flex;align-items:center;gap:12px;width:100%;">
+        <div class="token-left" style="flex:1;cursor:pointer">
+          <img src="${t.image||''}" onerror="this.style.display='none'" />
+          <div class="meta">
+            <div class="sym">${sym}</div>
+            <div class="name">${t.name||''}</div>
+          </div>
+        </div>
+        <div class="token-right" style="min-width:140px">
+          <div class="amt">${t.holdings ? Number(t.holdings).toLocaleString() : '0.00'}</div>
+          <div class="usd">${formatUSD(usd)}</div>
+        </div>
+      </div>
+      <button class="swipe-delete">Delete</button>
+    `;
+    // click open modal
+    wrapper.querySelector(".token-left").addEventListener("click", ()=>openTokenModal(sym));
+    // delete handling
+    wrapper.querySelector(".swipe-delete").addEventListener("click", ()=>{
+      delete tokens[sym];
+      persistTokens();
+      renderTokens();
+    });
+    // swipe-to-left touch support
+    attachSwipeHandlers(wrapper);
+    tokenListEl.appendChild(wrapper);
+  });
+  totalBalanceEl.innerText = formatUSD(total);
+}
+
+/* swipe-to-delete: simple touch handling */
+function attachSwipeHandlers(el){
+  let startX = 0, curX=0, touching=false;
+  const content = el.querySelector(".token-content");
+  el.addEventListener("touchstart",(e)=>{
+    touching = true;
+    startX = e.touches[0].clientX;
+    el.classList.remove("reveal-delete");
+  });
+  el.addEventListener("touchmove",(e)=>{
+    if(!touching) return;
+    curX = e.touches[0].clientX;
+    const dx = curX - startX;
+    if(dx < -20){
+      // reveal delete
+      el.classList.add("reveal-delete");
+    }
+  });
+  el.addEventListener("touchend",()=>{
+    touching=false;
+  });
+  // also allow desktop drag with mouse
+  let mouseDown=false, mxStart=0;
+  el.addEventListener("mousedown",(e)=>{ mouseDown=true; mxStart=e.clientX; });
+  el.addEventListener("mousemove",(e)=>{ if(!mouseDown) return; if(e.clientX - mxStart < -40) el.classList.add("reveal-delete"); });
+  el.addEventListener("mouseup",()=>{ mouseDown=false; });
+}
+
+/* -------------------------
+   CoinGecko helpers & price update
+   ------------------------- */
+
+async function coingeckoSearchSymbol(sym){
+  // returns id or null
+  try{
+    const q = encodeURIComponent(sym);
+    const res = await fetch(`${CG_BASE}/search?query=${q}`);
+    const data = await res.json();
+    if(!data || !data.coins) return null;
+    // try best match by symbol (case-insensitive)
+    const match = data.coins.find(c => c.symbol.toLowerCase() === sym.toLowerCase()) || data.coins[0];
+    return match ? match.id : null;
+  }catch(e){
+    console.error("search error", e);
+    return null;
+  }
+}
+
+async function fetchCoinInfoById(id){
+  try{
+    const res = await fetch(`${CG_BASE}/coins/${encodeURIComponent(id)}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`);
+    if(!res.ok) throw new Error("coin fetch failed");
+    return await res.json();
+  }catch(e){ console.error(e); return null; }
+}
+
+async function addTokenBySymbol(sym){
+  sym = (sym||"").trim().toUpperCase();
+  if(!sym) return alert("Enter symbol");
+  if(tokens[sym]) return alert(sym + " already added");
+  const id = await coingeckoSearchSymbol(sym);
+  if(!id) return alert("Token not found on CoinGecko");
+  const info = await fetchCoinInfoById(id);
+  if(!info) return alert("Could not fetch coin details");
+  // pick contract for Ethereum or BSC if available
+  const platforms = info.platforms || {};
+  const contract_eth = platforms.ethereum || platforms['erc20'] || null;
+  const contract_bsc = platforms['binance-smart-chain'] || platforms.bep20 || null;
+  // current price
+  const price_usd = info.market_data && info.market_data.current_price ? info.market_data.current_price.usd : 0;
+  tokens[sym] = {
+    id: id,
+    symbol: sym,
+    name: info.name || sym,
+    image: info.image && info.image.thumb ? info.image.thumb : (info.image && info.image.small ? info.image.small : ""),
+    platforms: platforms,
+    contract_eth,
+    contract_bsc,
+    price_usd,
+    holdings: 0
+  };
+  persistTokens();
+  renderTokens();
+  return tokens[sym];
+}
+
+async function refreshAllPrices(){
+  const syms = Object.keys(tokens);
+  if(syms.length===0) return;
+  // coinGecko supports ids, so build a list of ids
+  const ids = syms.map(s=>tokens[s].id).filter(Boolean).join(",");
+  if(!ids) return;
+  try{
+    const res = await fetch(`${CG_BASE}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(ids)}&order=market_cap_desc&per_page=250&page=1&sparkline=false`);
+    const arr = await res.json();
+    arr.forEach(item=>{
+      const sym = (item.symbol || "").toUpperCase();
+      // find our token by id or symbol
+      const foundKey = Object.keys(tokens).find(k=>tokens[k].id===item.id) || sym;
+      if(tokens[foundKey]){
+        tokens[foundKey].price_usd = item.current_price;
       }
-    }, 15000); // update every 15s
-  </script>
+    });
+    persistTokens();
+    renderTokens();
+  }catch(e){
+    console.warn("price refresh failed", e);
+  }
+}
 
-</body>
-</html>
+/* auto-refresh every 15s */
+setInterval(refreshAllPrices, 15000);
+refreshAllPrices();
+
+/* -------------------------
+   Modal + Chart + Timeframes
+   ------------------------- */
+
+const modalBackdrop = document.getElementById("modalBackdrop");
+const modalSymbolEl = document.getElementById("modalSymbol");
+const modalNameEl = document.getElementById("modalName");
+const modalPriceEl = document.getElementById("modalPrice");
+const chartContainer = document.getElementById("chartContainer");
+const timeframeBtns = document.getElementById("timeframeBtns");
+const tradeAmountEl = document.getElementById("tradeAmount");
+const tradeNetworkEl = document.getElementById("tradeNetwork");
+const buyBtn = document.getElementById("buyBtn");
+const sellBtn = document.getElementById("sellBtn");
+const slippageEl = document.getElementById("slippage");
+const modalLogs = document.getElementById("modalLogs");
+
+const TIMEFRAMES = [
+  {label:"1m", tv:"1"},
+  {label:"2m", tv:"2"},
+  {label:"5m", tv:"5"},
+  {label:"15m", tv:"15"},
+  {label:"30m", tv:"30"},
+  {label:"1h", tv:"60"},
+  {label:"2h", tv:"120"},
+  {label:"4h", tv:"240"},
+  {label:"1d", tv:"D"},
+  {label:"2d", tv:"2D"}
+];
+
+let activeModalSymbol = null;
+let activeTVWidget = null;
+
+function openTokenModal(symbol){
+  const token = tokens[symbol];
+  if(!token) return;
+  activeModalSymbol = symbol;
+  modalSymbolEl.innerText = symbol;
+  modalNameEl.innerText = token.name || "";
+  modalPriceEl.innerText = "Price: " + formatUSD(token.price_usd || 0);
+  modalLogs.innerText = "";
+  // default network -> 1 if contract_eth exists else 56 if bsc exists
+  if(token.contract_eth) tradeNetworkEl.value = "1";
+  else if(token.contract_bsc) tradeNetworkEl.value = "56";
+  else tradeNetworkEl.value = "1";
+  // display timeframe buttons
+  timeframeBtns.innerHTML = "";
+  TIMEFRAMES.forEach(tf=>{
+    const b = document.createElement("button");
+    b.innerText = tf.label;
+    b.onclick = ()=>loadChartForToken(symbol, tf.tv);
+    timeframeBtns.appendChild(b);
+  });
+  // initial chart load (default 5m)
+  
