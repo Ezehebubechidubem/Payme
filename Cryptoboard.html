@@ -1,13 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Payme Crypto — Dashboard</title>
-
-  <!-- ethers (v6 UMD) -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
-
   <style>
     body {
       margin: 0;
@@ -20,11 +16,7 @@
       align-items: center;
       padding: 20px;
     }
-    h1 {
-      margin: 10px 0 20px;
-      font-size: 26px;
-      color: #00ffae;
-    }
+    h1 { margin: 10px 0 20px; font-size: 26px; color: #00ffae; }
     .card {
       background: rgba(255,255,255,0.05);
       border-radius: 16px;
@@ -34,10 +26,7 @@
       box-shadow: 0 6px 20px rgba(0,0,0,0.4);
       margin-bottom: 20px;
     }
-    .wallet-info {
-      text-align: center;
-      margin-bottom: 15px;
-    }
+    .wallet-info { text-align: center; margin-bottom: 15px; }
     .wallet-address {
       font-family: monospace;
       background: rgba(0,0,0,0.3);
@@ -46,12 +35,7 @@
       word-break: break-all;
       margin: 8px 0;
     }
-    .network-toggle {
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-      margin: 10px 0;
-    }
+    .network-toggle { display: flex; justify-content: center; gap: 12px; margin: 10px 0; }
     .network-toggle button {
       padding: 8px 14px;
       border: none;
@@ -61,22 +45,9 @@
       background: #1b3a4b;
       color: #fff;
     }
-    .network-toggle .active {
-      background: #00ffae;
-      color: #00221a;
-    }
-    .balance {
-      font-size: 24px;
-      font-weight: bold;
-      margin: 15px 0;
-      color: #00ffae;
-    }
-    .actions {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      margin: 15px 0;
-    }
+    .network-toggle .active { background: #00ffae; color: #00221a; }
+    .balance { font-size: 24px; font-weight: bold; margin: 15px 0; color: #00ffae; }
+    .actions { display: flex; justify-content: space-between; gap: 10px; margin: 15px 0; }
     .actions button {
       flex: 1;
       padding: 12px;
@@ -85,344 +56,104 @@
       border-radius: 10px;
       cursor: pointer;
       font-weight: bold;
-      transition: 0.2s;
     }
     .send { background: #ff6b6b; color: #fff; }
     .receive { background: #32cd32; color: #fff; }
     .buy { background: #1e90ff; color: #fff; }
     .sell { background: #ffa500; color: #fff; }
-    .send:hover { background: #e05656; }
-    .receive:hover { background: #28a428; }
-    .buy:hover { background: #187bcd; }
-    .sell:hover { background: #e69500; }
-
-    .token-list {
-      margin-top: 15px;
-      width:100%;
-      max-width:500px;
-    }
+    .token-list { margin-top: 15px; }
     .token-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px;
-      border-radius: 10px;
-      background: rgba(255,255,255,0.06);
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.06);
       margin-bottom: 10px;
     }
-    .token-item .symbol {
-      font-weight: bold;
-    }
-    .token-item .price {
-      color: #00ffae;
-      font-weight: bold;
-    }
-
-    .muted { color: rgba(255,255,255,0.7); font-size: 13px; }
+    .symbol { font-weight: bold; }
+    .price { color: #00ffae; font-weight: bold; }
   </style>
 </head>
 <body>
-
   <h1>Payme Crypto</h1>
 
   <div class="card">
     <div class="wallet-info">
       <div>Wallet Address</div>
-      <div class="wallet-address">0x1234...abcd</div>
+      <div id="walletAddr" class="wallet-address">0x1234...abcd</div>
     </div>
 
     <div class="network-toggle">
-      <button class="active" onclick="switchNetwork('mainnet')">Mainnet</button>
-      <button onclick="switchNetwork('testnet')">Testnet</button>
+      <button id="mainBtn" class="active" onclick="switchNetwork('mainnet')">Mainnet</button>
+      <button id="testBtn" onclick="switchNetwork('testnet')">Testnet</button>
     </div>
 
-    <div class="balance">$0.00</div>
+    <div id="balance" class="balance">$0.00 (Mainnet)</div>
 
     <div class="actions">
       <button class="send">Send</button>
-      <button class="receive">Receive</button>
+      <button class="receive" onclick="window.location.href='receive.html'">Receive</button>
       <button class="buy">Buy</button>
       <button class="sell">Sell</button>
     </div>
   </div>
 
-  <div class="card token-list">
-    <div class="token-item">
-      <div>
-        <div class="symbol">ETH</div>
-        <div class="muted">Ethereum</div>
-      </div>
-      <div class="price" data-symbol="ETH">$1600.00</div>
-    </div>
-    <div class="token-item">
-      <div>
-        <div class="symbol">BNB</div>
-        <div class="muted">Binance Coin</div>
-      </div>
-      <div class="price" data-symbol="BNB">$220.00</div>
-    </div>
-    <div class="token-item">
-      <div>
-        <div class="symbol">PYM</div>
-        <div class="muted">Testnet Token</div>
-      </div>
-      <div class="price" data-symbol="PYM">$0.50</div>
-    </div>
-  </div>
+  <div id="tokens" class="card token-list"></div>
 
   <script>
-    (function(){
-      const STORAGE_KEY = "payme_wallet";
-      const trackedKey = "payme_tracked_tokens";
-      // Providers
-      const PROVIDERS = {
-        mainnet: new ethers.JsonRpcProvider("https://cloudflare-eth.com"),
-        testnet: new ethers.JsonRpcProvider("https://rpc.ankr.com/eth_sepolia") // public Sepolia RPC
-      };
+    const wallet = JSON.parse(localStorage.getItem("payme_wallet") || "{}");
+    document.getElementById("walletAddr").innerText = wallet.address || "0x1234...abcd";
 
-      let currentNet = "mainnet";
-      let provider = PROVIDERS.mainnet;
-      let walletObj = null;
+    const TOKENS = {
+      mainnet: [
+        { symbol: "ETH", name: "Ethereum", price: 1600 },
+        { symbol: "BNB", name: "Binance Coin", price: 220 }
+      ],
+      testnet: [
+        { symbol: "PYM", name: "Testnet Token", price: 0.5 }
+      ]
+    };
 
-      function readStoredWallet(){
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          if(!raw) return null;
-          return JSON.parse(raw);
-        } catch(e){
-          return null;
+    function renderTokens(net){
+      const container = document.getElementById("tokens");
+      container.innerHTML = "";
+      let tokens = TOKENS[net] || [];
+
+      // If PYM was added, fetch from storage
+      if(net==="testnet"){
+        const stored = JSON.parse(localStorage.getItem("payme_tokens") || "{}");
+        if(stored.testnet && stored.testnet.PYM){
+          let bal = stored.testnet.PYM.balance;
+          tokens = [{symbol:"PYM", name:"Testnet Token", price:0.5, balance:bal}];
         }
       }
 
-      // Set wallet address in UI
-      function showWalletAddress(){
-        const el = document.querySelector('.wallet-address');
-        if(walletObj && walletObj.address){
-          el.textContent = walletObj.address;
-        } else {
-          // keep existing placeholder
-        }
+      tokens.forEach(t=>{
+        let row = document.createElement("div");
+        row.className="token-item";
+        row.innerHTML=`
+          <div>
+            <div class="symbol">${t.symbol}</div>
+            <div class="muted">${t.name}</div>
+          </div>
+          <div class="price">$${t.price}${t.balance ? " | "+t.balance+" PYM" : ""}</div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function switchNetwork(net){
+      document.getElementById("mainBtn").classList.remove("active");
+      document.getElementById("testBtn").classList.remove("active");
+      if(net==="mainnet"){
+        document.getElementById("mainBtn").classList.add("active");
+        document.getElementById("balance").innerText="$0.00 (Mainnet)";
+      } else {
+        document.getElementById("testBtn").classList.add("active");
+        document.getElementById("balance").innerText="$0.00 (Testnet)";
       }
+      renderTokens(net);
+    }
 
-      async function fetchETHPriceUsd(){
-        try {
-          const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum,binancecoin&vs_currencies=usd');
-          if(!res.ok) return {};
-          return await res.json();
-        } catch(e) {
-          return {};
-        }
-      }
-
-      // update native balance and UI
-      async function updateNativeBalance(){
-        const balanceEl = document.querySelector('.balance');
-        if(!walletObj || !walletObj.address) {
-          balanceEl.innerText = "$0.00";
-          return;
-        }
-        if(currentNet === 'testnet'){
-          // user requested testnet show as $0.00
-          balanceEl.innerText = "$0.00 (Testnet)";
-          return;
-        }
-        try {
-          const bal = await provider.getBalance(walletObj.address);
-          const eth = Number(ethers.formatEther(bal));
-          // get ETH price
-          const prices = await fetchETHPriceUsd();
-          const ethUsd = (prices.ethereum && prices.ethereum.usd) ? prices.ethereum.usd : 0;
-          const usd = (eth * ethUsd).toFixed(2);
-          balanceEl.innerText = `$${usd} (${eth.toFixed(6)} ETH)`;
-        } catch (err) {
-          console.error("Failed to update native balance", err);
-          balanceEl.innerText = "$0.00";
-        }
-      }
-
-      // switchNetwork function (keeps markup unchanged — finds the button and toggles active)
-      window.switchNetwork = async function(net){
-        currentNet = net;
-        provider = (net === 'testnet') ? PROVIDERS.testnet : PROVIDERS.mainnet;
-
-        // set active button (we locate button by matching the existing inline onclick attribute)
-        document.querySelectorAll('.network-toggle button').forEach(btn=>btn.classList.remove('active'));
-        const btns = Array.from(document.querySelectorAll('.network-toggle button'));
-        const found = btns.find(b => {
-          const attr = b.getAttribute('onclick') || "";
-          return attr.includes(`'${net}'`) || attr.includes(`"${net}"`);
-        });
-        if(found) found.classList.add('active');
-
-        // update native balance display
-        await updateNativeBalance();
-      };
-
-      // Update price text for the tokens already in the markup (ETH, BNB, PYM)
-      async function updatePreExistingTokenPrices(){
-        // ETH and BNB: fetch prices; PYM: fixed to $0.50
-        const priceEls = document.querySelectorAll('.token-list .token-item .price');
-        const prices = await fetchETHPriceUsd(); // has ethereum and binancecoin
-        priceEls.forEach(el=>{
-          const sym = (el.getAttribute('data-symbol') || "").toUpperCase();
-          if(sym === 'ETH'){
-            const p = (prices.ethereum && prices.ethereum.usd) ? prices.ethereum.usd : null;
-            if(p) el.innerText = `$${Number(p).toFixed(2)}`;
-          } else if(sym === 'BNB'){
-            const p = (prices.binancecoin && prices.binancecoin.usd) ? prices.binancecoin.usd : null;
-            if(p) el.innerText = `$${Number(p).toFixed(2)}`;
-          } else if(sym === 'PYM'){
-            // testnet token fixed price
-            el.innerText = `$0.50`;
-          }
-        });
-      }
-
-      // auto-discover ERC20 tokens sent to the wallet by scanning Transfer logs
-      const ERC20_ABI = [
-        "function balanceOf(address) view returns (uint256)",
-        "function decimals() view returns (uint8)",
-        "function symbol() view returns (string)",
-        "function name() view returns (string)"
-      ];
-
-      function getTrackedContracts(){
-        try {
-          return JSON.parse(localStorage.getItem(trackedKey) || "[]");
-        } catch(e){ return []; }
-      }
-      function setTrackedContracts(arr){
-        try { localStorage.setItem(trackedKey, JSON.stringify(arr)); } catch(e){}
-      }
-
-      async function addTokenByContract(contractAddr){
-        // avoid duplicates
-        const tracked = getTrackedContracts();
-        const uc = contractAddr.toLowerCase();
-        if(tracked.includes(uc)) return;
-        try {
-          const token = new ethers.Contract(contractAddr, ERC20_ABI, provider);
-          // try to read symbol/name/decimals -> some tokens might fail
-          const [symbol, name, decimals, rawBal] = await Promise.allSettled([
-            token.symbol(),
-            token.name(),
-            token.decimals(),
-            token.balanceOf(walletObj.address)
-          ]);
-
-          const sym = symbol.status === 'fulfilled' ? String(symbol.value) : (name.status === 'fulfilled' ? String(name.value).slice(0,8) : 'TKN');
-          const nm = name.status === 'fulfilled' ? String(name.value) : contractAddr;
-          const dec = decimals.status === 'fulfilled' ? Number(decimals.value) : 18;
-          const rawBalance = rawBal.status === 'fulfilled' ? rawBal.value : ethers.Zero;
-
-          const display = (() => {
-            try {
-              return ethers.formatUnits(rawBalance, dec);
-            } catch(e) {
-              return "0";
-            }
-          })();
-
-          // attempt to fetch USD price from CoinGecko contract endpoint (ethereum)
-          let priceUSD = null;
-          try {
-            const cg = await fetch(`https://api.coingecko.com/api/v3/coins/ethereum/contract/${contractAddr}`);
-            if(cg.ok){
-              const j = await cg.json();
-              priceUSD = j.market_data && j.market_data.current_price && j.market_data.current_price.usd ? j.market_data.current_price.usd : null;
-            }
-          } catch(e){
-            // ignore price failure
-          }
-
-          // create UI item and prepend
-          const tokenList = document.querySelector('.token-list');
-          const div = document.createElement('div');
-          div.className = 'token-item';
-          div.innerHTML = `
-            <div>
-              <div class="symbol">${sym}</div>
-              <div class="muted">${nm}</div>
-            </div>
-            <div class="price">${priceUSD ? ('$' + Number(priceUSD).toFixed(2)) : '$0.00'} • ${display}</div>
-          `;
-          tokenList.prepend(div);
-
-          tracked.push(uc);
-          setTrackedContracts(tracked);
-
-        } catch (err) {
-          console.error("addTokenByContract error", err);
-        }
-      }
-
-      // scan logs periodically and add tokens that send to this wallet
-      async function scanForIncomingTokenTransfers(){
-        if(!walletObj || !walletObj.address) return;
-        if(currentNet === 'testnet'){
-          // in testnet we don't auto-scan to avoid false assumptions; still you can add test tokens manually later
-          return;
-        }
-        try {
-          const transferTopic = ethers.id("Transfer(address,address,uint256)");
-          const addr32 = ethers.hexZeroPad(ethers.getAddress(walletObj.address), 32);
-          const block = await provider.getBlockNumber();
-          const lastKey = `payme_last_block_${currentNet}_${walletObj.address}`;
-          const last = parseInt(localStorage.getItem(lastKey) || (block - 1200), 10);
-          const fromBlock = Math.max(last + 1, block - 1200);
-          const toBlock = block;
-          if(fromBlock > toBlock) {
-            // nothing to scan
-            return;
-          }
-
-          const logs = await provider.getLogs({
-            fromBlock,
-            toBlock,
-            topics: [transferTopic, null, addr32]
-          });
-
-          if(logs && logs.length){
-            // new tokens discovered => add them
-            for(const lg of logs){
-              const tokenContract = lg.address;
-              await addTokenByContract(tokenContract);
-            }
-          }
-          // update last scanned block
-          localStorage.setItem(lastKey, String(toBlock));
-        } catch (err) {
-          // some public RPCs may restrict getLogs; fail silently
-          // console.error("scanForIncomingTokenTransfers error", err);
-        }
-      }
-
-      // initialize
-      (async function init(){
-        // load stored wallet
-        walletObj = readStoredWallet();
-        showWalletAddress();
-
-        // initial token price update for pre-existing items
-        await updatePreExistingTokenPrices();
-
-        // initial native balance
-        await updateNativeBalance();
-
-        // start polling for token transfers every 15s
-        setInterval(scanForIncomingTokenTransfers, 15000);
-        // run immediately once
-        scanForIncomingTokenTransfers();
-
-        // refresh ETH/native balance and token prices periodically (30s)
-        setInterval(async ()=>{
-          await updateNativeBalance();
-          await updatePreExistingTokenPrices();
-        }, 30000);
-
-      })();
-
-    })();
+    // Default render mainnet
+    renderTokens("mainnet");
   </script>
 </body>
 </html>
