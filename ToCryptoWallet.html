@@ -531,4 +531,176 @@ function openTokenModal(symbol){
     timeframeBtns.appendChild(b);
   });
   // initial chart load (default 5m)
+// initial chart load (default 5m)
+  loadChartForToken(symbol,"5");
+  modalBackdrop.style.display = "flex";
+  document.body.style.overflow = "hidden";
+}
+
+document.getElementById("closeModal").addEventListener("click", closeModal);
+modalBackdrop.addEventListener("click",(e)=>{ if(e.target===modalBackdrop) closeModal(); });
+
+function closeModal(){
+  modalBackdrop.style.display = "none";
+  document.body.style.overflow = "";
+  // destroy tradingview widget if present
+  if(window.tvWidget && typeof window.tvWidget.remove === "function"){ try{ window.tvWidget.remove(); }catch(e){} }
+  chartContainer.innerHTML = "";
+}
+
+/* Chart loader:
+   - Try TradingView widget if a known exchange pair likely exists (BINANCE or COINBASE).
+   - Otherwise fallback to a simple CoinGecko chart using sparkline data (line chart drawn with a simple canvas).
+*/
+async function loadChartForToken(sym, tf){
+  const token = tokens[sym];
+  chartContainer.innerHTML = "";
+  // try tradingview: attempt BINANCE:symUSDT, COINBASE:symUSD etc.
+  const tryPairs = [
+    `BINANCE:${sym}USDT`,
+    `COINBASE:${sym}USD`,
+    `BINANCE:${sym}BTC`,
+    `COINBASE:${sym}BTC`
+  ];
+  let usedTV = false;
+  for(const p of tryPairs){
+    try{
+      // attempt to instantiate tradingview widget for the pair
+      window.tvWidget && window.tvWidget.remove && window.tvWidget.remove();
+      chartContainer.innerHTML = `<div id="tv_chart" style="height:100%;width:100%"></div>`;
+      window.tvWidget = new TradingView.widget({
+        symbol: p,
+        interval: tf,
+        container_id: "tv_chart",
+        width: "100%",
+        height: "100%",
+        locale: "en",
+        autosize: true,
+        theme: "dark",
+        studies: [],
+      });
+      usedTV = true;
+      break;
+    }catch(e){
+      usedTV = false;
+    }
+  }
+  if(usedTV) return;
+
+  // fallback: load CoinGecko market_chart for various ranges and draw a basic chart
+  // Map timeframe to 'days' for CoinGecko
+  let days = 1;
+  if(tf === "1") days = 0.07;
+  else if(tf === "2") days = 0.07;
+  else if(tf === "5") days = 0.07;
+  else if(tf === "15") days = 0.1;
+  else if(tf === "30") days = 0.3;
+  else if(tf === "60") days = 1;
+  else if(tf === "120") days = 2;
+  else if(tf === "240") days = 7;
+  else if(tf === "D") days = 30;
+  else if(tf === "2D") days = 60;
+
+  try{
+    const id = token.id;
+    const res = await fetch(`${CG_BASE}/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}`);
+    const json = await res.json();
+    if(!json || !json.prices) { chartContainer.innerHTML = "<div style='padding:12px;color:var(--muted)'>No chart data</div>"; return; }
+    drawTinyChart(json.prices);
+  }catch(e){
+    chartContainer.innerHTML = "<div style='padding:12px;color:var(--muted)'>Chart failed</div>";
+  }
+}
+
+// Draw minimal canvas chart for price array [[ts, price],...]
+function drawTinyChart(prices){
+  chartContainer.innerHTML = `<canvas id="cgChart" style="width:100%;height:100%"></canvas>`;
+  const canvas = document.getElementById("cgChart");
+  canvas.width = canvas.clientWidth * devicePixelRatio;
+  canvas.height = canvas.clientHeight * devicePixelRatio;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const arr = prices.map(p=>p[1]);
+  const min = Math.min(...arr), max = Math.max(...arr);
+  // simple line
+  ctx.beginPath();
+  arr.forEach((v,i)=>{
+    const x = (i/(arr.length-1)) * w;
+    const y = h - ((v - min)/(max - min || 1)) * h;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = "#0f9d58";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // axis text
+  ctx.fillStyle = "#999";
+  ctx.font = "12px Arial";
+  ctx.fillText(formatUSD(arr[arr.length-1]), 8, 16);
+}
+
+/* -------------------------
+   Buy / Sell (on-chain)
+   ------------------------- */
+
+function logModal(msg){
+  modalLogs.innerText = (modalLogs.innerText ? modalLogs.innerText + "\n" : "") + msg;
+}
+
+// utility: get router contract for chainId
+function getRouterForChain(chainId){
+  const c = CHAIN[chainId];
+  if(!c) return null;
+  return new ethers.Contract(c.router, UNISWAP_ROUTER_ABI, provider || ethers.getDefaultProvider());
+}
+
+// convert human amount to bigNumber based on decimals
+async function parseUnitsForToken(contractAddress, amount){
+  const token = new ethers.Contract(contractAddress, ERC20_ABI, provider);
+  const decimals = await token.decimals().catch(()=>18);
+  return ethers.utils.parseUnits(amount.toString(), decimals);
+}
+
+// core flow for buying token with native currency (ETH/BNB)
+async function buyToken(chainId, tokenContract, amountNative){ // amountNative in human (ETH/BNB)
+  if(!provider || !signer) return alert("Connect wallet first");
+  const routerAddr = CHAIN[chainId].router;
+  const wethAddr = CHAIN[chainId].weth;
+  if(!routerAddr || !wethAddr) return alert("Unsupported chain for swaps");
+  const router = new ethers.Contract(routerAddr, UNISWAP_ROUTER_ABI, signer);
+  // amount in wei
+  const valueWei = ethers.utils.parseEther(String(amountNative));
+  // path: [WETH, token]
+  const path = [wethAddr, tokenContract];
+  // compute amountsOut
+  try{
+    const amounts = await router.getAmountsOut(valueWei, path);
+    // amounts is array of BigNumber
+    const out = amounts[1];
+    // slippage
+    const slippagePct = Number(slippageEl.value) || 1;
+    const minOut = out.mul(100 - Math.floor(slippagePct)).div(100);
+    const deadline = Math.floor(Date.now()/1000) + (20*60);
+    logModal("Swapping " + ethers.utils.formatEther(valueWei) + " -> minOut=" + minOut.toString());
+    // perform swap (supporting fee-on-transfer tokens)
+    const tx = await router.swapExactETHForTokensSupportingFeeOnTransferTokens(
+      minOut,
+      path,
+      userAddress,
+      deadline,
+      { value: valueWei, gasLimit: 800000 }
+    );
+    logModal("Tx submitted: " + tx.hash);
+    await tx.wait();
+    logModal("Swap confirmed");
+    // try update holdings by reading balanceOf
+    await refreshTokenHoldings(chainId, tokenContract);
+    await refreshAllPrices();
+  }catch(e){
+    console.error(e);
+    logModal("Swap error: " + (e.message || e));
+    alert("Swap failed: " + (e.message||e));
+  }
+}
+
   
