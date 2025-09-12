@@ -1,869 +1,710 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Payme - Crypto Wallet (Uniswap / PancakeSwap)</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>WalletConnect — EVM Wallets (Trust/MetaMask/OKX) + Mnemonic Import</title>
 
-<!-- Font Awesome -->
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet"/>
+  <!-- Ethers v5 (stable with WalletConnect provider) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <!-- WalletConnect Provider (UMD) -->
+  <script src="https://unpkg.com/@walletconnect/web3-provider/dist/umd/index.min.js"></script>
 
-<!-- TradingView widget (for supported exchange pairs) -->
-<script src="https://s3.tradingview.com/tv.js"></script>
-
-<!-- Ethers -->
-<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-
-<!-- WalletConnect provider (UMD) -->
-<script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
-
-<!-- Web3Modal (UMD build) -->
-<script src="https://unpkg.com/web3modal@1.9.12/dist/index.js"></script>
-
-<style>
-  /* keep your original styling, only small additions to support new UI pieces */
-  :root{
-    --primary:#00c853;
-    --bg:#111;
-    --card:#1c1c1c;
-    --muted:#aaa;
-  }
-  html,body{height:100%;margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:#fff}
-  header{display:flex;justify-content:space-between;align-items:center;padding:15px}
-  header h2{font-size:18px;margin:0}
-  .balance{text-align:center;margin:15px 0}
-  .balance h1{font-size:26px;margin:0}
-  .actions{display:flex;justify-content:space-around;padding:10px 0}
-  .actions div{text-align:center}
-  .actions i{font-size:20px;margin-bottom:5px}
-  .banner{margin:15px;padding:15px;background:var(--card);border-radius:10px;text-align:center;font-size:14px}
-  .token-list{margin:15px}
-  .token{display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #222; background:linear-gradient(180deg,#151515,#0f0f0f); border-radius:8px;margin-bottom:8px; position:relative; overflow:hidden; touch-action:pan-y;}
-  .token-left{display:flex;align-items:center;gap:12px}
-  .token-left img{width:44px;height:44px;border-radius:50%}
-  .token-left .meta{display:flex;flex-direction:column}
-  .token-left .meta .sym{font-weight:800;font-size:16px}
-  .token-left .meta .name{font-size:12px;color:var(--muted)}
-  .token-right{text-align:right}
-  .token-right .amt{font-weight:700}
-  .token-right .usd{font-size:12px;color:var(--muted)}
-  .swipe-delete{position:absolute;right:8px;top:8px;background:#ff3b30;color:#fff;border:none;padding:8px 10px;border-radius:8px;display:none}
-  .reveal-delete .swipe-delete{display:block}
-  .reveal-delete .token-content{transform:translateX(-80px); transition: transform .18s ease}
-  .add-btn{margin:15px auto;padding:10px;background:#222;color:#fff;border-radius:6px;border:none;width:90%;display:block}
-  .footer{display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid #222;position:fixed;bottom:0;left:0;right:0;background:#0b0b0b}
-  .footer div{text-align:center;font-size:12px}
-  .footer i{font-size:18px;margin-bottom:5px}
-  /* connect button */
-  #walletBtn{background:var(--primary);border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
-  /* token modal */
-  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:2000}
-  .modal{width:95%;max-width:920px;background:#0b0b0b;border-radius:10px;padding:12px;color:#fff}
-  .modal .header{display:flex;align-items:center;justify-content:space-between}
-  .modal .chart{height:360px;background:#0b0b0b;margin-top:8px;border-radius:6px;overflow:hidden}
-  .timeframe{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-  .timeframe button{padding:6px 10px;border-radius:6px;border:1px solid #222;background:transparent;color:#fff;cursor:pointer}
-  .trade-row{display:flex;gap:8px;margin-top:10px}
-  .trade-row input{flex:1;padding:8px;border-radius:6px;border:1px solid #222;background:#111;color:#fff}
-  .trade-row button{padding:8px 12px;border-radius:6px;border:none;cursor:pointer}
-  .trade-buy{background:#0f9d58;color:#fff}
-  .trade-sell{background:#e53935;color:#fff}
-  .small-muted{font-size:12px;color:var(--muted);margin-top:6px}
-  /* responsive */
-  @media (min-width:700px){
-    .modal .chart{height:480px}
-  }
-</style>
+  <style>
+    :root{
+      --bg:#0b1220; --card:#0f1724; --muted:#9aa4b2;
+      --accent:#16a34a; --danger:#dc2626; --glass: rgba(255,255,255,0.03);
+      --glass2: rgba(255,255,255,0.02);
+    }
+    body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:#fff;padding:18px;}
+    .wrap{max-width:980px;margin:0 auto}
+    h1{font-size:20px;margin:0 0 12px}
+    .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .btn{background:var(--accent);border:0;color:#fff;padding:10px 12px;border-radius:8px;cursor:pointer;font-weight:700}
+    .btn.secondary{background:#1f2937}
+    .btn.green{background:#10b981}
+    .btn.red{background:var(--danger)}
+    .card{background:var(--card);padding:14px;border-radius:12px;margin-top:12px;border:1px solid rgba(255,255,255,0.03)}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .left{flex:1}
+    .right{min-width:260px}
+    label{display:block;color:var(--muted);font-size:13px;margin-bottom:6px}
+    input[type=text], textarea, select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);color:#fff;box-sizing:border-box}
+    .address{font-family:monospace;background:#071018;padding:8px;border-radius:8px}
+    .small{font-size:13px;color:var(--muted)}
+    .token-list{margin-top:10px}
+    .token-row{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;background:var(--glass2);margin-bottom:8px}
+    .token-left{display:flex;align-items:center;gap:10px}
+    .token-left img{width:36px;height:36px;border-radius:50%;background:#061018}
+    .token-actions button{margin-left:8px}
+    .danger-note{background:rgba(220,38,38,0.06);border-left:4px solid rgba(220,38,38,0.7);padding:10px;border-radius:6px;color:#ffdede}
+    .actions-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .small-muted{font-size:12px;color:var(--muted)}
+    .hidden{display:none !important}
+    .copy-btn{padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#fff;cursor:pointer}
+    .inline{display:flex;gap:8px}
+    .inline input{flex:1}
+    .value-usd{color:var(--muted);font-size:13px}
+  </style>
 </head>
 <body>
+  <div class="wrap">
+    <h1>🔗 WalletConnect + Mnemonic Import — EVM wallets (Trust/MetaMask/OKX)</h1>
 
-<header>
-  <h2>bewise</h2>
-  <div>
-    <button id="walletBtn">Connect Wallet</button>
-  </div>
-</header>
-
-<div class="balance">
-  <h1 id="totalBalance">$0.00</h1>
-</div>
-
-<div class="actions">
-  <div><i class="fa-solid fa-arrow-up"></i><br>Send</div>
-  <div><i class="fa-solid fa-arrow-down"></i><br>Receive</div>
-  <div><i class="fa-solid fa-credit-card"></i><br>Buy</div>
-  <div><i class="fa-solid fa-bank"></i><br>Sell</div>
-  <div><i class="fa-solid fa-clock-rotate-left"></i><br>History</div>
-</div>
-
-<div class="banner">
-  Earn up to 30% yield on-chain → Start earning
-</div>
-
-<!-- Token list -->
-<div class="token-list" id="tokenList">
-  <!-- JS will populate -->
-</div>
-
-<button class="add-btn" id="addTokenBtn">+ Add Token</button>
-
-<!-- Simple search add input (we removed contract manual entry per your request) -->
-<div id="addArea" style="display:none;margin:15px">
-  <input id="addSymbol" placeholder="Symbol (e.g. ETH, BTC, USDT)" style="width:70%;padding:10px;border-radius:6px;border:1px solid #222;background:#0a0a0a;color:#fff"/>
-  <button id="doAdd" class="add-btn" style="width:26%;display:inline-block">Add</button>
-  <div class="small-muted">Tokens are added via CoinGecko (we fetch contract address & platform automatically when available)</div>
-</div>
-
-<!-- Token detail / trade modal -->
-<div class="modal-backdrop" id="modalBackdrop">
-  <div class="modal" role="dialog" aria-modal="true">
-    <div class="header">
-      <div>
-        <strong id="modalSymbol">ETH</strong>
-        <div id="modalName" style="font-size:12px;color:var(--muted)"></div>
-      </div>
-      <div>
-        <button id="closeModal" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer">&times;</button>
-      </div>
+    <div class="top">
+      <button id="wcConnect" class="btn">Connect Wallet (WalletConnect)</button>
+      <button id="showImport" class="btn secondary">Import 12/24-word mnemonic</button>
+      <div style="margin-left:auto" class="small-muted">Chains: Ethereum / BSC / Polygon (RPC via public endpoints)</div>
     </div>
 
-    <div class="small-muted" id="modalPrice">Price: $0.00</div>
+    <div id="walletCard" class="card hidden">
+      <div class="row">
+        <div class="left">
+          <label>Connected address</label>
+          <div class="address" id="addr">—</div>
+          <div class="small" id="network">Network: —</div>
+        </div>
 
-    <div class="timeframe" id="timeframeBtns">
-      <!-- timeframe buttons -->
-    </div>
-
-    <div class="chart" id="chartContainer">
-      <!-- TradingView or fallback canvas will go here -->
-    </div>
-
-    <div class="trade-row" style="margin-top:12px">
-      <input id="tradeAmount" placeholder="Amount (native for Buy / token for Sell)" />
-      <select id="tradeNetwork">
-        <option value="1">Ethereum</option>
-        <option value="56">BSC</option>
-      </select>
-      <button id="buyBtn" class="trade-buy">Buy</button>
-      <button id="sellBtn" class="trade-sell">Sell</button>
-    </div>
-
-    <div class="small-muted" id="tradeInfo">Slippage: <input id="slippage" type="number" value="1" style="width:60px"/> % &nbsp; Deadline: 20 minutes</div>
-
-    <div id="modalLogs" class="small-muted" style="margin-top:8px"></div>
-  </div>
-</div>
-
-<div class="footer">
-  <div><i class="fa-solid fa-house"></i><br>Home</div>
-  <div><i class="fa-solid fa-chart-line"></i><br>Trending</div>
-  <div><i class="fa-solid fa-shuffle"></i><br>Swap</div>
-  <div><i class="fa-solid fa-coins"></i><br>Earn</div>
-  <div><i class="fa-solid fa-compass"></i><br>Discover</div>
-</div>
-
-<script>
-/*
-  Full-featured frontend:
-   - Add token by symbol (CoinGecko search) — prevents duplicates
-   - Live price updates
-   - Token detail modal with TradingView fallback, timeframe selector
-   - Wallet connect (Web3Modal + WalletConnect)
-   - Swap using Uniswap V2 / PancakeSwap routers (ETH <-> token)
-   - Swipe left to reveal delete
-   - Important: test very carefully on testnets first!
-*/
-
-/* -------------------------
-   CONFIG & CONSTANTS
-   ------------------------- */
-
-// CoinGecko base
-const CG_BASE = "https://api.coingecko.com/api/v3";
-
-// WalletConnect RPC (optional). Replace INFURA_ID with your own for best reliability.
-const WALLETCONNECT_RPC = {
-  1: "https://mainnet.infura.io/v3/INFURA_ID",              // replace INFURA_ID
-  56: "https://bsc-dataseed.binance.org/"
-};
-
-// Routers + WETH addresses (commonly used mainnet addresses)
-// VERIFY these addresses before using with real funds.
-const CHAIN = {
-  1: { // Ethereum Mainnet
-    name: "Ethereum",
-    router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2 Router
-    weth:   "0xC02aaA39b223FE8D0a0e5C4F27eAD9083C756Cc2",
-    nativeSymbol: "ETH"
-  },
-  56: { // BSC Mainnet
-    name: "BSC",
-    router: "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap Router V2
-    weth:   "0xBB4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // WBNB
-    nativeSymbol: "BNB"
-  }
-};
-
-// ABIs (minimal)
-const UNISWAP_ROUTER_ABI = [
-  "function getAmountsOut(uint amountIn, address[] memory path) view returns (uint[] memory amounts)",
-  "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable",
-  "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)"
-];
-const ERC20_ABI = [
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function decimals() view returns (uint8)",
-  "function balanceOf(address who) view returns (uint256)"
-];
-
-/* -------------------------
-   App state
-   ------------------------- */
-
-let tokens = {};        // symbol => token object (persisted in localStorage)
-let provider = null;    // ethers provider after connection
-let signer = null;
-let userAddress = null;
-let web3Modal = null;
-let connectedChainId = null;
-
-/* -------------------------
-   Utilities: storage & DOM
-   ------------------------- */
-
-function persistTokens(){
-  localStorage.setItem("payme_tokens_v1", JSON.stringify(tokens));
-}
-function loadTokens(){
-  const raw = localStorage.getItem("payme_tokens_v1");
-  if(raw){
-    try{ tokens = JSON.parse(raw) || {}; }catch(e){ tokens = {}; }
-  }
-}
-function formatUSD(n){
-  if(n === null || n === undefined) return "$0.00";
-  const v = Number(n);
-  if(isNaN(v)) return "$0.00";
-  return "$" + v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8});
-}
-function short(n){
-  return (''+n).slice(0,12);
-}
-
-/* -------------------------
-   Init web3modal
-   ------------------------- */
-
-function initWeb3Modal(){
-  const providerOptions = {
-    walletconnect: {
-      package: window.WalletConnectProvider.default,
-      options: {
-        rpc: WALLETCONNECT_RPC,
-        // bridge: "https://bridge.walletconnect.org", // default
-      }
-    }
-  };
-  web3Modal = new window.Web3Modal.default({
-    cacheProvider: true,
-    providerOptions
-  });
-}
-
-/* -------------------------
-   Wallet connect / disconnect
-   ------------------------- */
-
-async function connectWallet(){
-  try{
-    const instance = await web3Modal.connect();
-    provider = new ethers.providers.Web3Provider(instance);
-    signer = provider.getSigner();
-    userAddress = await signer.getAddress();
-    const network = await provider.getNetwork();
-    connectedChainId = network.chainId;
-    document.getElementById("walletBtn").innerText = `${short(userAddress)} (${CHAIN[connectedChainId]?CHAIN[connectedChainId].nativeSymbol:connectedChainId})`;
-    // listen for chain changes & account changes
-    if(instance.on){
-      instance.on("accountsChanged", (accounts) => {
-        userAddress = accounts && accounts[0] || null;
-        document.getElementById("walletBtn").innerText = userAddress ? short(userAddress) : "Connect Wallet";
-      });
-      instance.on("chainChanged", (chainIdHex) => {
-        const cid = parseInt(chainIdHex.toString(), 16);
-        connectedChainId = cid;
-        document.getElementById("walletBtn").innerText = `${short(userAddress)} (${CHAIN[cid]?CHAIN[cid].nativeSymbol:cid})`;
-      });
-    }
-    await refreshAllPrices();
-  }catch(err){
-    console.error("connect error", err);
-  }
-}
-
-async function disconnectWallet(){
-  if(web3Modal) await web3Modal.clearCachedProvider();
-  provider = null; signer = null; userAddress = null; connectedChainId = null;
-  document.getElementById("walletBtn").innerText = "Connect Wallet";
-}
-
-/* -------------------------
-   Token add / render / delete
-   ------------------------- */
-
-loadTokens();
-initWeb3Modal();
-
-const tokenListEl = document.getElementById("tokenList");
-const totalBalanceEl = document.getElementById("totalBalance");
-
-function renderTokens(){
-  tokenListEl.innerHTML = "";
-  const keys = Object.keys(tokens);
-  if(keys.length === 0){
-    tokenListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">No tokens — use + Add Token</div>`;
-    totalBalanceEl.innerText = "$0.00";
-    return;
-  }
-  let total = 0;
-  keys.forEach(sym=>{
-    const t = tokens[sym];
-    const usd = Number(t.price_usd || 0) * Number(t.holdings || 0);
-    total += usd;
-    const wrapper = document.createElement("div");
-    wrapper.className = "token";
-    wrapper.innerHTML = `
-      <div class="token-content" style="display:flex;align-items:center;gap:12px;width:100%;">
-        <div class="token-left" style="flex:1;cursor:pointer">
-          <img src="${t.image||''}" onerror="this.style.display='none'" />
-          <div class="meta">
-            <div class="sym">${sym}</div>
-            <div class="name">${t.name||''}</div>
+        <div class="right">
+          <label>Native balance</label>
+          <div style="font-size:20px;font-weight:800" id="nativeBal">—</div>
+          <div class="actions-row">
+            <button id="receiveBtn" class="btn green">📥 Receive</button>
+            <button id="sendBtn" class="btn green">📤 Send</button>
+            <button id="disconnectBtn" class="btn secondary">Disconnect</button>
           </div>
         </div>
-        <div class="token-right" style="min-width:140px">
-          <div class="amt">${t.holdings ? Number(t.holdings).toLocaleString() : '0.00'}</div>
-          <div class="usd">${formatUSD(usd)}</div>
+      </div>
+
+      <div id="receivePanel" class="card hidden" style="margin-top:12px">
+        <div class="small">Your address (share to receive)</div>
+        <div class="address" id="receiveAddr" style="margin-top:8px"></div>
+        <div style="margin-top:8px"><button id="copyAddr" class="copy-btn">Copy address</button></div>
+      </div>
+
+      <div style="margin-top:12px">
+        <label>Quick tokens (automatic check)</label>
+        <div class="small-muted">Popular tokens on the connected chain are checked automatically and displayed if balance &gt; 0 or you force-show them below.</div>
+        <div id="tokenList" class="token-list"></div>
+
+        <div style="margin-top:10px">
+          <label>Add an ERC-20 token (contract)</label>
+          <div class="inline">
+            <input id="userTokenAddr" placeholder="0xContractAddress (ERC20)"/>
+            <select id="userTokenChain" style="width:160px">
+              <option value="ethereum">Ethereum</option>
+              <option value="bsc">Binance Smart Chain</option>
+              <option value="polygon">Polygon</option>
+            </select>
+            <button id="addTokenBtn" class="btn">Add</button>
+          </div>
+          <div class="small-muted" style="margin-top:6px">Add a token contract to watch its balance. Token metadata fetched from chain & CoinGecko.</div>
         </div>
       </div>
-      <button class="swipe-delete">Delete</button>
-    `;
-    // click open modal
-    wrapper.querySelector(".token-left").addEventListener("click", ()=>openTokenModal(sym));
-    // delete handling
-    wrapper.querySelector(".swipe-delete").addEventListener("click", ()=>{
-      delete tokens[sym];
-      persistTokens();
-      renderTokens();
-    });
-    // swipe-to-left touch support
-    attachSwipeHandlers(wrapper);
-    tokenListEl.appendChild(wrapper);
-  });
-  totalBalanceEl.innerText = formatUSD(total);
-}
+    </div>
 
-/* swipe-to-delete: simple touch handling */
-function attachSwipeHandlers(el){
-  let startX = 0, curX=0, touching=false;
-  const content = el.querySelector(".token-content");
-  el.addEventListener("touchstart",(e)=>{
-    touching = true;
-    startX = e.touches[0].clientX;
-    el.classList.remove("reveal-delete");
-  });
-  el.addEventListener("touchmove",(e)=>{
-    if(!touching) return;
-    curX = e.touches[0].clientX;
-    const dx = curX - startX;
-    if(dx < -20){
-      // reveal delete
-      el.classList.add("reveal-delete");
-    }
-  });
-  el.addEventListener("touchend",()=>{
-    touching=false;
-  });
-  // also allow desktop drag with mouse
-  let mouseDown=false, mxStart=0;
-  el.addEventListener("mousedown",(e)=>{ mouseDown=true; mxStart=e.clientX; });
-  el.addEventListener("mousemove",(e)=>{ if(!mouseDown) return; if(e.clientX - mxStart < -40) el.classList.add("reveal-delete"); });
-  el.addEventListener("mouseup",()=>{ mouseDown=false; });
-}
+    <div id="importCard" class="card hidden">
+      <div class="danger-note"><strong>Security warning:</strong> Past­ing a mnemonic into a webpage is risky. Use only for testing, and only with wallets you control. The mnemonic is used in-memory only in this demo.</div>
 
-/* -------------------------
-   CoinGecko helpers & price update
-   ------------------------- */
+      <div style="margin-top:10px" class="row">
+        <div class="left">
+          <label>12 / 24 word mnemonic</label>
+          <textarea id="mnemonic" rows="3" placeholder="abandon abandon ..."></textarea>
 
-async function coingeckoSearchSymbol(sym){
-  // returns id or null
-  try{
-    const q = encodeURIComponent(sym);
-    const res = await fetch(`${CG_BASE}/search?query=${q}`);
-    const data = await res.json();
-    if(!data || !data.coins) return null;
-    // try best match by symbol (case-insensitive)
-    const match = data.coins.find(c => c.symbol.toLowerCase() === sym.toLowerCase()) || data.coins[0];
-    return match ? match.id : null;
-  }catch(e){
-    console.error("search error", e);
-    return null;
+          <label style="margin-top:8px">Select chain (RPC used for balances & sending)</label>
+          <select id="importChain">
+            <option value="ethereum">Ethereum</option>
+            <option value="bsc">Binance Smart Chain</option>
+            <option value="polygon">Polygon</option>
+          </select>
+
+          <div class="actions-row" style="margin-top:10px">
+            <button id="importBtn" class="btn">Import & Connect</button>
+            <button id="cancelImport" class="btn secondary">Cancel</button>
+          </div>
+        </div>
+
+        <div class="right">
+          <div class="small-muted">Notes</div>
+          <ul class="small-muted">
+            <li>Imported wallet created in memory and connected to the selected chain's RPC.</li>
+            <li>Disconnect to clear signer; mnemonic not persisted by this demo (do not rely on demo for security).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="sendCard" class="card hidden" style="margin-top:12px">
+      <div><strong>Send funds</strong></div>
+      <div style="margin-top:8px">
+        <label>Type</label>
+        <select id="sendType">
+          <option value="native">Native (ETH/BNB/MATIC)</option>
+          <option value="token">ERC-20 token</option>
+        </select>
+      </div>
+
+      <div id="sendTokenPicker" class="hidden" style="margin-top:8px">
+        <label>Select token</label>
+        <select id="sendTokenSelect"></select>
+      </div>
+
+      <div style="margin-top:8px">
+        <label>To address</label>
+        <input id="sendTo" placeholder="0x..." />
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Amount</label>
+        <input id="sendAmount" placeholder="0.01" />
+      </div>
+
+      <div class="actions-row" style="margin-top:10px">
+        <button id="confirmSend" class="btn">Send</button>
+        <button id="cancelSend" class="btn secondary">Cancel</button>
+      </div>
+
+      <div id="sendStatus" class="small-muted" style="margin-top:8px">Status: idle</div>
+    </div>
+
+    <div id="log" class="card" style="margin-top:12px">
+      <div class="small-muted">Status / logs</div>
+      <div id="logArea" class="small-muted" style="margin-top:8px">Ready</div>
+    </div>
+  </div>
+
+<script>
+/* --- Configuration --- */
+const CHAINS = {
+  ethereum: {
+    name: "Ethereum",
+    chainId: 1,
+    rpc: "https://rpc.ankr.com/eth",
+    coingeckoPlatform: "ethereum",
+    coingeckoNativeId: "ethereum",
+    nativeSymbol: "ETH"
+  },
+  bsc: {
+    name: "Binance Smart Chain",
+    chainId: 56,
+    rpc: "https://rpc.ankr.com/bsc",
+    coingeckoPlatform: "binance-smart-chain",
+    coingeckoNativeId: "binancecoin",
+    nativeSymbol: "BNB"
+  },
+  polygon: {
+    name: "Polygon",
+    chainId: 137,
+    rpc: "https://rpc.ankr.com/polygon",
+    coingeckoPlatform: "polygon-pos",
+    coingeckoNativeId: "matic-network",
+    nativeSymbol: "MATIC"
   }
-}
+};
 
-async function fetchCoinInfoById(id){
-  try{
-    const res = await fetch(`${CG_BASE}/coins/${encodeURIComponent(id)}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`);
-    if(!res.ok) throw new Error("coin fetch failed");
-    return await res.json();
-  }catch(e){ console.error(e); return null; }
-}
+// default popular tokens to check per chain (small set — will show if holdings are non-zero)
+const DEFAULT_TOKENS = {
+  ethereum: [
+    {address:"0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"}, // USDC
+    {address:"0xdAC17F958D2ee523a2206206994597C13D831ec7"}, // USDT
+    {address:"0x6B175474E89094C44Da98b954EedeAC495271d0F"}, // DAI
+    {address:"0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"}  // WBTC
+  ],
+  bsc: [
+    {address:"0xe9e7cea3dedca5984780bafc599bd69add087d56"}, // BUSD
+    {address:"0x55d398326f99059fF775485246999027B3197955"}, // USDT
+    {address:"0xBB4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"}  // WBNB
+  ],
+  polygon: [
+    {address:"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"} // USDC
+  ]
+};
 
-async function addTokenBySymbol(sym){
-  sym = (sym||"").trim().toUpperCase();
-  if(!sym) return alert("Enter symbol");
-  if(tokens[sym]) return alert(sym + " already added");
-  const id = await coingeckoSearchSymbol(sym);
-  if(!id) return alert("Token not found on CoinGecko");
-  const info = await fetchCoinInfoById(id);
-  if(!info) return alert("Could not fetch coin details");
-  // pick contract for Ethereum or BSC if available
-  const platforms = info.platforms || {};
-  const contract_eth = platforms.ethereum || platforms['erc20'] || null;
-  const contract_bsc = platforms['binance-smart-chain'] || platforms.bep20 || null;
-  // current price
-  const price_usd = info.market_data && info.market_data.current_price ? info.market_data.current_price.usd : 0;
-  tokens[sym] = {
-    id: id,
-    symbol: sym,
-    name: info.name || sym,
-    image: info.image && info.image.thumb ? info.image.thumb : (info.image && info.image.small ? info.image.small : ""),
-    platforms: platforms,
-    contract_eth,
-    contract_bsc,
-    price_usd,
-    holdings: 0
-  };
-  persistTokens();
-  renderTokens();
-  return tokens[sym];
-}
-
-async function refreshAllPrices(){
-  const syms = Object.keys(tokens);
-  if(syms.length===0) return;
-  // coinGecko supports ids, so build a list of ids
-  const ids = syms.map(s=>tokens[s].id).filter(Boolean).join(",");
-  if(!ids) return;
-  try{
-    const res = await fetch(`${CG_BASE}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(ids)}&order=market_cap_desc&per_page=250&page=1&sparkline=false`);
-    const arr = await res.json();
-    arr.forEach(item=>{
-      const sym = (item.symbol || "").toUpperCase();
-      // find our token by id or symbol
-      const foundKey = Object.keys(tokens).find(k=>tokens[k].id===item.id) || sym;
-      if(tokens[foundKey]){
-        tokens[foundKey].price_usd = item.current_price;
-      }
-    });
-    persistTokens();
-    renderTokens();
-  }catch(e){
-    console.warn("price refresh failed", e);
-  }
-}
-
-/* auto-refresh every 15s */
-setInterval(refreshAllPrices, 15000);
-refreshAllPrices();
-
-/* -------------------------
-   Modal + Chart + Timeframes
-   ------------------------- */
-
-const modalBackdrop = document.getElementById("modalBackdrop");
-const modalSymbolEl = document.getElementById("modalSymbol");
-const modalNameEl = document.getElementById("modalName");
-const modalPriceEl = document.getElementById("modalPrice");
-const chartContainer = document.getElementById("chartContainer");
-const timeframeBtns = document.getElementById("timeframeBtns");
-const tradeAmountEl = document.getElementById("tradeAmount");
-const tradeNetworkEl = document.getElementById("tradeNetwork");
-const buyBtn = document.getElementById("buyBtn");
-const sellBtn = document.getElementById("sellBtn");
-const slippageEl = document.getElementById("slippage");
-const modalLogs = document.getElementById("modalLogs");
-
-const TIMEFRAMES = [
-  {label:"1m", tv:"1"},
-  {label:"2m", tv:"2"},
-  {label:"5m", tv:"5"},
-  {label:"15m", tv:"15"},
-  {label:"30m", tv:"30"},
-  {label:"1h", tv:"60"},
-  {label:"2h", tv:"120"},
-  {label:"4h", tv:"240"},
-  {label:"1d", tv:"D"},
-  {label:"2d", tv:"2D"}
+/* minimal ERC20 ABI */
+const ERC20_ABI = [
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)"
 ];
 
-let activeModalSymbol = null;
-let activeTVWidget = null;
+/* --- State --- */
+let wcProvider = null;          // WalletConnect provider instance
+let web3Provider = null;       // ethers provider (Web3Provider for WalletConnect)
+let signer = null;             // ethers signer
+let connectedAddress = null;
+let connectedChainKey = "ethereum";
+let importedWallet = null;     // in-memory ethers.Wallet (if mnemonic imported)
+let watchedTokens = [];        // array { chainKey, address, name, symbol, decimals, logo, balance, priceUsd }
 
-function openTokenModal(symbol){
-  const token = tokens[symbol];
-  if(!token) return;
-  activeModalSymbol = symbol;
-  modalSymbolEl.innerText = symbol;
-  modalNameEl.innerText = token.name || "";
-  modalPriceEl.innerText = "Price: " + formatUSD(token.price_usd || 0);
-  modalLogs.innerText = "";
-  // default network -> 1 if contract_eth exists else 56 if bsc exists
-  if(token.contract_eth) tradeNetworkEl.value = "1";
-  else if(token.contract_bsc) tradeNetworkEl.value = "56";
-  else tradeNetworkEl.value = "1";
-  // display timeframe buttons
-  timeframeBtns.innerHTML = "";
-  TIMEFRAMES.forEach(tf=>{
-    const b = document.createElement("button");
-    b.innerText = tf.label;
-    b.onclick = ()=>loadChartForToken(symbol, tf.tv);
-    timeframeBtns.appendChild(b);
-  });
-  // initial chart load (default 5m)
-// initial chart load (default 5m)
-  loadChartForToken(symbol,"5");
-  modalBackdrop.style.display = "flex";
-  document.body.style.overflow = "hidden";
+/* --- Helpers & UI references --- */
+const logArea = document.getElementById("logArea");
+const walletCard = document.getElementById("walletCard");
+const addrEl = document.getElementById("addr");
+const networkEl = document.getElementById("network");
+const nativeBalEl = document.getElementById("nativeBal");
+const receivePanel = document.getElementById("receivePanel");
+const receiveAddr = document.getElementById("receiveAddr");
+const tokenListEl = document.getElementById("tokenList");
+
+function setLog(msg){
+  logArea.textContent = `${new Date().toLocaleTimeString()} — ${msg}`;
 }
 
-document.getElementById("closeModal").addEventListener("click", closeModal);
-modalBackdrop.addEventListener("click",(e)=>{ if(e.target===modalBackdrop) closeModal(); });
-
-function closeModal(){
-  modalBackdrop.style.display = "none";
-  document.body.style.overflow = "";
-  // destroy tradingview widget if present
-  if(window.tvWidget && typeof window.tvWidget.remove === "function"){ try{ window.tvWidget.remove(); }catch(e){} }
-  chartContainer.innerHTML = "";
-}
-
-/* Chart loader:
-   - Try TradingView widget if a known exchange pair likely exists (BINANCE or COINBASE).
-   - Otherwise fallback to a simple CoinGecko chart using sparkline data (line chart drawn with a simple canvas).
-*/
-async function loadChartForToken(sym, tf){
-  const token = tokens[sym];
-  chartContainer.innerHTML = "";
-  // try tradingview: attempt BINANCE:symUSDT, COINBASE:symUSD etc.
-  const tryPairs = [
-    `BINANCE:${sym}USDT`,
-    `COINBASE:${sym}USD`,
-    `BINANCE:${sym}BTC`,
-    `COINBASE:${sym}BTC`
-  ];
-  let usedTV = false;
-  for(const p of tryPairs){
-    try{
-      // attempt to instantiate tradingview widget for the pair
-      window.tvWidget && window.tvWidget.remove && window.tvWidget.remove();
-      chartContainer.innerHTML = `<div id="tv_chart" style="height:100%;width:100%"></div>`;
-      window.tvWidget = new TradingView.widget({
-        symbol: p,
-        interval: tf,
-        container_id: "tv_chart",
-        width: "100%",
-        height: "100%",
-        locale: "en",
-        autosize: true,
-        theme: "dark",
-        studies: [],
-      });
-      usedTV = true;
-      break;
-    }catch(e){
-      usedTV = false;
-    }
-  }
-  if(usedTV) return;
-
-  // fallback: load CoinGecko market_chart for various ranges and draw a basic chart
-  // Map timeframe to 'days' for CoinGecko
-  let days = 1;
-  if(tf === "1") days = 0.07;
-  else if(tf === "2") days = 0.07;
-  else if(tf === "5") days = 0.07;
-  else if(tf === "15") days = 0.1;
-  else if(tf === "30") days = 0.3;
-  else if(tf === "60") days = 1;
-  else if(tf === "120") days = 2;
-  else if(tf === "240") days = 7;
-  else if(tf === "D") days = 30;
-  else if(tf === "2D") days = 60;
-
-  try{
-    const id = token.id;
-    const res = await fetch(`${CG_BASE}/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}`);
-    const json = await res.json();
-    if(!json || !json.prices) { chartContainer.innerHTML = "<div style='padding:12px;color:var(--muted)'>No chart data</div>"; return; }
-    drawTinyChart(json.prices);
-  }catch(e){
-    chartContainer.innerHTML = "<div style='padding:12px;color:var(--muted)'>Chart failed</div>";
-  }
-}
-
-// Draw minimal canvas chart for price array [[ts, price],...]
-function drawTinyChart(prices){
-  chartContainer.innerHTML = `<canvas id="cgChart" style="width:100%;height:100%"></canvas>`;
-  const canvas = document.getElementById("cgChart");
-  canvas.width = canvas.clientWidth * devicePixelRatio;
-  canvas.height = canvas.clientHeight * devicePixelRatio;
-  const ctx = canvas.getContext("2d");
-  ctx.scale(devicePixelRatio, devicePixelRatio);
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  const arr = prices.map(p=>p[1]);
-  const min = Math.min(...arr), max = Math.max(...arr);
-  // simple line
-  ctx.beginPath();
-  arr.forEach((v,i)=>{
-    const x = (i/(arr.length-1)) * w;
-    const y = h - ((v - min)/(max - min || 1)) * h;
-    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-  });
-  ctx.strokeStyle = "#0f9d58";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // axis text
-  ctx.fillStyle = "#999";
-  ctx.font = "12px Arial";
-  ctx.fillText(formatUSD(arr[arr.length-1]), 8, 16);
-}
-
-/* -------------------------
-   Buy / Sell (on-chain)
-   ------------------------- */
-
-function logModal(msg){
-  modalLogs.innerText = (modalLogs.innerText ? modalLogs.innerText + "\n" : "") + msg;
-}
-
-// utility: get router contract for chainId
-function getRouterForChain(chainId){
-  const c = CHAIN[chainId];
-  if(!c) return null;
-  return new ethers.Contract(c.router, UNISWAP_ROUTER_ABI, provider || ethers.getDefaultProvider());
-}
-
-// convert human amount to bigNumber based on decimals
-async function parseUnitsForToken(contractAddress, amount){
-  const token = new ethers.Contract(contractAddress, ERC20_ABI, provider);
-  const decimals = await token.decimals().catch(()=>18);
-  return ethers.utils.parseUnits(amount.toString(), decimals);
-}
-
-// core flow for buying token with native currency (ETH/BNB)
-async function buyToken(chainId, tokenContract, amountNative){ // amountNative in human (ETH/BNB)
-  if(!provider || !signer) return alert("Connect wallet first");
-  const routerAddr = CHAIN[chainId].router;
-  const wethAddr = CHAIN[chainId].weth;
-  if(!routerAddr || !wethAddr) return alert("Unsupported chain for swaps");
-  const router = new ethers.Contract(routerAddr, UNISWAP_ROUTER_ABI, signer);
-  // amount in wei
-  const valueWei = ethers.utils.parseEther(String(amountNative));
-  // path: [WETH, token]
-  const path = [wethAddr, tokenContract];
-  // compute amountsOut
-  try{
-    const amounts = await router.getAmountsOut(valueWei, path);
-    // amounts is array of BigNumber
-    const out = amounts[1];
-    // slippage
-    const slippagePct = Number(slippageEl.value) || 1;
-    const minOut = out.mul(100 - Math.floor(slippagePct)).div(100);
-    const deadline = Math.floor(Date.now()/1000) + (20*60);
-    logModal("Swapping " + ethers.utils.formatEther(valueWei) + " -> minOut=" + minOut.toString());
-    // perform swap (supporting fee-on-transfer tokens)
-    const tx = await router.swapExactETHForTokensSupportingFeeOnTransferTokens(
-      minOut,
-      path,
-      userAddress,
-      deadline,
-      { value: valueWei, gasLimit: 800000 }
-    );
-    logModal("Tx submitted: " + tx.hash);
-    await tx.wait();
-    logModal("Swap confirmed");
-    // try update holdings by reading balanceOf
-    await refreshTokenHoldings(chainId, tokenContract);
-    await refreshAllPrices();
-  }catch(e){
-    console.error(e);
-    logModal("Swap error: " + (e.message || e));
-    alert("Swap failed: " + (e.message||e));
-  }
-}
-
-// sell token -> receive native
-async function sellToken(chainId, tokenContract, amountTokenHuman){
-  if(!provider || !signer) return alert("Connect wallet first");
-  const routerAddr = CHAIN[chainId].router;
-  const wethAddr = CHAIN[chainId].weth;
-  const token = new ethers.Contract(tokenContract, ERC20_ABI, signer);
-  try{
-    const decimals = await token.decimals();
-    const amountIn = ethers.utils.parseUnits(String(amountTokenHuman), decimals);
-    // allowance check
-    const allowance = await token.allowance(userAddress, routerAddr);
-    if(allowance.lt(amountIn)){
-      logModal("Approving token to router...");
-      const appr = await token.approve(routerAddr, ethers.constants.MaxUint256);
-      await appr.wait();
-      logModal("Approved");
-    }
-    const router = new ethers.Contract(routerAddr, UNISWAP_ROUTER_ABI, signer);
-    const path = [tokenContract, wethAddr];
-    const amounts = await router.getAmountsOut(amountIn, path);
-    const out = amounts[1];
-    const slippagePct = Number(slippageEl.value) || 1;
-    const minOut = out.mul(100 - Math.floor(slippagePct)).div(100);
-    const deadline = Math.floor(Date.now()/1000) + (20*60);
-    logModal("Swapping token -> min native out: " + minOut.toString());
-    const tx = await router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-      amountIn,
-      minOut,
-      path,
-      userAddress,
-      deadline,
-      { gasLimit: 900000 }
-    );
-    logModal("Tx submitted: " + tx.hash);
-    await tx.wait();
-    logModal("Sell confirmed");
-    await refreshTokenHoldings(chainId, tokenContract);
-    await refreshAllPrices();
-  }catch(e){
-    console.error("sell error", e);
-    logModal("Sell error: " + (e.message||e));
-    alert("Sell failed: " + (e.message||e));
-  }
-}
-
-/* refresh token holdings by reading on-chain balances for connected user - best-effort */
-async function refreshTokenHoldings(chainId, tokenContract){
-  if(!provider || !signer || !userAddress) return;
-  try{
-    const token = new ethers.Contract(tokenContract, ERC20_ABI, provider);
-    const dec = await token.decimals().catch(()=>18);
-    const balance = await token.balanceOf(userAddress);
-    const human = Number(ethers.utils.formatUnits(balance, dec));
-    // find symbol in tokens by contract
-    const sym = Object.keys(tokens).find(k=> {
-      const t = tokens[k];
-      const cEth = (t.contract_eth||"")?.toLowerCase();
-      const cBsc = (t.contract_bsc||"")?.toLowerCase();
-      return (cEth && cEth === tokenContract.toLowerCase()) || (cBsc && cBsc === tokenContract.toLowerCase());
+/* --- WalletConnect connect --- */
+document.getElementById("wcConnect").addEventListener("click", async () => {
+  try {
+    // create provider
+    const WalletConnectProvider = window.WalletConnectProvider.default;
+    wcProvider = new WalletConnectProvider({
+      rpc: {
+        1: CHAINS.ethereum.rpc,
+        56: CHAINS.bsc.rpc,
+        137: CHAINS.polygon.rpc
+      },
+      qrcode: true
     });
-    if(sym){
-      tokens[sym].holdings = human;
-      persistTokens();
-      renderTokens();
+
+    // enable session (triggers QR)
+    await wcProvider.enable();
+
+    // wrap with ethers provider
+    web3Provider = new ethers.providers.Web3Provider(wcProvider);
+    signer = web3Provider.getSigner();
+
+    const address = await signer.getAddress();
+    const net = await web3Provider.getNetwork();
+    const chainKey = mapChainIdToKey(net.chainId);
+
+    connectedAddress = address;
+    connectedChainKey = chainKey;
+
+    onConnected();
+
+    // listen for disconnect (WalletConnect emits "disconnect")
+    if (wcProvider.on) {
+      wcProvider.on("disconnect", (code, reason) => {
+        setLog("WalletConnect disconnected");
+        disconnectAll();
+      });
     }
-  }catch(e){}
+  } catch (err) {
+    console.error(err);
+    alert("WalletConnect failed: " + (err.message || err));
+    setLog("WalletConnect error");
+  }
+});
+
+/* --- Map chainId -> our key --- */
+function mapChainIdToKey(chainId){
+  const map = {1:"ethereum",56:"bsc",137:"polygon"};
+  return map[chainId] || "ethereum";
 }
 
-/* -------------------------
-   Wiring UI events
-   ------------------------- */
-
-document.getElementById("walletBtn").addEventListener("click", async ()=>{
-  if(!provider) await connectWallet();
-  else await disconnectWallet();
+/* --- Import mnemonic (in memory) --- */
+document.getElementById("showImport").addEventListener("click", () => {
+  document.getElementById("importCard").classList.toggle("hidden");
+});
+document.getElementById("cancelImport").addEventListener("click", () => {
+  document.getElementById("importCard").classList.add("hidden");
 });
 
-// Add token UI
-document.getElementById("addTokenBtn").addEventListener("click", ()=>{
-  const area = document.getElementById("addArea");
-  area.style.display = area.style.display === "block" ? "none" : "block";
-  document.getElementById("addSymbol").focus();
-});
-document.getElementById("doAdd").addEventListener("click", async ()=>{
-  const sym = document.getElementById("addSymbol").value.trim();
-  if(!sym) return;
-  document.getElementById("doAdd").innerText = "Adding...";
-  try{
-    await addTokenBySymbol(sym);
-    document.getElementById("addSymbol").value = "";
-    renderTokens();
-  }catch(e){
-    alert("Add failed");
-    console.error(e);
-  }finally{
-    document.getElementById("doAdd").innerText = "Add";
+document.getElementById("importBtn").addEventListener("click", async () => {
+  const raw = document.getElementById("mnemonic").value.trim();
+  const chainKey = document.getElementById("importChain").value;
+  if (!raw) { alert("Paste your mnemonic (for demo only)"); return; }
+  try {
+    const provider = new ethers.providers.JsonRpcProvider(CHAINS[chainKey].rpc);
+    const wallet = ethers.Wallet.fromMnemonic(raw).connect(provider);
+    importedWallet = wallet;
+    signer = wallet;
+    web3Provider = provider;
+    connectedAddress = wallet.address;
+    connectedChainKey = chainKey;
+    onConnected();
+    document.getElementById("mnemonic").value = "";
+    document.getElementById("importCard").classList.add("hidden");
+    setLog("Imported mnemonic in-memory and connected");
+  } catch (err) {
+    console.error(err);
+    alert("Import failed: " + (err.message || err));
   }
 });
 
-// open modal buy/sell handlers
-buyBtn.addEventListener("click", async ()=>{
-  const amount = tradeAmountEl.value.trim();
-  if(!amount) return alert("Enter amount to buy (native currency, e.g. ETH/BNB)");
-  const chainId = Number(tradeNetworkEl.value);
-  const sym = activeModalSymbol;
-  if(!sym) return;
-  const token = tokens[sym];
-  // pick contract for chain
-  const contract = chainId === 1 ? token.contract_eth : token.contract_bsc;
-  if(!contract) return alert("Token contract not available for this network");
-  await buyToken(chainId, contract, amount);
+/* --- Common onConnected --- */
+async function onConnected(){
+  walletCard.classList.remove("hidden");
+  addrEl.textContent = connectedAddress;
+  networkEl.textContent = `Network: ${CHAINS[connectedChainKey].name}`;
+  receiveAddr.textContent = connectedAddress;
+  receivePanel.classList.add("hidden");
+  setLog(`Connected ${connectedAddress} on ${connectedChainKey}`);
+
+  // clear previous tokens and add chain defaults
+  watchedTokens = [];
+  addDefaultsForChain(connectedChainKey);
+
+  // refresh balances immediately
+  await refreshAllBalances();
+  // start auto-refresh
+  startAutoRefresh();
+}
+
+/* --- Disconnect --- */
+document.getElementById("disconnectBtn").addEventListener("click", () => {
+  if (!confirm("Disconnect wallet?")) return;
+  disconnectAll();
+});
+async function disconnectAll(){
+  // walletconnect disconnect
+  if (wcProvider && wcProvider.close) {
+    try { await wcProvider.close(); } catch(e) {}
+  }
+  wcProvider = null;
+  web3Provider = null;
+  signer = null;
+  connectedAddress = null;
+  importedWallet = null;
+  watchedTokens = [];
+  tokenListEl.innerHTML = "";
+  walletCard.classList.add("hidden");
+  stopAutoRefresh();
+  setLog("Disconnected");
+}
+
+/* --- Receive UI --- */
+document.getElementById("receiveBtn").addEventListener("click", () => {
+  receivePanel.classList.toggle("hidden");
+});
+document.getElementById("copyAddr").addEventListener("click", async () => {
+  if (!connectedAddress) return;
+  await navigator.clipboard.writeText(connectedAddress);
+  alert("Address copied");
 });
 
-sellBtn.addEventListener("click", async ()=>{
-  const amount = tradeAmountEl.value.trim();
-  if(!amount) return alert("Enter amount of token to sell");
-  const chainId = Number(tradeNetworkEl.value);
-  const sym = activeModalSymbol;
-  if(!sym) return;
-  const token = tokens[sym];
-  const contract = chainId === 1 ? token.contract_eth : token.contract_bsc;
-  if(!contract) return alert("Token contract not available for this network");
-  await sellToken(chainId, contract, amount);
+/* --- Add default tokens for chain --- */
+function addDefaultsForChain(chainKey){
+  const def = DEFAULT_TOKENS[chainKey] || [];
+  def.forEach(t => {
+    // add token entries with address only; metadata resolved later
+    watchedTokens.push({chainKey, address: t.address});
+  });
+  renderTokenList();
+}
+
+/* --- Add token by user --- */
+document.getElementById("addTokenBtn").addEventListener("click", async () => {
+  const addr = (document.getElementById("userTokenAddr").value || "").trim();
+  const chainKey = document.getElementById("userTokenChain").value || connectedChainKey;
+  if (!addr || !ethers.utils.isAddress(addr)) { alert("Enter valid contract address"); return; }
+  // prevent duplicate for same chain
+  if (watchedTokens.find(x => x.chainKey===chainKey && x.address.toLowerCase()===addr.toLowerCase())){
+    alert("Token already watching");
+    return;
+  }
+  watchedTokens.push({chainKey, address: addr});
+  document.getElementById("userTokenAddr").value = "";
+  await refreshTokenMetaAndBalance(watchedTokens.length - 1);
+  renderTokenList();
 });
 
-// when opening modal, refresh holdings if wallet connected
-modalBackdrop.addEventListener("transitionend", ()=>{ if(userAddress){} });
+/* --- Render token list --- */
+function renderTokenList(){
+  tokenListEl.innerHTML = "";
+  watchedTokens.forEach((t, idx) => {
+    const name = t.name || t.address;
+    const sym = t.symbol || "TOK";
+    const bal = (t.balance !== undefined) ? Number(t.balance) : 0;
+    const price = t.priceUsd || 0;
+    const usdTotal = (bal * price).toFixed(2);
+    const logo = t.logo || `https://via.placeholder.com/36?text=${sym.substring(0,2)}`;
 
-// initial render
-renderTokens();
+    const row = document.createElement("div");
+    row.className = "token-row";
+    row.innerHTML = `
+      <div class="token-left">
+        <img src="${logo}" onerror="this.src='https://via.placeholder.com/36?text=TK'" />
+        <div>
+          <div style="font-weight:700">${sym} <span class="small-muted" style="font-weight:500">· ${name}</span></div>
+          <div class="small-muted">Chain: ${CHAINS[t.chainKey].name}</div>
+        </div>
+      </div>
 
-/* -------------------------
-   Auto-update token holdings if wallet connected
-   ------------------------- */
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="text-align:right">
+          <div style="font-weight:700">${Number(bal).toLocaleString(undefined,{maximumFractionDigits:8})}</div>
+          <div class="value-usd">${price? '$' + Number(price).toFixed(4) + ' · $' + usdTotal : '$0.00'}</div>
+        </div>
+        <div class="token-actions">
+          <button class="btn secondary" onclick="refreshToken(${idx})">Refresh</button>
+          <button class="btn" onclick="prepareSendToken(${idx})">Send</button>
+          <button class="btn red" onclick="removeToken(${idx})">Delete</button>
+        </div>
+      </div>
+    `;
+    tokenListEl.appendChild(row);
+  });
 
-async function tryRefreshHoldingsForConnected(){
-  if(!provider || !userAddress) return;
-  for(const sym of Object.keys(tokens)){
-    const t = tokens[sym];
-    // prefer ethereum then bsc
-    const chainId = connectedChainId || 1;
-    const contract = (chainId === 1 ? t.contract_eth : t.contract_bsc) || t.contract_eth || t.contract_bsc;
-    if(contract){
-      await refreshTokenHoldings(chainId, contract);
+  // update send token dropdown options
+  const sel = document.getElementById("sendTokenSelect");
+  sel.innerHTML = "";
+  watchedTokens.forEach((t, idx) => {
+    const opt = document.createElement("option");
+    opt.value = idx;
+    opt.textContent = `${t.symbol || t.address} · ${CHAINS[t.chainKey].name}`;
+    sel.appendChild(opt);
+  });
+}
+
+/* --- Refresh metadata & balance for a token by index --- */
+async function refreshTokenMetaAndBalance(idx){
+  const t = watchedTokens[idx];
+  if (!t) return;
+  try {
+    // provider for token's chain
+    const provider = (web3Provider && connectedChainKey === t.chainKey) ? web3Provider : new ethers.providers.JsonRpcProvider(CHAINS[t.chainKey].rpc);
+
+    const contract = new ethers.Contract(t.address, ERC20_ABI, provider);
+    try{ t.name = await contract.name(); }catch(e){ t.name = t.name || t.address; }
+    try{ t.symbol = await contract.symbol(); }catch(e){ t.symbol = t.symbol || 'TOK'; }
+    try{ t.decimals = await contract.decimals(); }catch(e){ t.decimals = t.decimals || 18; }
+
+    // balance if we have connected address
+    if (connectedAddress){
+      try{
+        const raw = await contract.balanceOf(connectedAddress);
+        t.balance = ethers.utils.formatUnits(raw, t.decimals);
+      }catch(e){
+        t.balance = 0;
+      }
+    } else {
+      t.balance = 0;
     }
+
+    // try CoinGecko contract endpoint for logo & USD price
+    try {
+      const cgPlatform = CHAINS[t.chainKey].coingeckoPlatform;
+      const url = `https://api.coingecko.com/api/v3/coins/${cgPlatform}/contract/${t.address}`;
+      const res = await fetch(url);
+      if (res.ok){
+        const j = await res.json();
+        if (j && j.image && j.image.small) t.logo = j.image.small;
+        // try get current price in USD from returned json (market_data)
+        if (j && j.market_data && j.market_data.current_price && j.market_data.current_price.usd){
+          t.priceUsd = j.market_data.current_price.usd;
+        }
+      }
+    } catch(e){ /* ignore */ }
+
+    // fallback: get price via simple/token_price
+    try {
+      if (!t.priceUsd){
+        const platform = CHAINS[t.chainKey].coingeckoPlatform;
+        const url2 = `https://api.coingecko.com/api/v3/simple/token_price/${platform}?contract_addresses=${t.address}&vs_currencies=usd`;
+        const r2 = await fetch(url2);
+        if (r2.ok){
+          const j2 = await r2.json();
+          const key = Object.keys(j2)[0];
+          if (j2[key] && j2[key].usd) t.priceUsd = j2[key].usd;
+        }
+      }
+    } catch(e){}
+
+   renderTokenList();
+    setLog(`Refreshed token ${t.symbol || t.address} on ${t.chainKey}`);
+  } catch (err){
+    console.error(err);
+    setLog("Token refresh failed");
   }
 }
-setInterval(tryRefreshHoldingsForConnected, 20000);
-tryRefreshHoldingsForConnected();
 
-/* -------------------------
-   Start-up: if web3Modal cached provider, auto-connect
-   ------------------------- */
-(async function startup(){
-  if(web3Modal && web3Modal.cachedProvider){
-    try{ await connectWallet(); }catch(e){}
+/* --- Remove token --- */
+function removeToken(idx){
+  if (!confirm("Remove token from watch list?")) return;
+  watchedTokens.splice(idx,1);
+  renderTokenList();
+}
+
+/* --- Refresh a specific token --- */
+async function refreshToken(idx){
+  await refreshTokenMetaAndBalance(idx);
+}
+
+/* --- Send flow --- */
+document.getElementById("sendBtn").addEventListener("click", () => {
+  if (!signer && !importedWallet) { alert("Connect via WalletConnect or import a mnemonic first"); return; }
+  document.getElementById("sendCard").classList.remove("hidden");
+});
+document.getElementById("cancelSend").addEventListener("click", () => {
+  document.getElementById("sendCard").classList.add("hidden");
+  document.getElementById("sendStatus").textContent = "Status: idle";
+});
+document.getElementById("sendType").addEventListener("change", (e) => {
+  const val = e.target.value;
+  document.getElementById("sendTokenPicker").classList.toggle("hidden", val !== "token");
+});
+
+function prepareSendToken(idx){
+  document.getElementById("sendCard").classList.remove("hidden");
+  document.getElementById("sendType").value = "token";
+  document.getElementById("sendTokenPicker").classList.remove("hidden");
+  document.getElementById("sendTokenSelect").value = idx;
+}
+
+document.getElementById("confirmSend").addEventListener("click", async () => {
+  const type = document.getElementById("sendType").value;
+  const to = (document.getElementById("sendTo").value || "").trim();
+  const amtStr = (document.getElementById("sendAmount").value || "").trim();
+  if (!ethers.utils.isAddress(to)){ alert("Invalid recipient address"); return; }
+  if (!amtStr || isNaN(Number(amtStr)) || Number(amtStr) <= 0){ alert("Invalid amount"); return; }
+  document.getElementById("sendStatus").textContent = "Status: sending...";
+  try {
+    if (type === "native"){
+      // send native currency
+      const providerForSend = web3Provider || new ethers.providers.JsonRpcProvider(CHAINS[connectedChainKey].rpc);
+      const signerForSend = signer || (importedWallet && importedWallet.connect(providerForSend));
+      if (!signerForSend) throw new Error("No signer available");
+      const value = ethers.utils.parseUnits(amtStr, 18); // native decimals 18
+      const tx = await signerForSend.sendTransaction({ to, value });
+      document.getElementById("sendStatus").textContent = "Sent tx: " + tx.hash;
+      setLog("Native send tx: " + tx.hash);
+      await tx.wait();
+      document.getElementById("sendStatus").textContent = "Confirmed: " + tx.hash;
+      await refreshAllBalances();
+    } else {
+      // token transfer
+      const idx = Number(document.getElementById("sendTokenSelect").value);
+      const token = watchedTokens[idx];
+      if (!token) { alert("Token not found"); return; }
+      if (token.chainKey !== connectedChainKey){
+        alert("Token is on a different chain than your connected wallet. Switch wallet chain or import mnemonic on that chain.");
+        document.getElementById("sendStatus").textContent = "Aborted: chain mismatch";
+        return;
+      }
+      const providerForSend = web3Provider || new ethers.providers.JsonRpcProvider(CHAINS[token.chainKey].rpc);
+      const signerForSend = signer || (importedWallet && importedWallet.connect(providerForSend));
+      if (!signerForSend) throw new Error("No signer available for sending");
+      const erc20 = new ethers.Contract(token.address, ["function transfer(address,uint256) returns (bool)"], signerForSend);
+      const value = ethers.utils.parseUnits(amtStr, token.decimals || 18);
+      const tx = await erc20.transfer(to, value);
+      document.getElementById("sendStatus").textContent = "Sent tx: " + tx.hash;
+      setLog("Token send tx: " + tx.hash);
+      await tx.wait();
+      document.getElementById("sendStatus").textContent = "Confirmed: " + tx.hash;
+      await refreshAllBalances();
+    }
+  } catch (err){
+    console.error(err);
+    document.getElementById("sendStatus").textContent = "Send failed: " + (err.message || err);
   }
+});
+
+/* --- Refresh all balances (native + tokens) --- */
+let refreshTimer = null;
+function startAutoRefresh(){ stopAutoRefresh(); refreshTimer = setInterval(() => refreshAllBalances(), 15000); }
+function stopAutoRefresh(){ if (refreshTimer){ clearInterval(refreshTimer); refreshTimer = null; } }
+
+async function refreshAllBalances(){
+  try {
+    if (!connectedAddress) return;
+    // provider for connected chain
+    const provider = web3Provider || new ethers.providers.JsonRpcProvider(CHAINS[connectedChainKey].rpc);
+
+    // native balance
+    const raw = await provider.getBalance(connectedAddress);
+    const nativeAmount = ethers.utils.formatEther(raw);
+    const nativeSymbol = CHAINS[connectedChainKey].nativeSymbol;
+    nativeBalEl.textContent = `${nativeAmount} ${nativeSymbol}`;
+
+    // For all watched tokens: get balance (on their chain) and try to get USD price
+    // First, group tokens by chain for efficient RPC usage
+    const chainGroups = {};
+    watchedTokens.forEach((t, idx) => {
+      if (!t.address) return;
+      const k = t.chainKey || connectedChainKey;
+      if (!chainGroups[k]) chainGroups[k] = [];
+      chainGroups[k].push({ t, idx });
+    });
+
+    // For each chain group, call balanceOf
+    for (const chainKey of Object.keys(chainGroups)){
+      const group = chainGroups[chainKey];
+      const providerForChain = (chainKey === connectedChainKey && web3Provider) ? web3Provider : new ethers.providers.JsonRpcProvider(CHAINS[chainKey].rpc);
+      // build array of addresses to fetch price by contract later
+      const contractAddressesForCG = [];
+      for (const entry of group){
+        const contract = new ethers.Contract(entry.t.address, ERC20_ABI, providerForChain);
+        try {
+          if (!entry.t.symbol || !entry.t.decimals || !entry.t.name) {
+            try { entry.t.name = await contract.name(); } catch(e){}
+            try { entry.t.symbol = await contract.symbol(); } catch(e){}
+            try { entry.t.decimals = await contract.decimals(); } catch(e){ entry.t.decimals = entry.t.decimals || 18; }
+          }
+        } catch(e){}
+        // get balanceOf if connectedAddress
+        if (connectedAddress){
+          try {
+            const rawBal = await contract.balanceOf(connectedAddress);
+            entry.t.balance = ethers.utils.formatUnits(rawBal, entry.t.decimals || 18);
+          } catch(e){ entry.t.balance = entry.t.balance || 0; }
+        } else {
+          entry.t.balance = entry.t.balance || 0;
+        }
+        contractAddressesForCG.push(entry.t.address);
+      }
+
+      // fetch prices for these contracts via CoinGecko simple/token_price
+      if (contractAddressesForCG.length > 0){
+        try {
+          const platform = CHAINS[chainKey].coingeckoPlatform;
+          const url = `https://api.coingecko.com/api/v3/simple/token_price/${platform}?contract_addresses=${contractAddressesForCG.join(",")}&vs_currencies=usd`;
+          const r = await fetch(url);
+          if (r.ok){
+            const j = await r.json();
+            // j is object keyed by lowercase contract addresses
+            for (const entry of group){
+              const key = entry.t.address.toLowerCase();
+              if (j[key] && j[key].usd) entry.t.priceUsd = j[key].usd;
+              // try fetch logo via coins/{platform}/contract/{address} if missing
+              if (!entry.t.logo){
+                try {
+                  const url2 = `https://api.coingecko.com/api/v3/coins/${platform}/contract/${entry.t.address}`;
+                  const r2 = await fetch(url2);
+                  if (r2.ok){
+                    const j2 = await r2.json();
+                    if (j2 && j2.image && j2.image.small) entry.t.logo = j2.image.small;
+                  }
+                } catch(e){}
+              }
+            }
+          }
+        } catch(e){
+          // rate limits or errors — ignore
+        }
+      }
+    }
+
+    renderTokenList();
+    setLog("Balances refreshed");
+  } catch (err){
+    console.error(err);
+    setLog("Refresh failed: " + (err.message || err));
+  }
+}
+
+/* --- Utilities to prepare send flow from token list --- */
+window.prepareSendToken = prepareSendToken; // expose for onclick from token rows
+window.refreshToken = refreshToken;
+window.removeToken = removeToken;
+
+/* init default UI wiring */
+(function init(){
+  document.getElementById("sendType").value = "native";
+  document.getElementById("sendTokenPicker").classList.add("hidden");
+  setLog("Ready. Use WalletConnect to connect or use mnemonic import.");
 })();
 </script>
 </body>
 </html>
-
 
   
