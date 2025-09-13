@@ -60,14 +60,13 @@
       gap: 10px;
       margin: 15px 0;
       flex-direction: row; /* horizontal */
-      /* allow horizontal scrolling on very narrow screens while keeping horizontal layout */
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       padding-bottom: 2px;
     }
     .actions button {
-      flex: 1;           /* equal width across row */
-      min-width: 80px;  /* ensures they remain usable on small screens */
+      flex: 1;
+      min-width: 80px;
       padding: 12px 16px;
       font-size: 16px;
       border: none;
@@ -87,15 +86,15 @@
     .swipe-row {
       position: relative;
       margin-bottom: 10px;
-      /* allow vertical dragging of page while capturing horizontal for swipe */
       touch-action: pan-y;
+      overflow: visible;
     }
 
     .swipe-content {
       transition: transform 160ms ease;
       will-change: transform;
       position: relative;
-      z-index: 1;
+      z-index: 2;
     }
 
     .delete-btn {
@@ -112,9 +111,18 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 0;
+      z-index: 1;
       box-shadow: 0 2px 6px rgba(0,0,0,0.4);
       cursor: pointer;
+      visibility: hidden;   /* hidden until slide */
+      opacity: 0;
+      transform: translateX(0);
+      transition: opacity 120ms ease, visibility 120ms;
+    }
+
+    .delete-btn.visible {
+      visibility: visible;
+      opacity: 1;
     }
 
     .token-item {
@@ -124,7 +132,6 @@
       padding: 12px;
       border-radius: 10px;
       background: rgba(255,255,255,0.06);
-      /* keep spacing, margin collapsed by wrapper */
     }
 
     /* Left column: token symbol (with optional logo) on first line, full name below */
@@ -154,6 +161,8 @@
     .token-amount { font-weight:800; }
     .price { color: #00ffae; font-weight: bold; }
 
+    .price-pct { font-size:12px; margin-left:8px; font-weight:700; }
+
     /* token image */
     .token-img { width:28px; height:28px; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:middle; }
 
@@ -180,9 +189,7 @@
 
     /* keep horizontal layout on phones — do not convert actions or token rows to vertical */
     @media (max-width:420px){
-      .token-item { /* keep row layout but allow wrapping if needed */
-        flex-wrap: nowrap;
-      }
+      .token-item { flex-wrap: nowrap; }
       .actions { gap:8px; }
       .actions button { padding:10px 12px; min-width:70px; }
     }
@@ -213,8 +220,12 @@
   </div>
 
   <div id="tokens" class="card token-list">
-    <button class="add-token-btn" onclick="onAddTokenClicked()">+ Add Token (CoinGecko)</button>
+    <!-- static add button and status (do not remove or replace) -->
+    <button id="addTokenBtn" class="add-token-btn" onclick="onAddTokenClicked()">+ Add Token (CoinGecko)</button>
     <div id="addTokenStatus" style="margin-top:8px;"></div>
+
+    <!-- token rows will be placed here -->
+    <div id="tokenRows" style="margin-top:12px;"></div>
   </div>
 
   <script>
@@ -229,6 +240,28 @@
 
     const DEFAULT_MAINNET_IDS = ["ethereum","binancecoin"];
 
+    // minimal ERC20 ABI
+    const ERC20_ABI = [
+      "function balanceOf(address) view returns (uint256)",
+      "function decimals() view returns (uint8)"
+    ];
+
+    // simple provider map for common chains
+    const PROVIDERS = {
+      ethereum: new ethers.JsonRpcProvider("https://cloudflare-eth.com"),
+      "binance-smart-chain": new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/"),
+      "polygon-pos": new ethers.JsonRpcProvider("https://rpc.ankr.com/polygon"),
+      avalanche: new ethers.JsonRpcProvider("https://rpc.ankr.com/avalanche")
+    };
+
+    // map coinGecko platform key to our provider
+    const PLATFORM_TO_PROVIDER = {
+      "ethereum": PROVIDERS.ethereum,
+      "binance-smart-chain": PROVIDERS["binance-smart-chain"],
+      "polygon-pos": PROVIDERS["polygon-pos"],
+      "avalanche": PROVIDERS.avalanche
+    };
+
     function readStoredTokens(){
       try { return JSON.parse(localStorage.getItem(STORAGE_TOKENS) || "{}"); }
       catch(e){ return {}; }
@@ -238,343 +271,295 @@
     }
     function fmt(n){ return Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8}); }
 
-    // keep track of currently shown network
     let CURRENT_NET = "mainnet";
 
     /***********************
-     * SWIPE / DELETE helpers
+     * Find token contract via CoinGecko detail
      ***********************/
-    let openRow = null; // currently opened swipe-row
+    async function findContractForCoinId(coinId){
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`);
+        if(!res.ok) return null;
+        const detail = await res.json();
+        const platforms = detail.platforms || {};
+        const order = ["ethereum","binance-smart-chain","polygon-pos","avalanche"];
+        for(const pf of order){
+          if(platforms[pf] && platforms[pf] !== "") {
+            return { contract: platforms[pf], platform: pf };
+          }
+        }
+      } catch(e){
+        console.warn("findContractForCoinId failed", coinId, e);
+      }
+      return null;
+    }
 
-    function attachSwipeHandlers(wrapper, contentEl) {
-      // wrapper: .swipe-row, contentEl: .swipe-content element inside wrapper
-      const deleteBtn = wrapper.querySelector(".delete-btn");
-      const maxTranslate = deleteBtn ? deleteBtn.offsetWidth + 8 : 92; // px
-      let pointerId = null;
-      let startX = 0;
-      let currentX = 0;
-      let translateX = 0;
-      let dragging = false;
+    /***********************
+     * Swipe handlers (mouse & touch)
+     ***********************/
+    let openRow = null;
 
-      // helper to set transform
-      function setTranslate(x) {
+    function attachSwipeHandlers(wrapper, contentEl, deleteBtn) {
+      // initial deleteBtn hidden
+      deleteBtn.classList.remove("visible");
+
+      const maxTranslate = deleteBtn.offsetWidth + 12;
+      let pointerId = null, startX = 0, translateX = 0, dragging = false;
+
+      function setTranslate(x){
         translateX = x;
         contentEl.style.transform = `translateX(${x}px)`;
+        // show delete when moved a bit left
+        if (x < -10) deleteBtn.classList.add("visible");
+        else deleteBtn.classList.remove("visible");
       }
 
-      function open() {
+      function open(){
         setTranslate(-maxTranslate);
+        deleteBtn.classList.add("visible");
         openRow = wrapper;
       }
-      function close() {
+      function close(){
         setTranslate(0);
-        if (openRow === wrapper) openRow = null;
+        deleteBtn.classList.remove("visible");
+        if(openRow === wrapper) openRow = null;
       }
 
-      // pointerdown
-      wrapper.addEventListener("pointerdown", (e) => {
-        // ignore right-click etc.
+      wrapper.addEventListener("pointerdown", (e)=>{
         if (e.button && e.button !== 0) return;
-        // close any other open row
-        if (openRow && openRow !== wrapper) {
-          const c = openRow.querySelector(".swipe-content");
-          if (c) c.style.transform = "translateX(0px)";
+        // if another row is open, close it
+        if (openRow && openRow !== wrapper){
+          const other = openRow;
+          const otherContent = other.querySelector(".swipe-content");
+          const otherDel = other.querySelector(".delete-btn");
+          if (otherContent) otherContent.style.transform = "translateX(0px)";
+          if (otherDel) otherDel.classList.remove("visible");
           openRow = null;
         }
         pointerId = e.pointerId;
         wrapper.setPointerCapture(pointerId);
         startX = e.clientX;
-        currentX = startX;
         dragging = true;
       });
 
-      wrapper.addEventListener("pointermove", (e) => {
-        if (!dragging || e.pointerId !== pointerId) return;
-        currentX = e.clientX;
-        let dx = currentX - startX;
-        // only handle left swipe (negative dx)
+      wrapper.addEventListener("pointermove", (e)=>{
+        if(!dragging || e.pointerId !== pointerId) return;
+        const dx = e.clientX - startX;
         if (dx < 0) {
-          // clamp to -maxTranslate .. 0
           const x = Math.max(dx, -maxTranslate);
           setTranslate(x);
         } else {
-          // if dragging to right, allow slight bounce back but keep >=0
+          // slight right drag bounce
           setTranslate(Math.min(dx * 0.2, 0));
         }
       });
 
-      function finishDrag() {
-        if (!dragging) return;
+      function finish(e){
+        if(!dragging) return;
         dragging = false;
-        // if moved more than half of maxTranslate, open; otherwise reset
-        if (translateX <= -maxTranslate / 2) {
-          open();
-        } else {
-          close();
-        }
-        try {
-          wrapper.releasePointerCapture(pointerId);
-        } catch(e){}
+        // if sufficiently left, open, else close
+        if (translateX <= -maxTranslate/2) open();
+        else close();
+        try { wrapper.releasePointerCapture(pointerId); } catch(e){}
         pointerId = null;
       }
 
-      wrapper.addEventListener("pointerup", finishDrag);
-      wrapper.addEventListener("pointercancel", finishDrag);
-      wrapper.addEventListener("pointerleave", (e) => {
-        // if pointer leaves while dragging, finish
-        if (dragging && e.pointerId === pointerId) finishDrag();
+      wrapper.addEventListener("pointerup", finish);
+      wrapper.addEventListener("pointercancel", finish);
+      wrapper.addEventListener("pointerleave", (e)=>{
+        if(dragging && e.pointerId === pointerId) finish(e);
       });
 
-      // clicking the content when opened should close it
-      contentEl.addEventListener("click", (ev) => {
-        if (openRow === wrapper && Math.abs(translateX) > 10) {
+      // clicking content while open should close it
+      contentEl.addEventListener("click", (ev)=>{
+        if(openRow === wrapper && Math.abs(translateX) > 6){
+          ev.preventDefault();
           ev.stopPropagation();
           close();
         }
       });
 
-      // delete button handler
-      deleteBtn.addEventListener("click", (ev) => {
+      // delete handler (confirmation + remove)
+      deleteBtn.addEventListener("click", (ev)=>{
         ev.stopPropagation();
-        const net = wrapper.dataset.net;
         const id = wrapper.dataset.id;
-        if (!confirm(`Delete ${id} from ${net}?`)) {
-          // close after cancel
-          close();
+        const net = wrapper.dataset.net;
+        if(!confirm(`Delete ${id} from ${net}?`)) {
+          // close row after cancel
+          contentEl.style.transform = "translateX(0px)";
+          deleteBtn.classList.remove("visible");
           return;
         }
         const stored = readStoredTokens();
-        if (net === "mainnet" && stored.mainnet && stored.mainnet[id]) {
-          delete stored.mainnet[id];
-        } else if (net === "testnet" && stored.testnet && stored.testnet[id]) {
-          delete stored.testnet[id];
-        }
+        if (net === "mainnet" && stored.mainnet && stored.mainnet[id]) delete stored.mainnet[id];
+        if (net === "testnet" && stored.testnet && stored.testnet[id]) delete stored.testnet[id];
         writeStoredTokens(stored);
-        // re-render CURRENT_NET to reflect deletion
-        renderTokens(CURRENT_NET);
+        // remove wrapper from DOM smoothly
+        wrapper.style.transition = "height 200ms ease, margin 200ms ease, opacity 180ms";
+        wrapper.style.height = wrapper.offsetHeight + "px";
+        requestAnimationFrame(()=>{
+          wrapper.style.height = "0px";
+          wrapper.style.marginBottom = "0px";
+          wrapper.style.opacity = "0";
+        });
+        setTimeout(()=> renderTokens(CURRENT_NET), 240);
       });
     }
 
     /***********************
-     * Render tokens & balances
+     * Render tokens initially (build DOM once)
+     * After initial build we update inline (prices & balances) via updater loops
      ***********************/
     async function renderTokens(net){
       CURRENT_NET = net;
-      const tokenContainer = document.getElementById("tokens");
-      // keep the Add Token button and status at the top (they are the first two children)
-      // remove everything else
-      while(tokenContainer.childNodes.length > 2){
-        tokenContainer.removeChild(tokenContainer.lastChild);
-      }
+      const tokenRows = document.getElementById("tokenRows");
+      const addStatus = document.getElementById("addTokenStatus");
+      addStatus.innerText = "";
 
       const stored = readStoredTokens();
-      // If no wallet address available, we'll rely on stored balances as fallback.
       const hasWallet = !!walletAddress;
 
-      if(net === "mainnet"){
-        const storedMain = (stored.mainnet) ? Object.keys(stored.mainnet) : [];
+      // collect list of tokens to display
+      let rowsToShow = [];
+
+      if (net === "mainnet") {
+        const storedMain = stored.mainnet ? Object.keys(stored.mainnet) : [];
         const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
         const ids = Array.from(idsSet);
-        if(ids.length === 0){
-          // nothing to show
-        } else {
-          let markets = [];
-          try {
-            const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + encodeURIComponent(ids.join(",")));
-            markets = await res.json();
-          } catch (err) {
-            console.warn("CoinGecko fetch failed", err);
-            markets = [];
-          }
-          const marketMap = {};
-          (markets || []).forEach(m => { marketMap[m.id] = m; });
-
-          let totalUsd = 0;
-
-          // Render each id in same order as ids
-          for (const id of ids){
-            const m = marketMap[id];
-            const symbol = m ? (m.symbol || id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
-            const name = m ? (m.name || id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name || id : id);
-            const price = m ? Number(m.current_price || 0) : 0;
-
-            let bal = 0;
-
-            try {
-              if (hasWallet) {
-                // native eth
-                if (id === "ethereum") {
-                  const balWei = await (new ethers.JsonRpcProvider("https://cloudflare-eth.com")).getBalance(walletAddress);
-                  bal = Number(ethers.formatEther(balWei));
-                }
-                // native bnb (BNB is native on BSC)
-                else if (id === "binancecoin") {
-                  const balWei = await (new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/")).getBalance(walletAddress);
-                  bal = Number(ethers.formatEther(balWei));
-                }
-                // other token -> fallback to stored (keeping same behavior)
-                else {
-                  bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
-                }
-              } else {
-                bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
-              }
-            } catch (e) {
-              console.warn("Failed to fetch balance for", id, e);
-              bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
-            }
-
-            const usdVal = bal * price;
-            totalUsd += usdVal;
-
-            // build token-item DOM inside a swipe wrapper
-            const tokenItem = document.createElement("div");
-            tokenItem.className = "token-item";
-            const imgHtml = (m && m.image) ? `<img class="token-img" src="${m.image}" alt="${symbol}">` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
-
-            tokenItem.innerHTML = `
-              <div>
-                <div class="symbol">${imgHtml}${symbol}</div>
-                <div class="muted" style="font-size:13px">${name}</div>
-              </div>
-              <div>
-                <div class="token-amount">${fmt(bal)} ${symbol}</div>
-                <div class="price">$${fmt(price)}</div>
-              </div>
-            `;
-
-            // wrapper with swipe content and delete button
-            const wrapper = document.createElement("div");
-            wrapper.className = "swipe-row";
-            wrapper.dataset.id = id;
-            wrapper.dataset.net = "mainnet";
-
-            const contentWrap = document.createElement("div");
-            contentWrap.className = "swipe-content";
-            contentWrap.appendChild(tokenItem);
-
-            const delBtn = document.createElement("button");
-            delBtn.className = "delete-btn";
-            delBtn.type = "button";
-            delBtn.textContent = "Delete";
-
-            wrapper.appendChild(contentWrap);
-            wrapper.appendChild(delBtn);
-
-            tokenContainer.appendChild(wrapper);
-
-            // attach swipe handlers (must be after appended so deleteBtn offsetWidth exists)
-            attachSwipeHandlers(wrapper, contentWrap);
-          }
-
-          document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
-        }
+        // build initial placeholders from ids
+        ids.forEach(id => {
+          rowsToShow.push({ type: "coingecko", id });
+        });
       } else { // testnet
-        const storedTest = stored.testnet || {};
-        let totalUsd = 0;
-        const keys = Object.keys(storedTest);
-        if(keys.length === 0){
-          // nothing to show; balance remains $0.00 (Testnet)
-        } else {
-          for(const k of keys){
-            const item = storedTest[k];
-            const symbol = k.toUpperCase();
-            const name = item.name || (k === "PYM" ? "Testnet Token" : k);
-            const bal = Number(item.balance || 0);
-            const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
-            totalUsd += bal * price;
-
-            const tokenItem = document.createElement("div");
-            tokenItem.className = "token-item";
-
-            const imgHtml = (k === "PYM") ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
-
-            tokenItem.innerHTML = `
-              <div>
-                <div class="symbol">${imgHtml}${symbol}</div>
-                <div class="muted" style="font-size:13px">${name}</div>
-              </div>
-              <div>
-                <div class="token-amount">${fmt(bal)} ${symbol}</div>
-                <div class="price">$${fmt(price)}</div>
-              </div>
-            `;
-
-            const wrapper = document.createElement("div");
-            wrapper.className = "swipe-row";
-            wrapper.dataset.id = k;
-            wrapper.dataset.net = "testnet";
-
-            const contentWrap = document.createElement("div");
-            contentWrap.className = "swipe-content";
-            contentWrap.appendChild(tokenItem);
-
-            const delBtn = document.createElement("button");
-            delBtn.className = "delete-btn";
-            delBtn.type = "button";
-            delBtn.textContent = "Delete";
-
-            wrapper.appendChild(contentWrap);
-            wrapper.appendChild(delBtn);
-
-            tokenContainer.appendChild(wrapper);
-
-            attachSwipeHandlers(wrapper, contentWrap);
-          }
-        }
-        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Testnet)`;
+        const keys = stored.testnet ? Object.keys(stored.testnet) : [];
+        keys.forEach(k => {
+          rowsToShow.push({ type: "testnet", id: k });
+        });
       }
-    }
 
-    function switchNetwork(net){
-      document.getElementById("mainBtn").classList.remove("active");
-      document.getElementById("testBtn").classList.remove("active");
-      if(net==="mainnet"){document.getElementById("mainBtn").classList.add("active");}
-      else{document.getElementById("testBtn").classList.add("active");}
-      renderTokens(net);
-    }
+      // Build fragment and append all rows (do not clear add button or status)
+      const frag = document.createDocumentFragment();
 
-    /***********************
-     * Add token flow (CoinGecko) — NO BALANCE PROMPT
-     * (unchanged behavior you requested earlier — store coin.id and detect balance if possible)
-     ***********************/
-    async function onAddTokenClicked(){
-      const status=document.getElementById("addTokenStatus");
-      status.innerText="";
-      try{
-        const q=prompt("Search token on CoinGecko by name or symbol:");
-        if(!q) return;
-        status.innerText="Searching CoinGecko...";
-        const sres=await fetch("https://api.coingecko.com/api/v3/search?query="+encodeURIComponent(q));
-        const sjson=await sres.json();
-        const coins=sjson.coins||[];
-        if(coins.length===0){alert("No token found.");status.innerText="";return;}
-        let choices=coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol})`).join("\n");
-        let pick=prompt("Choose a token by number:\n\n"+choices,"1");
-        let idx=0;if(pick){const p=parseInt(pick,10);if(!isNaN(p)&&p>=1&&p<=Math.min(6,coins.length))idx=p-1;}
-        const coin=coins[idx];
-        if(!coin||!coin.id){alert("Invalid.");status.innerText="";return;}
-        const stored=readStoredTokens();
-        stored.mainnet=stored.mainnet||{};
-        // keep behavior: do not ask balance, set 0 fallback (if wallet connected we attempt to detect)
-         stored.mainnet[coin.id]={symbol:coin.symbol.toUpperCase(),name:coin.name,balance:0};
-        writeStoredTokens(stored);
-        status.innerText=`Added ${coin.symbol.toUpperCase()}`;
-        renderTokens("mainnet");
-      }catch(e){alert("Error adding token");status.innerText="";}
-    }
+      if (rowsToShow.length === 0) {
+        // clear existing token rows (but keep add/status)
+        tokenRows.replaceChildren();
+        document.getElementById("balance").innerText = net === "mainnet" ? "$0.00 (Mainnet)" : "$0.00 (Testnet)";
+        return;
+      }
 
-    // initial render
-    renderTokens("mainnet");
+      // We'll fetch market info for all CoinGecko ids in one call for mainnet
+      let marketMap = {};
+      if (net === "mainnet"){
+        const ids = rowsToShow.map(r => r.id).join(",");
+        try {
+          const mres = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids="+encodeURIComponent(ids)+"&price_change_percentage=24h");
+          const markets = await mres.json();
+          (markets || []).forEach(m => { marketMap[m.id] = m; });
+        } catch(e){
+          console.warn("market fetch failed", e);
+        }
+      }
 
-    // refresh prices and balances regularly (mainnet)
-    setInterval(()=>{ 
-      const mainActive = document.getElementById("mainBtn").classList.contains("active");
-      if(mainActive) renderTokens("mainnet");
-    }, 15000);
+      // For each row create wrapper + content + delete button (delete hidden initially)
+      for (const r of rowsToShow){
+        if (r.type === "coingecko") {
+          const id = r.id;
+          const m = marketMap[id] || null;
+          const symbol = m ? (m.symbol||id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
+          const name = m ? (m.name||id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name||id : id);
+          const price = m ? Number(m.current_price || 0) : 0;
+          const pct24 = m ? Number(m.price_change_percentage_24h || 0) : 0;
+          const balFallback = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
 
-    // expose switch network
-    window.switchNetwork = switchNetwork;
-  </script>
-</body>
-</html>
+          // create node structure
+          const wrapper = document.createElement("div");
+          wrapper.className = "swipe-row";
+          wrapper.dataset.id = id;
+          wrapper.dataset.net = "mainnet";
+
+          const contentWrap = document.createElement("div");
+          contentWrap.className = "swipe-content";
+
+          const tokenItem = document.createElement("div");
+          tokenItem.className = "token-item";
+
+          // left HTML
+          const imgHtml = (m && m.image) ? `<img class="token-img" src="${m.image}" alt="${symbol}">` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+          // right HTML placeholders (we will update values live)
+          tokenItem.innerHTML = `
+            <div>
+              <div class="symbol">${imgHtml}${symbol}</div>
+              <div class="muted" style="font-size:13px">${name}</div>
+            </div>
+            <div>
+              <div class="token-amount" data-id="${id}">${fmt(balFallback)} ${symbol}</div>
+              <div style="display:flex;align-items:center;justify-content:flex-end">
+                <div class="price" data-price-id="${id}">$${fmt(price)}</div>
+                <div class="price-pct" data-pct-id="${id}" style="margin-left:8px;color:${pct24>=0? '#7fffb6':'#ff9b9b'}">${pct24>=0? '▲':'▼'} ${Math.abs(Number(pct24||0)).toFixed(2)}%</div>
+              </div>
+            </div>
+          `;
+
+          contentWrap.appendChild(tokenItem);
+
+          const delBtn = document.createElement("button");
+          delBtn.className = "delete-btn";
+          delBtn.type = "button";
+          delBtn.textContent = "Delete";
+
+          wrapper.appendChild(contentWrap);
+          wrapper.appendChild(delBtn);
+
+          frag.appendChild(wrapper);
+
+          // attach swipe handlers (after appended to DOM we set them, but attach now - deleteBtn.offsetWidth may be 0 until inserted; we'll attach after replacing children)
+        } else if (r.type === "testnet") {
+          const k = r.id;
+          const storedTest = readStoredTokens().testnet || {};
+          const item = storedTest[k] || {};
+          const symbol = k.toUpperCase();
+          const name = item.name || (k === "PYM" ? "Testnet Token" : k);
+          const bal = Number(item.balance || 0);
+          const price = k === "PYM" ? 0.5 : (item.price || 0);
+
+          const wrapper = document.createElement("div");
+          wrapper.className = "swipe-row";
+          wrapper.dataset.id = k;
+          wrapper.dataset.net = "testnet";
+
+          const contentWrap = document.createElement("div");
+          contentWrap.className = "swipe-content";
+
+          const tokenItem = document.createElement("div");
+          tokenItem.className = "token-item";
+
+          const imgHtml = (k === "PYM") ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+
+          tokenItem.innerHTML = `
+            <div>
+              <div class="symbol">${imgHtml}${symbol}</div>
+              <div class="muted" style="font-size:13px">${name}</div>
+            </div>
+            <div>
+              <div class="token-amount" data-id="${k}">${fmt(bal)} ${symbol}</div>
+              <div class="price" data-price-id="${k}">$${fmt(price)}</div>
+            </div>
+          `;
+
+          contentWrap.appendChild(tokenItem);
+          const delBtn = document.createElement("button");
+          delBtn.className = "delete-btn";
+          delBtn.type = "button";
+          delBtn.textContent = "Delete";
+
+          wrapper.appendChild(contentWrap);
+          wrapper.appendChild(delBtn);
+          frag.appendChild(wrapper);
+        }
+      } // end for rows
+
+      // replace tokenRows children in one go (prevents flicker)
+      tokenRows.replaceChildren(frag);
+
+      // Now that DOM nodes exist, attach swipe handlers for each wrapper
+      Array.from(tokenRows.quer
