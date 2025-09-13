@@ -1,4 +1,237 @@
-<!DOCTYPE html>
+        // testnet display: iterate stored.testnet
+           const t = stored.testnet || {};
+        let total = 0;
+        const keys = Object.keys(t);
+        if(keys.length === 0){
+          document.getElementById("balance").innerText = `$0.00 (Testnet)`;
+          return;
+        }
+        for(const k of keys){
+          const item = t[k];
+          const bal = Number(item.balance || 0);
+          const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
+          const meta = {
+            symbol: k.toUpperCase(),
+            name: item.name || (k === "PYM" ? "Testnet Token" : k),
+            image: null,
+            priceStr: fmt(price),
+            price,
+            pct: 0,
+            balance: bal,
+            isPayme: (k === "PYM")
+          };
+          createOrUpdateRow(k, meta);
+          total += bal * price;
+        }
+        if(total > 0 && total < 0.01) {
+          document.getElementById("balance").innerText = `<$0.01 (Testnet)`;
+        } else {
+          document.getElementById("balance").innerText = `$${fmt(total)} (Testnet)`;
+        }
+      }
+    }
+
+    // Attempt to fetch on-chain balances for tokens that have contract addresses or are known native coins.
+    // Runs less frequently (to avoid RPC bursts) but updates rows in-place when data arrives.
+    async function updateOnChainBalances(net){
+      const stored = readStoredTokens();
+      if(net === 'mainnet'){
+        const ids = getMainnetIds(stored);
+        for(const id of ids){
+          // skip if no wallet
+          if(!walletAddress) continue;
+
+          // try native mapping first (chain native coins)
+          const providerKey = NATIVE_ID_TO_PROVIDER_KEY[id];
+          if(providerKey && PROVIDERS[providerKey]){
+            try {
+              const provider = PROVIDERS[providerKey];
+              const balWei = await provider.getBalance(walletAddress);
+              const bal = Number(ethers.formatEther(balWei));
+              // update stored fallback so future renders show amount if contract lookup fails
+              const stored2 = readStoredTokens();
+              stored2.mainnet = stored2.mainnet || {};
+              stored2.mainnet[id] = stored2.mainnet[id] || (stored.mainnet && stored.mainnet[id]) || {};
+              stored2.mainnet[id].balance = bal;
+              writeStoredTokens(stored2);
+              // update row price & balance in-place
+              // preserve existing meta fields where possible
+              const existing = tokenRows[id];
+              const price = existing ? Number(existing.meta.price || 0) : 0;
+              const pct = existing ? Number(existing.meta.pct || 0) : 0;
+              createOrUpdateRow(id, {
+                symbol: existing ? existing.meta.symbol : id.toUpperCase(),
+                name: existing ? existing.meta.name : id,
+                image: existing ? existing.meta.image : null,
+                priceStr: fmt(price),
+                price,
+                pct,
+                balance: bal,
+                isPayme:false
+              });
+            } catch(e){
+              console.warn("native balance fetch failed for", id, e);
+            }
+            continue;
+          }
+
+          // otherwise try to find contract via CoinGecko detail, then query balanceOf
+          try {
+            const found = await findContractForCoinId(id);
+            if(found && found.contract){
+              const contractAddr = found.contract;
+              // find provider based on platform key heuristics
+              let providerToUse = PROVIDERS.eth;
+              const pfKey = (found.platformKey || "").toLowerCase();
+              if(pfKey.includes("binance")) providerToUse = PROVIDERS.bsc;
+              else if(pfKey.includes("polygon") || pfKey.includes("matic")) providerToUse = PROVIDERS.polygon;
+              else if(pfKey.includes("avalanche") || pfKey.includes("avax")) providerToUse = PROVIDERS.avax;
+              else if(pfKey.includes("arbitrum")) providerToUse = PROVIDERS.arbitrum;
+              else if(pfKey.includes("optimism")) providerToUse = PROVIDERS.optimism;
+              else if(pfKey.includes("fantom")) providerToUse = PROVIDERS.fantom;
+              else if(pfKey.includes("aurora")) providerToUse = PROVIDERS.aurora;
+
+              // call token contract
+              const tokenContract = new ethers.Contract(contractAddr, ERC20_ABI, providerToUse);
+              let decimals = 18;
+              try { decimals = await tokenContract.decimals(); } catch(e){ decimals = 18; }
+              let raw = await tokenContract.balanceOf(walletAddress);
+              const bal = Number(ethers.formatUnits(raw, decimals));
+
+              // store fallback
+              const stored2 = readStoredTokens();
+              stored2.mainnet = stored2.mainnet || {};
+              stored2.mainnet[id] = stored2.mainnet[id] || (stored.mainnet && stored.mainnet[id]) || {};
+              stored2.mainnet[id].balance = bal;
+              writeStoredTokens(stored2);
+
+              // update row
+              const existing = tokenRows[id];
+              const price = existing ? Number(existing.meta.price || 0) : 0;
+              const pct = existing ? Number(existing.meta.pct || 0) : 0;
+              createOrUpdateRow(id, {
+                symbol: existing ? existing.meta.symbol : id.toUpperCase(),
+                name: existing ? existing.meta.name : id,
+                image: existing ? existing.meta.image : null,
+                priceStr: fmt(price),
+                price,
+                pct,
+                balance: bal,
+                isPayme:false
+              });
+            } else {
+              // no contract found, skip
+            }
+          } catch(e){
+            console.warn("on-chain token balance failed for", id, e);
+          }
+        } // end for
+      } else {
+        // testnet on-chain handling not required for PYM (we keep testnet stored balances)
+      }
+      // After updates, recompute totals and update balance text by forcing a price update (cheap)
+      const activeNet = document.getElementById("mainBtn").classList.contains("active") ? 'mainnet' : 'testnet';
+      await updatePricesAndDisplay(activeNet);
+    }
+
+    // initial update (render visible tokens)
+    async function renderInitial(net){
+      await updatePricesAndDisplay(net);
+      // trigger an immediate on-chain balance fetch if wallet connected (runs async)
+      if(walletAddress) {
+        updateOnChainBalances(net).catch(()=>{});
+      }
+    }
+
+    // Initial render default mainnet
+    renderInitial("mainnet");
+
+    // Fast price updates (every 3s)
+    setInterval(async ()=>{
+      const mainActive = document.getElementById("mainBtn").classList.contains("active");
+      const net = mainActive ? "mainnet" : "testnet";
+      // update only prices first (keeps UI responsive)
+      await updatePricesAndDisplay(net);
+    }, 3000);
+
+    // On-chain balance updates less frequently (every 8s) to avoid RPC overload
+    setInterval(async ()=>{
+      const mainActive = document.getElementById("mainBtn").classList.contains("active");
+      if(mainActive && walletAddress){
+        await updateOnChainBalances("mainnet");
+      }
+    }, 8000);
+
+    // Network switching
+    function switchNetwork(net){
+      document.getElementById("mainBtn").classList.remove("active");
+      document.getElementById("testBtn").classList.remove("active");
+      if(net==="mainnet"){document.getElementById("mainBtn").classList.add("active");}
+      else{document.getElementById("testBtn").classList.add("active");}
+      // render UI for selected net
+      renderInitial(net);
+    }
+
+    // Add token flow (CoinGecko) — NO BALANCE PROMPT (balance auto-detected if wallet connected)
+    async function onAddTokenClicked(){
+      const status = document.getElementById("addTokenStatus");
+      status.innerText = "";
+      try {
+        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
+        if(!q) return;
+        status.innerText = "Searching CoinGecko...";
+        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
+        const sjson = await sres.json();
+        const coins = sjson.coins || [];
+        if(coins.length === 0){
+          alert("No matching token found on CoinGecko.");
+          status.innerText = "";
+          return;
+        }
+        // present top choices
+        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
+        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
+        let idx = 0;
+        if(pick){
+          const p = parseInt(pick,10);
+          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
+        }
+        const coin = coins[idx];
+        if(!coin || !coin.id){
+          alert("Invalid selection.");
+          status.innerText = "";
+          return;
+        }
+        // store in localStorage under mainnet (no balance asked)
+        const stored = readStoredTokens();
+        stored.mainnet = stored.mainnet || {};
+        stored.mainnet[coin.id] = {
+          symbol: coin.symbol.toUpperCase(),
+          name: coin.name,
+          // balance will be detected from wallet if present; keep fallback 0
+          balance: stored.mainnet && stored.mainnet[coin.id] ? stored.mainnet[coin.id].balance || 0 : 0
+        };
+        writeStoredTokens(stored);
+        status.innerText = `Added ${coin.symbol.toUpperCase()} — balance will be detected from wallet (if connected).`;
+        // update display immediately
+        await updatePricesAndDisplay("mainnet");
+        // try to fetch on-chain balance for this token right away
+        if(walletAddress) updateOnChainBalances("mainnet").catch(()=>{});
+      } catch (err) {
+        console.error("Add token error", err);
+        alert("Failed to add token.");
+        document.getElementById("addTokenStatus").innerText = "";
+      }
+    }
+
+    // Expose switchNetwork globally (keep same behavior as before)
+    window.switchNetwork = switchNetwork;
+
+    // expose add token
+    window.onAddTokenClicked = onAddTokenClicked;
+  </script>
+</body>
+</html><!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
