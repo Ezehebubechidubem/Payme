@@ -502,4 +502,62 @@
      * - search endpoint -> user chooses coin -> store coin.id + metadata
      * - balance will be detected automatically from the connected wallet (if available)
      ***********************/
-  
+    async function onAddTokenClicked(){
+      const status = document.getElementById("addTokenStatus");
+      status.innerText = "";
+      try {
+        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
+        if(!q) return;
+
+        status.innerText = "Searching CoinGecko...";
+        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
+        const sjson = await sres.json();
+        const coins = sjson.coins || [];
+        if(coins.length === 0){
+          alert("No matching token found on CoinGecko.");
+          status.innerText = "";
+          return;
+        }
+
+        // show top 6 candidates for user to choose
+        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
+        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
+        let idx = 0;
+        if(pick){
+          const p = parseInt(pick,10);
+          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
+        }
+        const coin = coins[idx];
+        if(!coin || !coin.id){
+          alert("Invalid selection.");
+          status.innerText = "";
+          return;
+        }
+
+        // store in localStorage under mainnet (no balance asked)
+        const stored = readStoredTokens();
+        stored.mainnet = stored.mainnet || {};
+        // don't overwrite existing balance if already present
+        stored.mainnet[coin.id] = stored.mainnet[coin.id] || {
+          symbol: coin.symbol.toUpperCase(),
+          name: coin.name,
+          // balance will be detected from wallet if connected
+          balance: 0
+        };
+        writeStoredTokens(stored);
+        status.innerText = `Added ${coin.symbol.toUpperCase()} — balance will be detected from wallet (if connected).`;
+        // re-render (mainnet)
+        renderTokens("mainnet");
+      } catch (err) {
+        console.error("Add token error", err);
+        alert("Failed to add token.");
+        document.getElementById("addTokenStatus").innerText = "";
+      }
+    }
+
+    // Expose switchNetwork globally (keep same behavior as before)
+    window.switchNetwork = switchNetwork;
+  </script>
+</body>
+</html>
+
