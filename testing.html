@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Payme Crypto — Dashboard</title>
 
-  <!-- ethers v6 UMD -->
+  <!-- ethers v6 UMD (used to query RPCs & token contracts) -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
 
   <style>
@@ -50,7 +50,9 @@
       color: #fff;
     }
     .network-toggle .active { background: #00ffae; color: #00221a; }
-    .balance { font-size: 24px; font-weight: bold; margin: 15px 0; color: #00ffae; }
+    .balance { font-size: 24px; font-weight: bold; margin: 8px 0 2px 0; color: #00ffae; }
+    /* small area for $change and % */
+    .balance-change { font-size: 14px; margin-bottom: 8px; }
 
     /* ACTIONS: always horizontal (desktop & mobile) */
     .actions {
@@ -60,13 +62,14 @@
       gap: 10px;
       margin: 15px 0;
       flex-direction: row; /* horizontal */
+      /* allow horizontal scrolling on very narrow screens while keeping horizontal layout */
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       padding-bottom: 2px;
     }
     .actions button {
-      flex: 1;
-      min-width: 80px;
+      flex: 1;           /* equal width across row */
+      min-width: 80px;  /* ensures they remain usable on small screens */
       padding: 12px 16px;
       font-size: 16px;
       border: none;
@@ -81,50 +84,6 @@
     .sell { background: #ffa500; color: #fff; }
 
     .token-list { margin-top: 15px; }
-
-    /* swipe-row wrapper holds token item and delete button */
-    .swipe-row {
-      position: relative;
-      margin-bottom: 10px;
-      touch-action: pan-y;
-      overflow: visible;
-    }
-
-    .swipe-content {
-      transition: transform 160ms ease;
-      will-change: transform;
-      position: relative;
-      z-index: 2;
-    }
-
-    .delete-btn {
-      position: absolute;
-      right: 12px;
-      top: 12px;
-      bottom: 12px;
-      width: 84px;
-      border-radius: 8px;
-      border: none;
-      background: #ff4d4f;
-      color: #fff;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-      cursor: pointer;
-      visibility: hidden;   /* hidden until slide */
-      opacity: 0;
-      transform: translateX(0);
-      transition: opacity 120ms ease, visibility 120ms;
-    }
-
-    .delete-btn.visible {
-      visibility: visible;
-      opacity: 1;
-    }
-
     .token-item {
       display: flex;
       justify-content: space-between;
@@ -132,6 +91,7 @@
       padding: 12px;
       border-radius: 10px;
       background: rgba(255,255,255,0.06);
+      margin-bottom: 10px;
     }
 
     /* Left column: token symbol (with optional logo) on first line, full name below */
@@ -161,8 +121,6 @@
     .token-amount { font-weight:800; }
     .price { color: #00ffae; font-weight: bold; }
 
-    .price-pct { font-size:12px; margin-left:8px; font-weight:700; }
-
     /* token image */
     .token-img { width:28px; height:28px; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:middle; }
 
@@ -189,10 +147,16 @@
 
     /* keep horizontal layout on phones — do not convert actions or token rows to vertical */
     @media (max-width:420px){
-      .token-item { flex-wrap: nowrap; }
+      .token-item { /* keep row layout but allow wrapping if needed */
+        flex-wrap: nowrap;
+      }
       .actions { gap:8px; }
       .actions button { padding:10px 12px; min-width:70px; }
     }
+
+    /* tiny green/red helper */
+    .up { color: #4cd08a; font-weight:700; }
+    .down { color: #ff7b7b; font-weight:700; }
   </style>
 </head>
 <body>
@@ -210,6 +174,7 @@
     </div>
 
     <div id="balance" class="balance">$0.00 (Mainnet)</div>
+    <div id="balanceChange" class="balance-change muted"></div>
 
     <div class="actions">
       <button class="send">Send</button>
@@ -220,11 +185,10 @@
   </div>
 
   <div id="tokens" class="card token-list">
-    <!-- static add button and status (do not remove or replace) -->
     <button id="addTokenBtn" class="add-token-btn" onclick="onAddTokenClicked()">+ Add Token (CoinGecko)</button>
     <div id="addTokenStatus" style="margin-top:8px;"></div>
 
-    <!-- token rows will be placed here -->
+    <!-- token rows will be placed here (kept separate so add button isn't removed on updates) -->
     <div id="tokenRows" style="margin-top:12px;"></div>
   </div>
 
@@ -240,26 +204,26 @@
 
     const DEFAULT_MAINNET_IDS = ["ethereum","binancecoin"];
 
-    // minimal ERC20 ABI
+    // minimal ERC20 ABI for balanceOf/decimals
     const ERC20_ABI = [
       "function balanceOf(address) view returns (uint256)",
       "function decimals() view returns (uint8)"
     ];
 
-    // simple provider map for common chains
+    // RPC providers
     const PROVIDERS = {
-      ethereum: new ethers.JsonRpcProvider("https://cloudflare-eth.com"),
-      "binance-smart-chain": new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/"),
-      "polygon-pos": new ethers.JsonRpcProvider("https://rpc.ankr.com/polygon"),
-      avalanche: new ethers.JsonRpcProvider("https://rpc.ankr.com/avalanche")
+      eth: new ethers.JsonRpcProvider("https://cloudflare-eth.com"),
+      bsc: new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/"),
+      polygon: new ethers.JsonRpcProvider("https://rpc.ankr.com/polygon"),
+      avax: new ethers.JsonRpcProvider("https://rpc.ankr.com/avalanche")
     };
 
-    // map coinGecko platform key to our provider
+    // Map some known CoinGecko platform keys to our providers
     const PLATFORM_TO_PROVIDER = {
-      "ethereum": PROVIDERS.ethereum,
-      "binance-smart-chain": PROVIDERS["binance-smart-chain"],
-      "polygon-pos": PROVIDERS["polygon-pos"],
-      "avalanche": PROVIDERS.avalanche
+      "ethereum": PROVIDERS.eth,
+      "binance-smart-chain": PROVIDERS.bsc,
+      "polygon-pos": PROVIDERS.polygon,
+      "avalanche": PROVIDERS.avax
     };
 
     function readStoredTokens(){
@@ -271,534 +235,271 @@
     }
     function fmt(n){ return Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8}); }
 
-    let CURRENT_NET = "mainnet";
+    // Helpers for USD formatting with "<$0.01"
+    function fmtUsd(val){
+      if (val === null || val === undefined) return "$0.00";
+      const v = Number(val);
+      if (v !== 0 && Math.abs(v) < 0.01) return "<$0.01";
+      return "$" + fmt(v);
+    }
+    function fmtSignedUsd(val){
+      // returns like "+$0.01" or "-$0.01" or "<$0.01"
+      const v = Number(val || 0);
+      if (v !== 0 && Math.abs(v) < 0.01) {
+        return (v >= 0 ? "+<$0.01" : "-<$0.01");
+      }
+      return (v >= 0 ? "+" : "-") + "$" + fmt(Math.abs(v));
+    }
 
-    /***********************
-     * Find token contract via CoinGecko detail
-     ***********************/
+    // Try to obtain a contract address for a coin ID (prefer ethereum, then bsc, polygon, avax)
     async function findContractForCoinId(coinId){
       try {
         const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`);
         if(!res.ok) return null;
         const detail = await res.json();
         const platforms = detail.platforms || {};
+        // priority order
         const order = ["ethereum","binance-smart-chain","polygon-pos","avalanche"];
         for(const pf of order){
-          if(platforms[pf] && platforms[pf] !== "") {
+          if(platforms[pf] && platforms[pf] !== ""){
             return { contract: platforms[pf], platform: pf };
           }
         }
-      } catch(e){
+      } catch (e) {
         console.warn("findContractForCoinId failed", coinId, e);
       }
       return null;
     }
 
     /***********************
-     * Swipe handlers (mouse & touch)
+     * Token rows management (avoid flicker)
      ***********************/
-    let openRow = null;
+    const tokenRowsEl = document.getElementById("tokenRows");
+    const tokenRowMap = new Map(); // coinId -> DOM row
 
-    function attachSwipeHandlers(wrapper, contentEl, deleteBtn) {
-      // initial deleteBtn hidden
-      deleteBtn.classList.remove("visible");
-
-      const maxTranslate = deleteBtn.offsetWidth + 12;
-      let pointerId = null, startX = 0, translateX = 0, dragging = false;
-
-      function setTranslate(x){
-        translateX = x;
-        contentEl.style.transform = `translateX(${x}px)`;
-        // show delete when moved a bit left
-        if (x < -10) deleteBtn.classList.add("visible");
-        else deleteBtn.classList.remove("visible");
-      }
-
-      function open(){
-        setTranslate(-maxTranslate);
-        deleteBtn.classList.add("visible");
-        openRow = wrapper;
-      }
-      function close(){
-        setTranslate(0);
-        deleteBtn.classList.remove("visible");
-        if(openRow === wrapper) openRow = null;
-      }
-
-      wrapper.addEventListener("pointerdown", (e)=>{
-        if (e.button && e.button !== 0) return;
-        // if another row is open, close it
-        if (openRow && openRow !== wrapper){
-          const other = openRow;
-          const otherContent = other.querySelector(".swipe-content");
-          const otherDel = other.querySelector(".delete-btn");
-          if (otherContent) otherContent.style.transform = "translateX(0px)";
-          if (otherDel) otherDel.classList.remove("visible");
-          openRow = null;
-        }
-        pointerId = e.pointerId;
-        wrapper.setPointerCapture(pointerId);
-        startX = e.clientX;
-        dragging = true;
-      });
-
-      wrapper.addEventListener("pointermove", (e)=>{
-        if(!dragging || e.pointerId !== pointerId) return;
-        const dx = e.clientX - startX;
-        if (dx < 0) {
-          const x = Math.max(dx, -maxTranslate);
-          setTranslate(x);
-        } else {
-          // slight right drag bounce
-          setTranslate(Math.min(dx * 0.2, 0));
-        }
-      });
-
-      function finish(e){
-        if(!dragging) return;
-        dragging = false;
-        // if sufficiently left, open, else close
-        if (translateX <= -maxTranslate/2) open();
-        else close();
-        try { wrapper.releasePointerCapture(pointerId); } catch(e){}
-        pointerId = null;
-      }
-
-      wrapper.addEventListener("pointerup", finish);
-      wrapper.addEventListener("pointercancel", finish);
-      wrapper.addEventListener("pointerleave", (e)=>{
-        if(dragging && e.pointerId === pointerId) finish(e);
-      });
-
-      // clicking content while open should close it
-      contentEl.addEventListener("click", (ev)=>{
-        if(openRow === wrapper && Math.abs(translateX) > 6){
-          ev.preventDefault();
-          ev.stopPropagation();
-          close();
-        }
-      });
-
-      // delete handler (confirmation + remove)
-      deleteBtn.addEventListener("click", (ev)=>{
-        ev.stopPropagation();
-        const id = wrapper.dataset.id;
-        const net = wrapper.dataset.net;
-        if(!confirm(`Delete ${id} from ${net}?`)) {
-          // close row after cancel
-          contentEl.style.transform = "translateX(0px)";
-          deleteBtn.classList.remove("visible");
-          return;
-        }
-        const stored = readStoredTokens();
-        if (net === "mainnet" && stored.mainnet && stored.mainnet[id]) delete stored.mainnet[id];
-        if (net === "testnet" && stored.testnet && stored.testnet[id]) delete stored.testnet[id];
-        writeStoredTokens(stored);
-        // remove wrapper from DOM smoothly
-        wrapper.style.transition = "height 200ms ease, margin 200ms ease, opacity 180ms";
-        wrapper.style.height = wrapper.offsetHeight + "px";
-        requestAnimationFrame(()=>{
-          wrapper.style.height = "0px";
-          wrapper.style.marginBottom = "0px";
-          wrapper.style.opacity = "0";
-        });
-        setTimeout(()=> renderTokens(CURRENT_NET), 240);
-      });
-    }
-
-    /***********************
-     * Render tokens initially (build DOM once)
-     * After initial build we update inline (prices & balances) via updater loops
-     ***********************/
+    // Ensure add button stays (we use tokenRows for rows only)
     async function renderTokens(net){
-      CURRENT_NET = net;
-      const tokenRows = document.getElementById("tokenRows");
-      const addStatus = document.getElementById("addTokenStatus");
-      addStatus.innerText = "";
-
       const stored = readStoredTokens();
-      const hasWallet = !!walletAddress;
-
-      // collect list of tokens to display
-      let rowsToShow = [];
-
-      if (net === "mainnet") {
-        const storedMain = stored.mainnet ? Object.keys(stored.mainnet) : [];
+      if(net === "mainnet"){
+        const storedMain = (stored.mainnet) ? Object.keys(stored.mainnet) : [];
         const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
         const ids = Array.from(idsSet);
-        // build initial placeholders from ids
-        ids.forEach(id => {
-          rowsToShow.push({ type: "coingecko", id });
-        });
-      } else { // testnet
-        const keys = stored.testnet ? Object.keys(stored.testnet) : [];
-        keys.forEach(k => {
-          rowsToShow.push({ type: "testnet", id: k });
-        });
-      }
 
-      // Build fragment and append all rows (do not clear add button or status)
-      const frag = document.createDocumentFragment();
+        if(ids.length === 0){
+          // clear rows
+          tokenRowsEl.innerHTML = "";
+          tokenRowMap.clear();
+          updateTopBalance(0,0);
+          return;
+        }
 
-      if (rowsToShow.length === 0) {
-        // clear existing token rows (but keep add/status)
-        tokenRows.replaceChildren();
-        document.getElementById("balance").innerText = net === "mainnet" ? "$0.00 (Mainnet)" : "$0.00 (Testnet)";
-        return;
-      }
-
-      // We'll fetch market info for all CoinGecko ids in one call for mainnet
-      let marketMap = {};
-      if (net === "mainnet"){
-        const ids = rowsToShow.map(r => r.id).join(",");
+        // fetch market data from CoinGecko
+        let markets = [];
         try {
-          const mres = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids="+encodeURIComponent(ids)+"&price_change_percentage=24h");
-          const markets = await mres.json();
-          (markets || []).forEach(m => { marketMap[m.id] = m; });
-        } catch(e){
-          console.warn("market fetch failed", e);
+          const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + encodeURIComponent(ids.join(",")) + "&price_change_percentage=24h");
+          markets = await res.json();
+        } catch (err) {
+          console.warn("CoinGecko markets fetch failed", err);
+          markets = [];
         }
-      }
+        const marketMap = {};
+        (markets || []).forEach(m => { marketMap[m.id] = m; });
 
-      // For each row create wrapper + content + delete button (delete hidden initially)
-      for (const r of rowsToShow){
-        if (r.type === "coingecko") {
-          const id = r.id;
-          const m = marketMap[id] || null;
-          const symbol = m ? (m.symbol||id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
-          const name = m ? (m.name||id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name||id : id);
-          const price = m ? Number(m.current_price || 0) : 0;
-          const pct24 = m ? Number(m.price_change_percentage_24h || 0) : 0;
-          const balFallback = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
-
-          // create node structure
-          const wrapper = document.createElement("div");
-          wrapper.className = "swipe-row";
-          wrapper.dataset.id = id;
-          wrapper.dataset.net = "mainnet";
-
-          const contentWrap = document.createElement("div");
-          contentWrap.className = "swipe-content";
-
-          const tokenItem = document.createElement("div");
-          tokenItem.className = "token-item";
-
-          // left HTML
-          const imgHtml = (m && m.image) ? `<img class="token-img" src="${m.image}" alt="${symbol}">` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
-          // right HTML placeholders (we will update values live)
-          tokenItem.innerHTML = `
-            <div>
-              <div class="symbol">${imgHtml}${symbol}</div>
-              <div class="muted" style="font-size:13px">${name}</div>
-            </div>
-            <div>
-              <div class="token-amount" data-id="${id}">${fmt(balFallback)} ${symbol}</div>
-              <div style="display:flex;align-items:center;justify-content:flex-end">
-                <div class="price" data-price-id="${id}">$${fmt(price)}</div>
-                <div class="price-pct" data-pct-id="${id}" style="margin-left:8px;color:${pct24>=0? '#7fffb6':'#ff9b9b'}">${pct24>=0? '▲':'▼'} ${Math.abs(Number(pct24||0)).toFixed(2)}%</div>
-              </div>
-            </div>
-          `;
-
-          contentWrap.appendChild(tokenItem);
-
-          const delBtn = document.createElement("button");
-          delBtn.className = "delete-btn";
-          delBtn.type = "button";
-          delBtn.textContent = "Delete";
-
-          wrapper.appendChild(contentWrap);
-          wrapper.appendChild(delBtn);
-
-          frag.appendChild(wrapper);
-
-          // attach swipe handlers (after appended to DOM we set them, but attach now - deleteBtn.offsetWidth may be 0 until inserted; we'll attach after replacing children)
-        } else if (r.type === "testnet") {
-          const k = r.id;
-          const storedTest = readStoredTokens().testnet || {};
-          const item = storedTest[k] || {};
-          const symbol = k.toUpperCase();
-          const name = item.name || (k === "PYM" ? "Testnet Token" : k);
-          const bal = Number(item.balance || 0);
-          const price = k === "PYM" ? 0.5 : (item.price || 0);
-
-          const wrapper = document.createElement("div");
-          wrapper.className = "swipe-row";
-          wrapper.dataset.id = k;
-          wrapper.dataset.net = "testnet";
-
-          const contentWrap = document.createElement("div");
-          contentWrap.className = "swipe-content";
-
-          const tokenItem = document.createElement("div");
-          tokenItem.className = "token-item";
-
-          const imgHtml = (k === "PYM") ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
-
-          tokenItem.innerHTML = `
-            <div>
-              <div class="symbol">${imgHtml}${symbol}</div>
-              <div class="muted" style="font-size:13px">${name}</div>
-            </div>
-            <div>
-              <div class="token-amount" data-id="${k}">${fmt(bal)} ${symbol}</div>
-              <div class="price" data-price-id="${k}">$${fmt(price)}</div>
-            </div>
-          `;
-
-          contentWrap.appendChild(tokenItem);
-          const delBtn = document.createElement("button");
-          delBtn.className = "delete-btn";
-          delBtn.type = "button";
-          delBtn.textContent = "Delete";
-
-          wrapper.appendChild(contentWrap);
-          wrapper.appendChild(delBtn);
-          frag.appendChild(wrapper);
-        }
-      } // end for rows
-
-      // replace tokenRows children in one go (prevents flicker)
-      tokenRows.replaceChildren(frag);
-
-       // Now that DOM nodes exist, attach swipe handlers for each wrapper
-      Array.from(tokenRows.querySelectorAll(".swipe-row")).forEach(wrapper=>{
-        const contentEl = wrapper.querySelector(".swipe-content");
-        const deleteBtn = wrapper.querySelector(".delete-btn");
-        attachSwipeHandlers(wrapper, contentEl, deleteBtn);
-      });
-
-      // After building UI, run immediate price & balance updates (async, no DOM wipe)
-      await updatePricesAndPcts();   // updates price/pct fields
-      await updateBalances();        // updates token-amounts and recomputes balance total
-    }
-
-    /***********************
-     * Update prices (non-destructive)
-     ***********************/
-    async function updatePricesAndPcts(){
-      // gather coingecko ids currently in DOM for mainnet
-      if (CURRENT_NET !== "mainnet") return;
-      const tokenRows = document.getElementById("tokenRows");
-      const idElements = tokenRows.querySelectorAll('.token-amount[data-id]');
-      const ids = Array.from(idElements).map(el => el.getAttribute('data-id')).filter(Boolean);
-      if(ids.length === 0) return;
-
-      try {
-        const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids="+encodeURIComponent(ids.join(","))+"&price_change_percentage=24h");
-        const markets = await res.json();
-        const map = {};
-        (markets||[]).forEach(m => map[m.id] = m);
-
+        // compute all balances/prices and update/create rows
         let totalUsd = 0;
+        let totalChangeUsd = 0;
 
-        // Update each row inline
-        ids.forEach(id => {
-          const m = map[id];
-          const priceEl = document.querySelector(`[data-price-id="${id}"]`);
-          const pctEl = document.querySelector(`[data-pct-id="${id}"]`);
-          // determine balance from token-amount text
-          const amtEl = document.querySelector(`.token-amount[data-id="${id}"]`);
-          let bal = 0;
-          if (amtEl) {
-            const txt = amtEl.textContent || "";
-            const parts = txt.split(" ");
-            const maybe = parseFloat(parts[0].replace(/,/g,'')) || 0;
-            bal = maybe;
-          }
+        for (const id of ids){
+          const m = marketMap[id];
+          const symbol = m ? (m.symbol || id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
+          const name = m ? (m.name || id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name || id : id);
           const price = m ? Number(m.current_price || 0) : 0;
-          const pct24 = m ? Number(m.price_change_percentage_24h || 0) : 0;
-          if(priceEl) priceEl.innerText = `$${fmt(price)}`;
-          if(pctEl) {
-            pctEl.innerText = `${pct24>=0? '▲':'▼'} ${Math.abs(Number(pct24||0)).toFixed(2)}%`;
-            pctEl.style.color = pct24 >= 0 ? '#9fffc9' : '#ff9b9b';
-          }
-          totalUsd += bal * price;
-        });
+          const priceChange24h = m ? Number(m.price_change_24h || 0) : 0;
+          const priceChangePct24h = m ? Number(m.price_change_percentage_24h || 0) : 0;
 
-        // update big balance header only if mainnet
-        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
-      } catch (e){
-        console.warn("updatePrices failed", e);
-      }
-    }
-
-    /***********************
-     * Update on-chain balances (non-destructive)
-     ***********************/
-    async function updateBalances(){
-      const tokenRows = document.getElementById("tokenRows");
-      const amtEls = tokenRows.querySelectorAll('.token-amount[data-id]');
-      if(amtEls.length === 0) return;
-
-      const stored = readStoredTokens();
-      let totalUsd = 0;
-
-      // We'll gather ids for which we need market price later
-      const marketIdsToFetch = new Set();
-
-      // iterate sequentially (avoid many parallel provider calls at once)
-      for (const el of amtEls){
-        const id = el.getAttribute('data-id');
-        // determine whether this id is mainnet coingecko id or testnet symbol
-        const wrapper = el.closest('.swipe-row');
-        const net = wrapper ? wrapper.dataset.net : "mainnet";
-
-        if (net === "mainnet") {
-          // try to determine on-chain balance
+          // determine balance:
           let bal = 0;
           try {
-            if (id === "ethereum") {
-              const balWei = await PROVIDERS.ethereum.getBalance(walletAddress);
-              bal = Number(ethers.formatEther(balWei));
-            } else if (id === "binancecoin") {
-              const balWei = await PROVIDERS["binance-smart-chain"].getBalance(walletAddress);
-              bal = Number(ethers.formatEther(balWei));
-            } else {
-              // try to find token contract from CoinGecko
-              const found = await findContractForCoinId(id);
-              if (found && found.contract) {
-                const provider = PLATFORM_TO_PROVIDER[found.platform] || PROVIDERS.ethereum;
-                try {
-                  const tokenContract = new ethers.Contract(found.contract, ERC20_ABI, provider);
+            if(walletAddress){
+              // native eth
+              if(id === "ethereum"){
+                const balWei = await PROVIDERS.eth.getBalance(walletAddress);
+                bal = Number(ethers.formatEther(balWei));
+              }
+              // native bnb (BNB is native on BSC)
+              else if(id === "binancecoin"){
+                const balWei = await PROVIDERS.bsc.getBalance(walletAddress);
+                bal = Number(ethers.formatEther(balWei));
+              }
+              // other token -> try to find contract and call balanceOf
+              else {
+                const found = await findContractForCoinId(id);
+                if(found && found.contract){
+                  const contractAddr = found.contract;
+                  const platform = found.platform;
+                  const provider = PLATFORM_TO_PROVIDER[platform] || PROVIDERS.eth;
+                  const tokenContract = new ethers.Contract(contractAddr, ERC20_ABI, provider);
+                  // fetch decimals & balance (graceful fallback)
                   let decimals = 18;
-                  try { decimals = await tokenContract.decimals(); } catch(e){}
-                  const raw = await tokenContract.balanceOf(walletAddress);
+                  try { decimals = await tokenContract.decimals(); } catch(e){ /* keep 18 */ }
+                  let raw = await tokenContract.balanceOf(walletAddress);
                   bal = Number(ethers.formatUnits(raw, decimals));
-                } catch(e) {
-                  // fallback to stored balance
+                } else {
+                  // No on-chain contract found: fallback to stored balance if present
                   bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
                 }
-              } else {
-                bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
               }
+            } else {
+              // no wallet: fallback to stored balance
+              bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
             }
-          } catch(e){
+          } catch(e) {
             console.warn("balance fetch failed for", id, e);
             bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
           }
 
-          // update DOM
-          const symbol = (document.querySelector(`.swipe-row[data-id="${id}"] .symbol`)?.textContent || "").replace(/\s+/g,"").trim();
-          el.innerText = `${fmt(bal)} ${symbol || id.toUpperCase()}`;
+          const usdVal = bal * price;
+          const changeUsd = bal * priceChange24h;
+          totalUsd += usdVal;
+          totalChangeUsd += changeUsd;
 
-          // mark id for price fetch
-          marketIdsToFetch.add(id);
-
-        } else { // testnet
-          const t = stored.testnet || {};
-          const item = t[id] || {};
-          const bal = Number(item.balance || 0);
-          el.innerText = `${fmt(bal)} ${id.toUpperCase()}`;
-          // price known (PYM=0.5) -> accumulate
-          const price = id === "PYM" ? 0.5 : (item.price || 0);
-          totalUsd += bal * price;
-        }
-      }
-
-      // fetch prices for marketIdsToFetch and update price & accumulate totalUsd
-      if (marketIdsToFetch.size > 0) {
-        const ids = Array.from(marketIdsToFetch).join(",");
-        try {
-          const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids="+encodeURIComponent(ids));
-          const markets = await res.json();
-          const map = {};
-          (markets||[]).forEach(m => map[m.id] = m);
-          for (const id of marketIdsToFetch){
-            const price = map[id] ? Number(map[id].current_price || 0) : 0;
-            const amtEl = document.querySelector(`.token-amount[data-id="${id}"]`);
-            const priceEl = document.querySelector(`[data-price-id="${id}"]`);
-            if (amtEl) {
-              const txt = amtEl.textContent || "";
-              const parts = txt.split(" ");
-              const bal = parseFloat(parts[0].replace(/,/g,'')) || 0;
-              totalUsd += bal * price;
+          // create or update row
+          if(tokenRowMap.has(id)){
+            // update existing
+            const row = tokenRowMap.get(id);
+            // update amount
+            const amtEl = row.querySelector(".token-amount");
+            if(amtEl) amtEl.textContent = `${fmt(bal)} ${symbol}`;
+            // update price
+            const priceEl = row.querySelector(".price-value");
+            if(priceEl) priceEl.textContent = fmtUsd(price);
+            // update change
+            const changeEl = row.querySelector(".price-change");
+            if(changeEl){
+              const pct = isFinite(priceChangePct24h) ? priceChangePct24h : 0;
+              const signed = changeUsd;
+              const cls = signed >= 0 ? "up" : "down";
+              changeEl.innerHTML = `<span class="${cls}">${fmtSignedUsd(signed)} (${pct>=0?'+': ''}${pct.toFixed(2)}%)</span>`;
             }
-            if (priceEl) priceEl.innerText = `$${fmt(price)}`;
+            // update small image if changed
+            const imgEl = row.querySelector(".token-img");
+            if(imgEl && m && m.image && imgEl.src !== m.image) imgEl.src = m.image;
+          } else {
+            // create
+            const row = document.createElement("div");
+            row.className = "token-item";
+            const imgHtml = (m && m.image) ? `<img class="token-img" src="${m.image}" alt="${symbol}">` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+            const pct = isFinite(priceChangePct24h) ? priceChangePct24h : 0;
+            const changeHtml = `<span class="${(priceChange24h*bal)>=0 ? 'up' : 'down'}">${fmtSignedUsd(priceChange24h*bal)} (${pct>=0?'+': ''}${pct.toFixed(2)}%)</span>`;
+
+            row.innerHTML = `
+              <div>
+                <div class="symbol">${imgHtml}${symbol}</div>
+                <div class="muted" style="font-size:13px">${name}</div>
+              </div>
+              <div>
+                <div class="token-amount">${fmt(bal)} ${symbol}</div>
+                <div style="font-size:13px">${fmtUsd(price)} <span class="price-change" style="margin-left:8px">${changeHtml}</span></div>
+              </div>
+            `;
+            tokenRowsEl.appendChild(row);
+            tokenRowMap.set(id, row);
           }
-        } catch(e){
-          console.warn("price fetch failed during updateBalances", e);
-        }
-      }
+        } // end for
 
-      // update big balance header depending on CURRENT_NET
-      if (CURRENT_NET === "mainnet") {
-        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
-      } else {
-        // testnet total already computed above
-        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Testnet)`;
-      }
-    }
+        // update top balance and change
+        updateTopBalance(totalUsd, totalChangeUsd);
 
-    /***********************
-     * Add token flow (CoinGecko) — no balance prompt
-     ***********************/
-    async function onAddTokenClicked(){
-      const status = document.getElementById("addTokenStatus");
-      status.innerText = "";
-      try {
-        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
-        if(!q) return;
-        status.innerText = "Searching CoinGecko...";
-        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
-        const sjson = await sres.json();
-        const coins = sjson.coins || [];
-        if(coins.length === 0){
-          alert("No matching token found on CoinGecko.");
-          status.innerText = "";
-          return;
+      } else { // testnet
+        const storedTest = stored.testnet || {};
+        // we keep PYM only for testnet scenario (user requested)
+        let totalUsd = 0;
+        const keys = Object.keys(storedTest);
+        // ensure rows correspond to test tokens only: remove any mainnet rows present
+        // We'll rebuild tokenRows for testnet to keep consistent with requirement "only testnet tokens"
+        tokenRowsEl.innerHTML = "";
+        tokenRowMap.clear();
+
+        if(keys.length === 0){
+          // nothing to show; balance remains
+        } else {
+          for(const k of keys){
+            const item = storedTest[k];
+            const symbol = k.toUpperCase();
+            const name = item.name || (k === "PYM" ? "Testnet Token" : k);
+            const bal = Number(item.balance || 0);
+            const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
+            totalUsd += bal * price;
+            const row = document.createElement("div");
+            row.className = "token-item";
+            const imgHtml = (k === "PYM") ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+            row.innerHTML = `
+              <div>
+                <div class="symbol">${imgHtml}${symbol}</div>
+                <div class="muted" style="font-size:13px">${name}</div>
+              </div>
+              <div>
+                <div class="token-amount">${fmt(bal)} ${symbol}</div>
+                <div style="font-size:13px">${fmtUsd(price)} <span class="price-change" style="margin-left:8px"><span class="muted">0.00 (0.00%)</span></span></div>
+              </div>
+            `;
+            tokenRowsEl.appendChild(row);
+            tokenRowMap.set(k, row);
+          }
         }
-        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
-        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
-        let idx = 0;
-        if(pick){
-          const p = parseInt(pick,10);
-          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
-        }
-        const coin = coins[idx];
-        if(!coin || !coin.id){
-          alert("Invalid selection.");
-          status.innerText = "";
-          return;
-        }
-        const stored = readStoredTokens();
-        stored.mainnet = stored.mainnet || {};
-        if (stored.mainnet[coin.id]) {
-          status.innerText = `${coin.symbol.toUpperCase()} already added.`;
-          return;
-        }
-        stored.mainnet[coin.id] = { symbol: coin.symbol.toUpperCase(), name: coin.name, balance: 0 };
-        writeStoredTokens(stored);
-        status.innerText = `Added ${coin.symbol.toUpperCase()}`;
-        // render tokens (will detect balances if wallet is connected)
-        renderTokens(CURRENT_NET);
-      } catch (err) {
-        console.error("Add token error", err);
-        alert("Failed to add token.");
-        document.getElementById("addTokenStatus").innerText = "";
+        updateTopBalance(totalUsd, 0);
       }
     }
 
-    /***********************
-     * Network switching & initial setup
-     ***********************/
-    window.switchNetwork = function(net){
-      document.getElementById("mainBtn").classList.remove("active");
-      document.getElementById("testBtn").classList.remove("active");
-      if(net==="mainnet"){ document.getElementById("mainBtn").classList.add("active"); }
-      else { document.getElementById("testBtn").classList.add("active"); }
-      renderTokens(net);
-    };
+    // update top balance big number and the change line (adds +$ and +% like Trust Wallet)
+    function updateTopBalance(totalUsd, totalChangeUsd){
+      const balanceEl = document.getElementById("balance");
+      const changeEl = document.getElementById("balanceChange");
+      // format
+      const display = fmtUsd(totalUsd);
+      // determine percent change
+      let percent = 0;
+      const prev = totalUsd - totalChangeUsd;
+      if(prev !== 0) percent = (totalChangeUsd / Math.abs(prev)) * 100;
+      // sign class
+      const cls = totalChangeUsd >= 0 ? "up" : "down";
+      // show
+      // preserve (Mainnet)/(Testnet) suffix — read currently active
+      const activeNet = document.getElementById("mainBtn").classList.contains("active") ? "Mainnet" : "Testnet";
+      balanceEl.innerText = `${display} (${activeNet})`;
+      // change line — if tiny values, use < notation
+      const changeUsdText = fmtSignedUsd(totalChangeUsd);
+      const percentText = (Math.abs(percent) !== 0 && Math.abs(percent) < 0.01) ? "<0.01%" : `${percent >= 0 ? '+' : '-'}${Math.abs(percent).toFixed(2)}%`;
+      changeEl.innerHTML = `<span class="${cls}">${changeUsdText}</span> <span class="muted" style="margin-left:8px">${percentText}</span>`;
+    }
 
-    // initial render
+    // initial render default mainnet
     renderTokens("mainnet");
 
-    // periodic updates (prices & balances) without wiping DOM
-    setInterval(() => {
-      if (CURRENT_NET === "mainnet") updatePricesAndPcts();
-      updateBalances();
-    }, 15000); // every 15s
+    // Keep prices live for mainnet tokens (refresh every 15s) — update in-place to avoid blink
+    setInterval(async () => {
+      const mainActive = document.getElementById("mainBtn").classList.contains("active");
+      if(mainActive){
+        await renderTokens("mainnet");
+      } else {
+        await renderTokens("testnet");
+      }
+    }, 15000);
 
-  </script>
-</body>
-</html>
+    /***********************
+     * Network switching
+     ***********************/
+    function switchNetwork(net){
+      document.getElementById("mainBtn").classList.remove("active");
+      document.getElementById("testBtn").classList.remove("active");
+      if(net==="mainnet"){document.getElementById("mainBtn").classList.add("active");}
+      else{document.getElementById("testBtn").classList.add("active");}
+      renderTokens(net);
+    }
+
+    /***********************
+     * Add token flow (CoinGecko) — NO BALANCE PROMPT
+     * - search endpoint -> user chooses coin -> store coin.id + metadata
+     * - balance will be detected automatically from the connected wallet (if available)
+     ***********************/
+  
