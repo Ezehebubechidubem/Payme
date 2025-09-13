@@ -96,7 +96,6 @@
       border-radius: 10px;
       background: rgba(255,255,255,0.06);
       transition: transform 0.18s ease;
-      /* ensure token area sits above delete button */
       position: relative;
       z-index: 2;
     }
@@ -243,7 +242,7 @@
       aurora: new ethers.JsonRpcProvider("https://mainnet.aurora.dev")
     };
 
-    // quick mapping of coinId -> provider key for common native coins (some ids vary)
+    // quick mapping of coinId -> provider key for common native coins
     const NATIVE_ID_TO_PROVIDER_KEY = {
       "ethereum":"eth",
       "binancecoin":"bsc",
@@ -279,12 +278,9 @@
         if(!res.ok) return null;
         const detail = await res.json();
         const platforms = detail.platforms || {};
-        // look for key by heuristics: prefer EVM-like platform keys, check keys that contain substrings
         const priority = ["ethereum","binance","polygon","avalanche","arbitrum","optimism","fantom","aurora"];
-        // try direct existence first
         for(const key of Object.keys(platforms)){
           if(platforms[key] && platforms[key] !== "") {
-            // if key matches one of knowns, return immediately
             const lk = key.toLowerCase();
             for(const p of priority){
               if(lk.includes(p)){
@@ -293,7 +289,6 @@
             }
           }
         }
-        // otherwise try any platform that looks like an address
         for(const key of Object.keys(platforms)){
           if(platforms[key] && platforms[key] !== "") {
             return { contract: platforms[key], platformKey: key };
@@ -305,23 +300,31 @@
       return null;
     }
 
-    // update DOM row in-place for token id
+    // update/create DOM row (in-place updates)
     function createOrUpdateRow(id, meta){
-      // meta: { symbol, name, image, price, pct, balance, priceStr (formatted) }
       let entry = tokenRows[id];
       const tokensContainer = document.getElementById("tokens");
 
+      // ensure meta fields exist
+      meta = Object.assign({
+        symbol: id.toUpperCase(),
+        name: id,
+        image: null,
+        priceStr: "0.00",
+        price: 0,
+        pct: 0,
+        balance: 0,
+        isPayme: false
+      }, meta);
+
       if(!entry){
-        // create token-row wrapper with swipe & delete
         const rowWrap = document.createElement("div");
         rowWrap.className = "token-row";
 
-        // token-item (swipe area)
         const swipe = document.createElement("div");
         swipe.className = "token-item";
         swipe.setAttribute("data-id", id);
 
-        // inner content
         swipe.innerHTML = `
           <div>
             <div class="symbol">${meta.image ? `<img class="token-img" src="${meta.image}" alt="${meta.symbol||id}">` : (meta.isPayme ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`) } ${meta.symbol || id.toUpperCase()}</div>
@@ -336,59 +339,47 @@
           </div>
         `;
 
-        // delete button (hidden until swipe)
         const delBtn = document.createElement("button");
         delBtn.className = "delete-btn";
         delBtn.innerText = "Delete";
 
-        // append elements
         rowWrap.appendChild(swipe);
         rowWrap.appendChild(delBtn);
+        // append to container (after Add button & status). Keep stable order by appending new items to the end.
         tokensContainer.appendChild(rowWrap);
 
-        // add to map
         tokenRows[id] = { wrap: rowWrap, swipe, delBtn, meta };
 
-        // attach events: delete click
         delBtn.addEventListener("click", (e) => {
           e.stopPropagation();
-          // remove from storage
           const stored = readStoredTokens();
-          if(stored.mainnet && stored.mainnet[id]) {
+          if(stored.mainnet && stored.mainnet[id]){
             delete stored.mainnet[id];
             writeStoredTokens(stored);
           }
-          // remove DOM and map
           rowWrap.parentNode && rowWrap.parentNode.removeChild(rowWrap);
           delete tokenRows[id];
-          // update totals
-          // (trigger re-render of totals)
         });
 
-        // sliding / swipe logic (touch + mouse)
         addSwipeHandlers(rowWrap, swipe);
 
       } else {
-        // update in-place values (image, balance, price, pct)
+        // update in-place
         const swipe = entry.swipe;
-        // update left side (image + symbol)
         const left = swipe.children[0];
         left.querySelector('.symbol').innerHTML = `${meta.image ? `<img class="token-img" src="${meta.image}" alt="${meta.symbol||id}">` : (meta.isPayme ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`) } ${meta.symbol || id.toUpperCase()}`;
         left.querySelector('.muted').innerText = meta.name || "";
-        // update right side
         const right = swipe.children[1];
         right.querySelector('.token-amount').innerText = `${fmt(meta.balance || 0)} ${meta.symbol || ""}`;
         right.querySelector('.price').innerText = `$${meta.priceStr}`;
         const pctEl = right.querySelector('.pct');
         pctEl.innerText = `${meta.pct>=0?'+':''}${meta.pct.toFixed(2)}%`;
         pctEl.style.color = meta.pct >= 0 ? '#00d27a' : '#ff4d4f';
-
-        // store meta
         entry.meta = meta;
       }
     }
 
-    // Add swipe handlers that reveal delete button on left swipe
+    // swipe handlers (touch + mouse)
     function addSwipeHandlers(rowWrap, swipeEl){
       let startX = 0;
       let currentX = 0;
@@ -405,7 +396,6 @@
       function onMove(clientX){
         if(!touching) return;
         currentX = clientX - startX;
-        // only allow left swipe (negative)
         if(currentX < 0){
           const limited = Math.max(currentX, -deleteWidth);
           setTranslate(limited);
@@ -414,7 +404,6 @@
       function onEnd(){
         if(!touching) return;
         touching = false;
-        // if moved more than half width, show delete
         if(currentX <= -deleteWidth/2){
           rowWrap.classList.add('show-delete');
         } else {
@@ -424,44 +413,47 @@
         currentX = 0;
       }
 
-      // touch
       swipeEl.addEventListener('touchstart', e => onStart(e.touches[0].clientX), {passive:true});
       swipeEl.addEventListener('touchmove', e => onMove(e.touches[0].clientX), {passive:true});
       swipeEl.addEventListener('touchend', onEnd);
 
-      // mouse (desktop)
       let mouseDown = false;
       swipeEl.addEventListener('mousedown', (e) => { mouseDown = true; onStart(e.clientX); e.preventDefault(); });
       window.addEventListener('mousemove', (e) => { if(mouseDown) onMove(e.clientX); });
       window.addEventListener('mouseup', (e) => { if(mouseDown){ mouseDown=false; onEnd(); } });
 
-      // clicking the row resets delete if open
       swipeEl.addEventListener('click', () => {
         rowWrap.classList.remove('show-delete');
         setTranslate(0);
       });
     }
 
-    // ---- CORE rendering & update flows ----
-
-    // Build list of ids to display (mainnet/testnet)
+    // Build list of ids to display (mainnet)
     function getMainnetIds(stored){
       const storedMain = stored.mainnet ? Object.keys(stored.mainnet) : [];
       const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
       return Array.from(idsSet);
     }
 
-    // Update prices and meta for visible tokens (in-place, no blinking).
-    // This function fetches CoinGecko markets for all visible mainnet ids and updates rows.
+    // Update prices and meta for visible tokens (in-place, resilient)
     async function updatePricesAndDisplay(net){
       const stored = readStoredTokens();
+
       if(net === 'mainnet'){
         const ids = getMainnetIds(stored);
+        // if no ids but tokenRows already present, compute total from tokenRows
         if(ids.length === 0){
-          document.getElementById("balance").innerText = `$0.00 (Mainnet)`;
+          let totalFallback = 0;
+          for(const k of Object.keys(tokenRows)){
+            const meta = tokenRows[k].meta || {};
+            totalFallback += (Number(meta.balance || 0) * Number(meta.price || 0));
+          }
+          if(totalFallback > 0 && totalFallback < 0.01) document.getElementById("balance").innerText = `<$0.01 (Mainnet)`;
+          else document.getElementById("balance").innerText = `$${fmt(totalFallback)} (Mainnet)`;
           return;
         }
-        // fetch market data
+
+        // fetch market data (CoinGecko)
         let markets = [];
         try {
           const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + encodeURIComponent(ids.join(",")) + "&price_change_percentage=24h");
@@ -473,276 +465,78 @@
         const marketMap = {};
         (markets || []).forEach(m => marketMap[m.id] = m);
 
-        // compute total usd
         let totalUsd = 0;
 
-        // iterate ids in stable order
         for(const id of ids){
           const m = marketMap[id];
-          const symbol = m ? (m.symbol||id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
-          const name = m ? (m.name||id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name || id : id);
-          const price = m ? Number(m.current_price || 0) : (stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].price || 0) : 0);
-          const pct = m && m.price_change_percentage_24h ? Number(m.price_change_percentage_24h) : 0;
-          // balance detection (on-chain) - will be updated asynchronously if wallet present
-          let bal = stored.mainnet && stored.mainnet[id] && Number(stored.mainnet[id].balance) ? Number(stored.mainnet[id].balance) : 0;
+          const existing = tokenRows[id];
+          const prevMeta = existing ? existing.meta : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id] : {});
 
-          // if wallet present, attempt immediate small-scope detection for native coins
-          // On-chain detection will run separately and update the row once fetched
-          // For first render, show stored balance (or 0)
+          const symbol = m ? (m.symbol || id).toUpperCase() : (prevMeta.symbol ? prevMeta.symbol : id.toUpperCase());
+          const name = m ? (m.name || id) : (prevMeta.name ? prevMeta.name : id);
+          const price = m ? Number(m.current_price || 0) : (prevMeta.price ? Number(prevMeta.price) : 0);
+          const pct = m && typeof m.price_change_percentage_24h === 'number' ? Number(m.price_change_percentage_24h) : (prevMeta.pct ? Number(prevMeta.pct) : 0);
+          const image = m && m.image ? m.image : (prevMeta.image || null);
+
+          // prefer on-chain/stored balance if present; if none, keep previous meta balance (don't wipe)
+          let bal = 0;
+          if(stored.mainnet && stored.mainnet[id] && typeof stored.mainnet[id].balance !== 'undefined'){
+            bal = Number(stored.mainnet[id].balance || 0);
+          } else if(prevMeta && typeof prevMeta.balance !== 'undefined'){
+            bal = Number(prevMeta.balance || 0);
+          } else {
+            bal = 0;
+          }
+
           const meta = {
-            symbol, name, image: (m && m.image) ? m.image : null,
-            priceStr: price ? fmt(price) : "0.00",
-            price: price,
+            symbol,
+            name,
+            image,
+            priceStr: price ? fmt(price) : (prevMeta.priceStr || "0.00"),
+            price,
             pct: pct || 0,
             balance: bal,
             isPayme:false
           };
+
           createOrUpdateRow(id, meta);
-
-          // accumulate usd using current balance (may be zero until on-chain fetch completes)
-          const usdVal = bal * price;
-          totalUsd += usdVal;
+          totalUsd += bal * price;
         }
 
-        // update balance display (if very small USD show <$0.01)
-        if(totalUsd > 0 && totalUsd < 0.01) {
-          document.getElementById("balance").innerText = `<$0.01 (Mainnet)`;
-        } else {
-          document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
-        }
+        if(totalUsd > 0 && totalUsd < 0.01) document.getElementById("balance").innerText = `<$0.01 (Mainnet)`;
+        else document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
 
       } else {
-        // testnet display: iterate stored.testnet
-           const t = stored.testnet || {};
-        let total = 0;
+        const t = stored.testnet || {};
         const keys = Object.keys(t);
         if(keys.length === 0){
-          document.getElementById("balance").innerText = `$0.00 (Testnet)`;
+          // compute fallback total from tokenRows testnet entries if present
+          let fallback = 0;
+          for(const k of Object.keys(tokenRows)){
+            if(k === 'PYM' || (t && t[k])) {
+              const meta = tokenRows[k] && tokenRows[k].meta ? tokenRows[k].meta : null;
+              if(meta) fallback += (Number(meta.balance||0) * Number(meta.price||0));
+            }
+          }
+          if(fallback > 0 && fallback < 0.01) document.getElementById("balance").innerText = `<$0.01 (Testnet)`;
+          else document.getElementById("balance").innerText = `$${fmt(fallback)} (Testnet)`;
           return;
         }
+
+        let total = 0;
         for(const k of keys){
           const item = t[k];
-          const bal = Number(item.balance || 0);
-          const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
+          const balStored = Number(item.balance || 0);
+          const prevMeta = tokenRows[k] ? tokenRows[k].meta : {};
+          const price = (k === "PYM") ? 0.5 : (item.price || prevMeta.price || 0);
           const meta = {
             symbol: k.toUpperCase(),
             name: item.name || (k === "PYM" ? "Testnet Token" : k),
             image: null,
             priceStr: fmt(price),
             price,
-            pct: 0,
-            balance: bal,
+            pct: prevMeta ? (prevMeta.pct || 0) : 0,
+            balance: typeof item.balance !== 'undefined' ? balStored : (prevMeta.balance || 0),
             isPayme: (k === "PYM")
           };
-          createOrUpdateRow(k, meta);
-          total += bal * price;
-        }
-        if(total > 0 && total < 0.01) {
-          document.getElementById("balance").innerText = `<$0.01 (Testnet)`;
-        } else {
-          document.getElementById("balance").innerText = `$${fmt(total)} (Testnet)`;
-        }
-      }
-    }
-
-    // Attempt to fetch on-chain balances for tokens that have contract addresses or are known native coins.
-    // Runs less frequently (to avoid RPC bursts) but updates rows in-place when data arrives.
-    async function updateOnChainBalances(net){
-      const stored = readStoredTokens();
-      if(net === 'mainnet'){
-        const ids = getMainnetIds(stored);
-        for(const id of ids){
-          // skip if no wallet
-          if(!walletAddress) continue;
-
-          // try native mapping first (chain native coins)
-          const providerKey = NATIVE_ID_TO_PROVIDER_KEY[id];
-          if(providerKey && PROVIDERS[providerKey]){
-            try {
-              const provider = PROVIDERS[providerKey];
-              const balWei = await provider.getBalance(walletAddress);
-              const bal = Number(ethers.formatEther(balWei));
-              // update stored fallback so future renders show amount if contract lookup fails
-              const stored2 = readStoredTokens();
-              stored2.mainnet = stored2.mainnet || {};
-              stored2.mainnet[id] = stored2.mainnet[id] || (stored.mainnet && stored.mainnet[id]) || {};
-              stored2.mainnet[id].balance = bal;
-              writeStoredTokens(stored2);
-              // update row price & balance in-place
-              // preserve existing meta fields where possible
-              const existing = tokenRows[id];
-              const price = existing ? Number(existing.meta.price || 0) : 0;
-              const pct = existing ? Number(existing.meta.pct || 0) : 0;
-              createOrUpdateRow(id, {
-                symbol: existing ? existing.meta.symbol : id.toUpperCase(),
-                name: existing ? existing.meta.name : id,
-                image: existing ? existing.meta.image : null,
-                priceStr: fmt(price),
-                price,
-                pct,
-                balance: bal,
-                isPayme:false
-              });
-            } catch(e){
-              console.warn("native balance fetch failed for", id, e);
-            }
-            continue;
-          }
-
-          // otherwise try to find contract via CoinGecko detail, then query balanceOf
-          try {
-            const found = await findContractForCoinId(id);
-            if(found && found.contract){
-              const contractAddr = found.contract;
-              // find provider based on platform key heuristics
-              let providerToUse = PROVIDERS.eth;
-              const pfKey = (found.platformKey || "").toLowerCase();
-              if(pfKey.includes("binance")) providerToUse = PROVIDERS.bsc;
-              else if(pfKey.includes("polygon") || pfKey.includes("matic")) providerToUse = PROVIDERS.polygon;
-              else if(pfKey.includes("avalanche") || pfKey.includes("avax")) providerToUse = PROVIDERS.avax;
-              else if(pfKey.includes("arbitrum")) providerToUse = PROVIDERS.arbitrum;
-              else if(pfKey.includes("optimism")) providerToUse = PROVIDERS.optimism;
-              else if(pfKey.includes("fantom")) providerToUse = PROVIDERS.fantom;
-              else if(pfKey.includes("aurora")) providerToUse = PROVIDERS.aurora;
-
-              // call token contract
-              const tokenContract = new ethers.Contract(contractAddr, ERC20_ABI, providerToUse);
-              let decimals = 18;
-              try { decimals = await tokenContract.decimals(); } catch(e){ decimals = 18; }
-              let raw = await tokenContract.balanceOf(walletAddress);
-              const bal = Number(ethers.formatUnits(raw, decimals));
-
-              // store fallback
-              const stored2 = readStoredTokens();
-              stored2.mainnet = stored2.mainnet || {};
-              stored2.mainnet[id] = stored2.mainnet[id] || (stored.mainnet && stored.mainnet[id]) || {};
-              stored2.mainnet[id].balance = bal;
-              writeStoredTokens(stored2);
-
-              // update row
-              const existing = tokenRows[id];
-              const price = existing ? Number(existing.meta.price || 0) : 0;
-              const pct = existing ? Number(existing.meta.pct || 0) : 0;
-              createOrUpdateRow(id, {
-                symbol: existing ? existing.meta.symbol : id.toUpperCase(),
-                name: existing ? existing.meta.name : id,
-                image: existing ? existing.meta.image : null,
-                priceStr: fmt(price),
-                price,
-                pct,
-                balance: bal,
-                isPayme:false
-              });
-            } else {
-              // no contract found, skip
-            }
-          } catch(e){
-            console.warn("on-chain token balance failed for", id, e);
-          }
-        } // end for
-      } else {
-        // testnet on-chain handling not required for PYM (we keep testnet stored balances)
-      }
-      // After updates, recompute totals and update balance text by forcing a price update (cheap)
-      const activeNet = document.getElementById("mainBtn").classList.contains("active") ? 'mainnet' : 'testnet';
-      await updatePricesAndDisplay(activeNet);
-    }
-
-    // initial update (render visible tokens)
-    async function renderInitial(net){
-      await updatePricesAndDisplay(net);
-      // trigger an immediate on-chain balance fetch if wallet connected (runs async)
-      if(walletAddress) {
-        updateOnChainBalances(net).catch(()=>{});
-      }
-    }
-
-    // Initial render default mainnet
-    renderInitial("mainnet");
-
-    // Fast price updates (every 3s)
-    setInterval(async ()=>{
-      const mainActive = document.getElementById("mainBtn").classList.contains("active");
-      const net = mainActive ? "mainnet" : "testnet";
-      // update only prices first (keeps UI responsive)
-      await updatePricesAndDisplay(net);
-    }, 3000);
-
-    // On-chain balance updates less frequently (every 8s) to avoid RPC overload
-    setInterval(async ()=>{
-      const mainActive = document.getElementById("mainBtn").classList.contains("active");
-      if(mainActive && walletAddress){
-        await updateOnChainBalances("mainnet");
-      }
-    }, 8000);
-
-    // Network switching
-    function switchNetwork(net){
-      document.getElementById("mainBtn").classList.remove("active");
-      document.getElementById("testBtn").classList.remove("active");
-      if(net==="mainnet"){document.getElementById("mainBtn").classList.add("active");}
-      else{document.getElementById("testBtn").classList.add("active");}
-      // render UI for selected net
-      renderInitial(net);
-    }
-
-    // Add token flow (CoinGecko) — NO BALANCE PROMPT (balance auto-detected if wallet connected)
-    async function onAddTokenClicked(){
-      const status = document.getElementById("addTokenStatus");
-      status.innerText = "";
-      try {
-        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
-        if(!q) return;
-        status.innerText = "Searching CoinGecko...";
-        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
-        const sjson = await sres.json();
-        const coins = sjson.coins || [];
-        if(coins.length === 0){
-          alert("No matching token found on CoinGecko.");
-          status.innerText = "";
-          return;
-        }
-        // present top choices
-        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
-        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
-        let idx = 0;
-        if(pick){
-          const p = parseInt(pick,10);
-          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
-        }
-        const coin = coins[idx];
-        if(!coin || !coin.id){
-          alert("Invalid selection.");
-          status.innerText = "";
-          return;
-        }
-        // store in localStorage under mainnet (no balance asked)
-        const stored = readStoredTokens();
-        stored.mainnet = stored.mainnet || {};
-        stored.mainnet[coin.id] = {
-          symbol: coin.symbol.toUpperCase(),
-          name: coin.name,
-          // balance will be detected from wallet if present; keep fallback 0
-          balance: stored.mainnet && stored.mainnet[coin.id] ? stored.mainnet[coin.id].balance || 0 : 0
-        };
-        writeStoredTokens(stored);
-        status.innerText = `Added ${coin.symbol.toUpperCase()} — balance will be detected from wallet (if connected).`;
-        // update display immediately
-        await updatePricesAndDisplay("mainnet");
-        // try to fetch on-chain balance for this token right away
-        if(walletAddress) updateOnChainBalances("mainnet").catch(()=>{});
-      } catch (err) {
-        console.error("Add token error", err);
-        alert("Failed to add token.");
-        document.getElementById("addTokenStatus").innerText = "";
-      }
-    }
-
-    // Expose switchNetwork globally (keep same behavior as before)
-    window.switchNetwork = switchNetwork;
-
-    // expose add token
-    window.onAddTokenClicked = onAddTokenClicked;
-  </script>
-</body>
-</html>
+          crea
