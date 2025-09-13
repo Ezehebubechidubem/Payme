@@ -512,27 +512,3 @@
         }
 
       } else {
-        // testnet display: iterate stored.testnet
-           const t = stored.testnet || {};
-        let total = 0;
-        const keys = Object.keys(t);
-        if(keys.length === 0){
-          document.getElementById("balance").innerText = `$0.00 (Testnet)`;
-          return;
-        }
-        for(const k of keys){
-          const item = t[k];
-          const bal = Number(item.balance || 0);
-          const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
-          const meta = {
-            symbol: k.toUpperCase(),
-            name: item.name || (k === "PYM" ? "Testnet Token" : k),
-            image: null,
-            priceStr: fmt(price),
-            price,
-            pct: 0,
-            balance: bal,
-            isPayme: (k === "PYM")
-          };
-          createOrUpdateRow(k, meta);
-          total 
