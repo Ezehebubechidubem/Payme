@@ -547,6 +547,7 @@
           const entry = ensureRowExists(key, false);
           const { outer, swipeInner, deleteBtn, item } = entry;
 
+      
           // build inner content (but update only pieces to avoid flicker)
           // update symbol/name
           const symEl = item.querySelector(".symbol");
@@ -557,4 +558,218 @@
             if(!img){
               // insert before text node
               img = document.createElement("img");
-          
+              img.className = "token-img";
+              img.src = m.image;
+              symEl.prepend(img);
+            } else if(img.src !== m.image){
+              img.src = m.image;
+            }
+          } else {
+            // no image -> ensure placeholder present (do nothing)
+            const img = symEl.querySelector("img.token-img");
+            if(img) {
+              // keep existing image if previously set; otherwise remove if wanted
+              // We'll keep image if present
+            }
+          }
+          // set text content of symbol (ticker)
+          // remove any text nodes after image if necessary and set text to symbol
+          // easiest approach: ensure last child text node is symbol text
+          // but we will set by trimming existing text nodes
+          // remove any existing ticker text nodes and append new text node
+          // make the symbol element contain image (if present) and then ticker text
+          // implement:
+          let imgNode = symEl.querySelector("img.token-img");
+          symEl.innerHTML = (imgNode ? imgNode.outerHTML : '') + symbol;
+
+          if(nameEl) nameEl.textContent = name;
+
+          // amounts and prices
+          const amtEl = item.querySelector(".token-amount");
+          if(amtEl) amtEl.textContent = `${fmt(bal)} ${symbol}`;
+          const priceValEl = item.querySelector(".price-value");
+          if(priceValEl) priceValEl.textContent = fmtUsd(price);
+
+          const changeEl = item.querySelector(".price-change");
+          if(changeEl){
+            const pct = isFinite(priceChangePct24h) ? priceChangePct24h : 0;
+            const signed = changeUsd;
+            const cls = signed >= 0 ? "up" : "down";
+            changeEl.innerHTML = `<span class="${cls}">${fmtSignedUsd(signed)} (${pct>=0?'+': ''}${pct.toFixed(2)}%)</span>`;
+          }
+
+          // wire delete button (only once)
+          if(!deleteBtn.dataset.wired){
+            deleteBtn.addEventListener('click', ()=>{
+              if(confirm(`Remove ${symbol} from your list? This will stop tracking it.`)){
+                removeToken(key, "mainnet");
+              } else {
+                // close reveal state
+                outer.classList.remove('revealed');
+                swipeInner.style.transform = 'translateX(0)';
+              }
+            });
+            deleteBtn.dataset.wired = "1";
+          }
+        } // end for
+
+        updateTopBalance(totalUsd, totalChangeUsd);
+
+      } else { // testnet
+        // we rebuild testnet rows — first remove keys that are not testnet
+        const storedTest = stored.testnet || {};
+        const keys = Object.keys(storedTest);
+
+        // Remove any rows that are mainnet coins
+        [...tokenRowMap.keys()].forEach(k=>{
+          if((stored.mainnet && stored.mainnet[k]) || DEFAULT_MAINNET_IDS.includes(k)){
+            // remove mainnet rows to keep testnet view clean
+            const entry = tokenRowMap.get(k);
+            if(entry) entry.outer.remove();
+            tokenRowMap.delete(k);
+          }
+        });
+
+        // Ensure testnet rows exist & update
+        let totalUsd = 0;
+        for(const k of keys){
+          const item = storedTest[k];
+          const symbol = k.toUpperCase();
+          const name = item.name || (k === "PYM" ? "Testnet Token" : k);
+          const bal = Number(item.balance || 0);
+          const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
+          totalUsd += bal * price;
+
+          const entry = ensureRowExists(k, true);
+          const { outer, swipeInner, deleteBtn, item: itemEl } = entry;
+
+          // build content
+          const symEl = itemEl.querySelector(".symbol");
+          const nameEl = itemEl.querySelector(".muted");
+          const imgHtml = (k === "PYM") ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+          symEl.innerHTML = imgHtml + symbol;
+          if(nameEl) nameEl.textContent = name;
+          const amtEl = itemEl.querySelector(".token-amount");
+          if(amtEl) amtEl.textContent = `${fmt(bal)} ${symbol}`;
+          const priceValEl = itemEl.querySelector(".price-value");
+          if(priceValEl) priceValEl.textContent = fmtUsd(price);
+          const changeEl = itemEl.querySelector(".price-change");
+          if(changeEl) changeEl.innerHTML = `<span class="muted">0.00 (0.00%)</span>`;
+
+          if(!deleteBtn.dataset.wired){
+            deleteBtn.addEventListener('click', ()=>{
+              if(confirm(`Remove ${symbol} (testnet) from your list?`)){
+                removeToken(k, "testnet");
+              } else {
+                outer.classList.remove('revealed');
+                swipeInner.style.transform = 'translateX(0)';
+              }
+            });
+            deleteBtn.dataset.wired = "1";
+          }
+        }
+
+        updateTopBalance(totalUsd, 0);
+      }
+    }
+
+    // update top balance big number and the change line
+    function updateTopBalance(totalUsd, totalChangeUsd){
+      const balanceEl = document.getElementById("balance");
+      const changeEl = document.getElementById("balanceChange");
+      const display = fmtUsd(totalUsd);
+      const prev = totalUsd - totalChangeUsd;
+      let percent = 0;
+      if(prev !== 0) percent = (totalChangeUsd / Math.abs(prev)) * 100;
+      const cls = totalChangeUsd >= 0 ? "up" : "down";
+      const activeNet = document.getElementById("mainBtn").classList.contains("active") ? "Mainnet" : "Testnet";
+      balanceEl.innerText = `${display} (${activeNet})`;
+      const changeUsdText = fmtSignedUsd(totalChangeUsd);
+      const percentText = (Math.abs(percent) !== 0 && Math.abs(percent) < 0.01) ? "<0.01%" : `${percent >= 0 ? '+' : '-'}${Math.abs(percent).toFixed(2)}%`;
+      changeEl.innerHTML = `<span class="${cls}">${changeUsdText}</span> <span class="muted" style="margin-left:8px">${percentText}</span>`;
+    }
+
+    // initial render default mainnet
+    renderTokens("mainnet");
+
+    // refresh faster (every 5 seconds)
+    setInterval(async () => {
+      const mainActive = document.getElementById("mainBtn").classList.contains("active");
+      if(mainActive){
+        await renderTokens("mainnet");
+      } else {
+        await renderTokens("testnet");
+      }
+    }, 5000);
+
+    /***********************
+     * Network switching
+     ***********************/
+    function switchNetwork(net){
+      document.getElementById("mainBtn").classList.remove("active");
+      document.getElementById("testBtn").classList.remove("active");
+      if(net==="mainnet"){document.getElementById("mainBtn").classList.add("active");}
+      else{document.getElementById("testBtn").classList.add("active");}
+      renderTokens(net);
+    }
+
+    /***********************
+     * Add token flow (CoinGecko) — NO BALANCE PROMPT
+     ***********************/
+    async function onAddTokenClicked(){
+      const status = document.getElementById("addTokenStatus");
+      status.innerText = "";
+      try {
+        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
+        if(!q) return;
+
+        status.innerText = "Searching CoinGecko...";
+        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
+        const sjson = await sres.json();
+        const coins = sjson.coins || [];
+        if(coins.length === 0){
+          alert("No matching token found on CoinGecko.");
+          status.innerText = "";
+          return;
+        }
+
+        // show top 6 candidates for user to choose
+        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
+        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
+        let idx = 0;
+        if(pick){
+          const p = parseInt(pick,10);
+          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
+        }
+        const coin = coins[idx];
+        if(!coin || !coin.id){
+          alert("Invalid selection.");
+          status.innerText = "";
+          return;
+        }
+
+        // store in localStorage under mainnet (no balance asked)
+        const stored = readStoredTokens();
+        stored.mainnet = stored.mainnet || {};
+        stored.mainnet[coin.id] = stored.mainnet[coin.id] || {
+          symbol: coin.symbol.toUpperCase(),
+          name: coin.name,
+          balance: 0
+        };
+        writeStoredTokens(stored);
+        status.innerText = `Added ${coin.symbol.toUpperCase()} — balance will be detected from wallet (if connected).`;
+        // re-render (mainnet)
+        renderTokens("mainnet");
+      } catch (err) {
+        console.error("Add token error", err);
+        alert("Failed to add token.");
+        document.getElementById("addTokenStatus").innerText = "";
+      }
+    }
+
+    // Expose switchNetwork globally (keep same behavior as before)
+    window.switchNetwork = switchNetwork;
+  </script>
+</body>
+</html>
+
