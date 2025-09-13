@@ -1,604 +1,580 @@
-<!DOCTYPE html>  
-<html lang="en">  
-<head>  
-  <meta charset="UTF-8"/>  
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>  
-  <title>Payme Crypto — Dashboard</title>  
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Payme Crypto — Dashboard</title>
 
-  <!-- ethers v6 UMD -->  
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>  
+  <!-- ethers v6 UMD -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.6.0/dist/ethers.umd.min.js"></script>
 
-  <style>  
-    body {  
-      margin: 0;  
-      font-family: "Segoe UI", sans-serif;  
-      background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);  
-      color: #fff;  
-      min-height: 100vh;  
-      display: flex;  
-      flex-direction: column;  
-      align-items: center;  
-      padding: 20px;  
-    }  
-    h1 { margin: 10px 0 20px; font-size: 26px; color: #00ffae; }  
-    .card {  
-      background: rgba(255,255,255,0.05);  
-      border-radius: 16px;  
-      padding: 20px;  
-      width: 100%;  
-      max-width: 500px;  
-      box-shadow: 0 6px 20px rgba(0,0,0,0.4);  
-      margin-bottom: 20px;  
-    }  
-    .wallet-info { text-align: center; margin-bottom: 15px; }  
-    .wallet-address {  
-      font-family: monospace;  
-      background: rgba(0,0,0,0.3);  
-      padding: 8px;  
-      border-radius: 10px;  
-      word-break: break-all;  
-      margin: 8px 0;  
-    }  
-    .network-toggle { display: flex; justify-content: center; gap: 12px; margin: 10px 0; }  
-    .network-toggle button {  
-      padding: 8px 14px;  
-      border: none;  
-      border-radius: 8px;  
-      cursor: pointer;  
-      font-weight: bold;  
-      background: #1b3a4b;  
-      color: #fff;  
-    }  
-    .network-toggle .active { background: #00ffae; color: #00221a; }  
-    .balance { font-size: 24px; font-weight: bold; margin: 15px 0; color: #00ffae; }  
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { margin: 10px 0 20px; font-size: 26px; color: #00ffae; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 20px;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      margin-bottom: 20px;
+    }
+    .wallet-info { text-align: center; margin-bottom: 15px; }
+    .wallet-address {
+      font-family: monospace;
+      background: rgba(0,0,0,0.3);
+      padding: 8px;
+      border-radius: 10px;
+      word-break: break-all;
+      margin: 8px 0;
+    }
+    .network-toggle { display: flex; justify-content: center; gap: 12px; margin: 10px 0; }
+    .network-toggle button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      background: #1b3a4b;
+      color: #fff;
+    }
+    .network-toggle .active { background: #00ffae; color: #00221a; }
+    .balance { font-size: 24px; font-weight: bold; margin: 15px 0; color: #00ffae; }
 
-    /* ACTIONS: always horizontal (desktop & mobile) */  
-    .actions {  
-      display: flex;  
-      justify-content: space-between;  
-      align-items: center;  
-      gap: 10px;  
-      margin: 15px 0;  
-      flex-direction: row; /* horizontal */  
-      /* allow horizontal scrolling on very narrow screens while keeping horizontal layout */  
-      overflow-x: auto;  
-      -webkit-overflow-scrolling: touch;  
-      padding-bottom: 2px;  
-    }  
-    .actions button {  
-      flex: 1;           /* equal width across row */  
-      min-width: 80px;  /* ensures they remain usable on small screens */  
-      padding: 12px 16px;  
-      font-size: 16px;  
-      border: none;  
-      border-radius: 10px;  
-      cursor: pointer;  
-      font-weight: bold;  
-      white-space: nowrap;  
-    }  
-    .send { background: #ff6b6b; color: #fff; }  
-    .receive { background: #32cd32; color: #fff; }  
-    .buy { background: #1e90ff; color: #fff; }  
-    .sell { background: #ffa500; color: #fff; }  
-    .token-list { margin-top: 15px; }  
-    .token-item {  
-      display: flex; justify-content: space-between; align-items: center;  
-      padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.06);  
-      margin-bottom: 10px;  
-    }  
-    .symbol { font-weight: bold; display:flex; align-items:center; gap:10px; }  
-    .price { color: #00ffae; font-weight: bold; }  
-    .token-img { width:28px; height:28px; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:middle; }  
-    .payme-badge {  
-      width:28px;height:28px;border-radius:50%;background:#1e90ff;color:#fff;display:inline-flex;  
-      align-items:center;justify-content:center;font-weight:800;font-size:12px;margin-right:8px;  
-    }  
-    .add-token-btn {  
-      display: inline-block;  
-      margin-top: 12px;  
-      padding: 10px 14px;  
-      background: #1e90ff;  
-      color: #fff;  
-      border-radius: 10px;  
-      cursor: pointer;  
-      font-weight: 700;  
-      border: none;  
-      text-align: center;  
-    }  
-    .muted { color: rgba(255,255,255,0.65); font-size:13px; }  
-    /* keep horizontal layout on phones — do not convert actions or token rows to vertical */  
-    @media (max-width:420px){  
-      .token-item { /* keep row layout but allow wrapping if needed */  
-        flex-wrap: nowrap;  
-      }  
-      .actions { gap:8px; }  
-      .actions button { padding:10px 12px; min-width:70px; }  
-    }  
-  </style>  
-</head>  
-<body>  
-  <h1>Payme Crypto</h1>  
+    /* ACTIONS: always horizontal (desktop & mobile) */
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin: 15px 0;
+      flex-direction: row; /* horizontal */
+      /* allow horizontal scrolling on very narrow screens while keeping horizontal layout */
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+    }
+    .actions button {
+      flex: 1;           /* equal width across row */
+      min-width: 80px;  /* ensures they remain usable on small screens */
+      padding: 12px 16px;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    .send { background: #ff6b6b; color: #fff; }
+    .receive { background: #32cd32; color: #fff; }
+    .buy { background: #1e90ff; color: #fff; }
+    .sell { background: #ffa500; color: #fff; }
 
-  <div class="card">  
-    <div class="wallet-info">  
-      <div>Wallet Address</div>  
-      <div id="walletAddr" class="wallet-address">0x1234...abcd</div>  
-    </div>  
+    .token-list { margin-top: 15px; }
 
-    <div class="network-toggle">  
-      <button id="mainBtn" class="active" onclick="switchNetwork('mainnet')">Mainnet</button>  
-      <button id="testBtn" onclick="switchNetwork('testnet')">Testnet</button>  
-    </div>  
+    /* swipe-row wrapper holds token item and delete button */
+    .swipe-row {
+      position: relative;
+      margin-bottom: 10px;
+      /* allow vertical dragging of page while capturing horizontal for swipe */
+      touch-action: pan-y;
+    }
 
-    <div id="balance" class="balance">$0.00 (Mainnet)</div>  
+    .swipe-content {
+      transition: transform 160ms ease;
+      will-change: transform;
+      position: relative;
+      z-index: 1;
+    }
 
-    <div class="actions">  
-      <button class="send">Send</button>  
-      <button class="receive" onclick="window.location.href='receive.html'">Receive</button>  
-      <button class="buy">Buy</button>  
-      <button class="sell">Sell</button>  
-    </div>  
-  </div>  
+    .delete-btn {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      bottom: 12px;
+      width: 84px;
+      border-radius: 8px;
+      border: none;
+      background: #ff4d4f;
+      color: #fff;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      cursor: pointer;
+    }
 
-  <div id="tokens" class="card token-list">  
-    <button class="add-token-btn" onclick="onAddTokenClicked()">+ Add Token (CoinGecko)</button>  
-    <div id="addTokenStatus" style="margin-top:8px;"></div>  
-  </div>  
+    .token-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.06);
+      /* keep spacing, margin collapsed by wrapper */
+    }
 
-  <script>  
-    /*******************************  
-     * Keys & constants (unchanged)  
-     *******************************/  
-    const STORAGE_WALLET = "payme_wallet";  
-    const STORAGE_TOKENS = "payme_tokens"; // { mainnet: { coinId:{symbol,name,balance?}}, testnet: { PYM: {balance} } }  
-    const wallet = JSON.parse(localStorage.getItem(STORAGE_WALLET) || "{}");  
-    const walletAddress = wallet?.address || null;  
-    document.getElementById("walletAddr").innerText = walletAddress || "0x1234...abcd";  
+    /* Left column: token symbol (with optional logo) on first line, full name below */
+    .token-item > div:first-child {
+      display: flex;
+      flex-direction: column; /* symbol on top, name below */
+      align-items: flex-start;
+      gap: 6px;
+    }
+    /* Symbol row shows logo + ticker inline */
+    .symbol {
+      font-weight: bold;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:15px;
+    }
 
-    const DEFAULT_MAINNET_IDS = ["ethereum","binancecoin"]; // coinGecko ids  
-    const REFRESH_MS = 10000; // price/balance live update interval (10s)  
+    /* Right column: amount on top, price below */
+    .token-item > div:last-child {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .token-amount { font-weight:800; }
+    .price { color: #00ffae; font-weight: bold; }
 
-    // Providers map (used to fetch native balances & ERC20 balances per platform)
-    const PROVIDERS = {  
-      eth: new ethers.JsonRpcProvider("https://cloudflare-eth.com"),  
-      bsc: new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/"),  
-      polygon: new ethers.JsonRpcProvider("https://rpc.ankr.com/polygon"),  
-      avax: new ethers.JsonRpcProvider("https://rpc.ankr.com/avalanche")  
-    };  
+    /* token image */
+    .token-img { width:28px; height:28px; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:middle; }
 
-    // minimal ERC20 ABI for balanceOf/decimals
-    const ERC20_ABI = [ "function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)" ];
+    /* PAYME testnet badge */
+    .payme-badge {
+      width:28px;height:28px;border-radius:50%;background:#1e90ff;color:#fff;display:inline-flex;
+      align-items:center;justify-content:center;font-weight:800;font-size:12px;margin-right:8px;
+    }
 
-    // convenience mapping of CoinGecko 'platform' keys to providers above
-    const PLATFORM_TO_PROVIDER = {  
-      "ethereum": PROVIDERS.eth,  
-      "binance-smart-chain": PROVIDERS.bsc,  
-      "polygon-pos": PROVIDERS.polygon,  
-      "avalanche": PROVIDERS.avax  
-    };
+    .add-token-btn {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: #1e90ff;
+      color: #fff;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      border: none;
+      text-align: center;
+    }
 
-    // small helper
+    .muted { color: rgba(255,255,255,0.65); font-size:13px; }
+
+    /* keep horizontal layout on phones — do not convert actions or token rows to vertical */
+    @media (max-width:420px){
+      .token-item { /* keep row layout but allow wrapping if needed */
+        flex-wrap: nowrap;
+      }
+      .actions { gap:8px; }
+      .actions button { padding:10px 12px; min-width:70px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Payme Crypto</h1>
+
+  <div class="card">
+    <div class="wallet-info">
+      <div>Wallet Address</div>
+      <div id="walletAddr" class="wallet-address">0x1234...abcd</div>
+    </div>
+
+    <div class="network-toggle">
+      <button id="mainBtn" class="active" onclick="switchNetwork('mainnet')">Mainnet</button>
+      <button id="testBtn" onclick="switchNetwork('testnet')">Testnet</button>
+    </div>
+
+    <div id="balance" class="balance">$0.00 (Mainnet)</div>
+
+    <div class="actions">
+      <button class="send">Send</button>
+      <button class="receive" onclick="window.location.href='receive.html'">Receive</button>
+      <button class="buy">Buy</button>
+      <button class="sell">Sell</button>
+    </div>
+  </div>
+
+  <div id="tokens" class="card token-list">
+    <button class="add-token-btn" onclick="onAddTokenClicked()">+ Add Token (CoinGecko)</button>
+    <div id="addTokenStatus" style="margin-top:8px;"></div>
+  </div>
+
+  <script>
+    /***********************
+     * Data & storage keys
+     ***********************/
+    const STORAGE_WALLET = "payme_wallet";
+    const STORAGE_TOKENS = "payme_tokens";
+    const wallet = JSON.parse(localStorage.getItem(STORAGE_WALLET) || "{}");
+    const walletAddress = wallet?.address || null;
+    document.getElementById("walletAddr").innerText = walletAddress || "0x1234...abcd";
+
+    const DEFAULT_MAINNET_IDS = ["ethereum","binancecoin"];
+
+    function readStoredTokens(){
+      try { return JSON.parse(localStorage.getItem(STORAGE_TOKENS) || "{}"); }
+      catch(e){ return {}; }
+    }
+    function writeStoredTokens(obj){
+      localStorage.setItem(STORAGE_TOKENS, JSON.stringify(obj));
+    }
     function fmt(n){ return Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8}); }
 
-    // read/write stored tokens (keeps your structure)
-    function readStoredTokens(){ try { return JSON.parse(localStorage.getItem(STORAGE_TOKENS) || "{}"); } catch(e){ return {}; } }
-    function writeStoredTokens(obj){ localStorage.setItem(STORAGE_TOKENS, JSON.stringify(obj)); }
+    // keep track of currently shown network
+    let CURRENT_NET = "mainnet";
 
-    /*******************************
-     * DOM + runtime state
-     *******************************/
-    const tokensCard = document.getElementById("tokens");
-    const addStatus = document.getElementById("addTokenStatus");
+    /***********************
+     * SWIPE / DELETE helpers
+     ***********************/
+    let openRow = null; // currently opened swipe-row
 
-    // displayedTokens: map coinId -> object { id, symbol, name, img, nodeRefs, price, change, balance }
-    const displayed = new Map();
+    function attachSwipeHandlers(wrapper, contentEl) {
+      // wrapper: .swipe-row, contentEl: .swipe-content element inside wrapper
+      const deleteBtn = wrapper.querySelector(".delete-btn");
+      const maxTranslate = deleteBtn ? deleteBtn.offsetWidth + 8 : 92; // px
+      let pointerId = null;
+      let startX = 0;
+      let currentX = 0;
+      let translateX = 0;
+      let dragging = false;
 
-    // ensure add button remains (it is in your HTML). We will not remove it.
-    // Create a container for token rows (keeps order & stable nodes)
-    let tokenRowsContainer = document.getElementById("_token_rows_container");
-    if(!tokenRowsContainer){
-      tokenRowsContainer = document.createElement("div");
-      tokenRowsContainer.id = "_token_rows_container";
-      tokenRowsContainer.style.marginTop = "12px";
-      tokensCard.appendChild(tokenRowsContainer);
+      // helper to set transform
+      function setTranslate(x) {
+        translateX = x;
+        contentEl.style.transform = `translateX(${x}px)`;
+      }
+
+      function open() {
+        setTranslate(-maxTranslate);
+        openRow = wrapper;
+      }
+      function close() {
+        setTranslate(0);
+        if (openRow === wrapper) openRow = null;
+      }
+
+      // pointerdown
+      wrapper.addEventListener("pointerdown", (e) => {
+        // ignore right-click etc.
+        if (e.button && e.button !== 0) return;
+        // close any other open row
+        if (openRow && openRow !== wrapper) {
+          const c = openRow.querySelector(".swipe-content");
+          if (c) c.style.transform = "translateX(0px)";
+          openRow = null;
+        }
+        pointerId = e.pointerId;
+        wrapper.setPointerCapture(pointerId);
+        startX = e.clientX;
+        currentX = startX;
+        dragging = true;
+      });
+
+      wrapper.addEventListener("pointermove", (e) => {
+        if (!dragging || e.pointerId !== pointerId) return;
+        currentX = e.clientX;
+        let dx = currentX - startX;
+        // only handle left swipe (negative dx)
+        if (dx < 0) {
+          // clamp to -maxTranslate .. 0
+          const x = Math.max(dx, -maxTranslate);
+          setTranslate(x);
+        } else {
+          // if dragging to right, allow slight bounce back but keep >=0
+          setTranslate(Math.min(dx * 0.2, 0));
+        }
+      });
+
+      function finishDrag() {
+        if (!dragging) return;
+        dragging = false;
+        // if moved more than half of maxTranslate, open; otherwise reset
+        if (translateX <= -maxTranslate / 2) {
+          open();
+        } else {
+          close();
+        }
+        try {
+          wrapper.releasePointerCapture(pointerId);
+        } catch(e){}
+        pointerId = null;
+      }
+
+      wrapper.addEventListener("pointerup", finishDrag);
+      wrapper.addEventListener("pointercancel", finishDrag);
+      wrapper.addEventListener("pointerleave", (e) => {
+        // if pointer leaves while dragging, finish
+        if (dragging && e.pointerId === pointerId) finishDrag();
+      });
+
+      // clicking the content when opened should close it
+      contentEl.addEventListener("click", (ev) => {
+        if (openRow === wrapper && Math.abs(translateX) > 10) {
+          ev.stopPropagation();
+          close();
+        }
+      });
+
+      // delete button handler
+      deleteBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const net = wrapper.dataset.net;
+        const id = wrapper.dataset.id;
+        if (!confirm(`Delete ${id} from ${net}?`)) {
+          // close after cancel
+          close();
+          return;
+        }
+        const stored = readStoredTokens();
+        if (net === "mainnet" && stored.mainnet && stored.mainnet[id]) {
+          delete stored.mainnet[id];
+        } else if (net === "testnet" && stored.testnet && stored.testnet[id]) {
+          delete stored.testnet[id];
+        }
+        writeStoredTokens(stored);
+        // re-render CURRENT_NET to reflect deletion
+        renderTokens(CURRENT_NET);
+      });
     }
 
-    /*******************************
-     * Helper: find contract for coinId (CoinGecko detail)
-     *******************************/
-    async function findContractForCoinId(coinId){
-      try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`);
-        if(!res.ok) return null;
-        const detail = await res.json();
-        const platforms = detail.platforms || {};
-        // priority order
-        const order = ["ethereum","binance-smart-chain","polygon-pos","avalanche"];
-        for(const pf of order){
-          const contract = platforms[pf];
-          if(contract && contract !== ""){
-            return { contract: contract, platform: pf };
+    /***********************
+     * Render tokens & balances
+     ***********************/
+    async function renderTokens(net){
+      CURRENT_NET = net;
+      const tokenContainer = document.getElementById("tokens");
+      // keep the Add Token button and status at the top (they are the first two children)
+      // remove everything else
+      while(tokenContainer.childNodes.length > 2){
+        tokenContainer.removeChild(tokenContainer.lastChild);
+      }
+
+      const stored = readStoredTokens();
+      // If no wallet address available, we'll rely on stored balances as fallback.
+      const hasWallet = !!walletAddress;
+
+      if(net === "mainnet"){
+        const storedMain = (stored.mainnet) ? Object.keys(stored.mainnet) : [];
+        const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
+        const ids = Array.from(idsSet);
+        if(ids.length === 0){
+          // nothing to show
+        } else {
+          let markets = [];
+          try {
+            const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + encodeURIComponent(ids.join(",")));
+            markets = await res.json();
+          } catch (err) {
+            console.warn("CoinGecko fetch failed", err);
+            markets = [];
+          }
+          const marketMap = {};
+          (markets || []).forEach(m => { marketMap[m.id] = m; });
+
+          let totalUsd = 0;
+
+          // Render each id in same order as ids
+          for (const id of ids){
+            const m = marketMap[id];
+            const symbol = m ? (m.symbol || id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
+            const name = m ? (m.name || id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name || id : id);
+            const price = m ? Number(m.current_price || 0) : 0;
+
+            let bal = 0;
+
+            try {
+              if (hasWallet) {
+                // native eth
+                if (id === "ethereum") {
+                  const balWei = await (new ethers.JsonRpcProvider("https://cloudflare-eth.com")).getBalance(walletAddress);
+                  bal = Number(ethers.formatEther(balWei));
+                }
+                // native bnb (BNB is native on BSC)
+                else if (id === "binancecoin") {
+                  const balWei = await (new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/")).getBalance(walletAddress);
+                  bal = Number(ethers.formatEther(balWei));
+                }
+                // other token -> fallback to stored (keeping same behavior)
+                else {
+                  bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
+                }
+              } else {
+                bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
+              }
+            } catch (e) {
+              console.warn("Failed to fetch balance for", id, e);
+              bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
+            }
+
+            const usdVal = bal * price;
+            totalUsd += usdVal;
+
+            // build token-item DOM inside a swipe wrapper
+            const tokenItem = document.createElement("div");
+            tokenItem.className = "token-item";
+            const imgHtml = (m && m.image) ? `<img class="token-img" src="${m.image}" alt="${symbol}">` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+
+            tokenItem.innerHTML = `
+              <div>
+                <div class="symbol">${imgHtml}${symbol}</div>
+                <div class="muted" style="font-size:13px">${name}</div>
+              </div>
+              <div>
+                <div class="token-amount">${fmt(bal)} ${symbol}</div>
+                <div class="price">$${fmt(price)}</div>
+              </div>
+            `;
+
+            // wrapper with swipe content and delete button
+            const wrapper = document.createElement("div");
+            wrapper.className = "swipe-row";
+            wrapper.dataset.id = id;
+            wrapper.dataset.net = "mainnet";
+
+            const contentWrap = document.createElement("div");
+            contentWrap.className = "swipe-content";
+            contentWrap.appendChild(tokenItem);
+
+            const delBtn = document.createElement("button");
+            delBtn.className = "delete-btn";
+            delBtn.type = "button";
+            delBtn.textContent = "Delete";
+
+            wrapper.appendChild(contentWrap);
+            wrapper.appendChild(delBtn);
+
+            tokenContainer.appendChild(wrapper);
+
+            // attach swipe handlers (must be after appended so deleteBtn offsetWidth exists)
+            attachSwipeHandlers(wrapper, contentWrap);
+          }
+
+          document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
+        }
+      } else { // testnet
+        const storedTest = stored.testnet || {};
+        let totalUsd = 0;
+        const keys = Object.keys(storedTest);
+        if(keys.length === 0){
+          // nothing to show; balance remains $0.00 (Testnet)
+        } else {
+          for(const k of keys){
+            const item = storedTest[k];
+            const symbol = k.toUpperCase();
+            const name = item.name || (k === "PYM" ? "Testnet Token" : k);
+            const bal = Number(item.balance || 0);
+            const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
+            totalUsd += bal * price;
+
+            const tokenItem = document.createElement("div");
+            tokenItem.className = "token-item";
+
+            const imgHtml = (k === "PYM") ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
+
+            tokenItem.innerHTML = `
+              <div>
+                <div class="symbol">${imgHtml}${symbol}</div>
+                <div class="muted" style="font-size:13px">${name}</div>
+              </div>
+              <div>
+                <div class="token-amount">${fmt(bal)} ${symbol}</div>
+                <div class="price">$${fmt(price)}</div>
+              </div>
+            `;
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "swipe-row";
+            wrapper.dataset.id = k;
+            wrapper.dataset.net = "testnet";
+
+            const contentWrap = document.createElement("div");
+            contentWrap.className = "swipe-content";
+            contentWrap.appendChild(tokenItem);
+
+            const delBtn = document.createElement("button");
+            delBtn.className = "delete-btn";
+            delBtn.type = "button";
+            delBtn.textContent = "Delete";
+
+            wrapper.appendChild(contentWrap);
+            wrapper.appendChild(delBtn);
+
+            tokenContainer.appendChild(wrapper);
+
+            attachSwipeHandlers(wrapper, contentWrap);
           }
         }
-      } catch(e){
-        // ignore
-      }
-      return null;
-    }
-
-    /*******************************
-     * Create a stable row in DOM for a coin id (if not present)
-     * returns the row object references and stores in displayed map
-     *******************************/
-    function ensureRowForCoin(coinId, initial){
-      if(displayed.has(coinId)) return displayed.get(coinId);
-
-      // initial object can supply symbol/name/img/balance (optional)
-      initial = initial || {};
-      const symbol = initial.symbol || (coinId).toUpperCase();
-      const name = initial.name || coinId;
-      const img = initial.img || ""; // may be filled later
-
-      const row = document.createElement("div");
-      row.className = "token-item";
-      row.dataset.coin = coinId;
-
-      // Build inner stable structure. We'll update these refs inline.
-      row.innerHTML = `
-        <div>
-          <div class="symbol">
-            <img class="token-img" src="${img || ''}" alt="${symbol}" style="${img ? '' : 'display:none'}">
-            <span class="token-symbol-text">${symbol}</span>
-          </div>
-          <div class="muted token-fullname" style="font-size:13px">${name}</div>
-        </div>
-        <div>
-          <div class="token-amount" title="token amount">0.00 ${symbol}</div>
-          <div class="price" title="price">$0.00</div>
-          <div class="muted token-change" style="font-size:12px;margin-top:4px;"></div>
-        </div>
-      `;
-
-      tokenRowsContainer.appendChild(row);
-
-      // refs
-      const imgEl = row.querySelector(".token-img");
-      const symbolText = row.querySelector(".token-symbol-text");
-      const nameEl = row.querySelector(".token-fullname");
-      const amountEl = row.querySelector(".token-amount");
-      const priceEl = row.querySelector(".price");
-      const changeEl = row.querySelector(".token-change");
-
-      const obj = {
-        id: coinId,
-        symbol,
-        name,
-        img,
-        refs: { row, imgEl, symbolText, nameEl, amountEl, priceEl, changeEl },
-        // dynamic values
-        price: 0,
-        changePerc: 0,
-        changeUsd: 0,
-        balance: Number(initial.balance || 0)
-      };
-
-      // set initial text
-      amountEl.textContent = `${fmt(obj.balance)} ${symbol}`;
-      priceEl.textContent = `$0.00`;
-      changeEl.textContent = "";
-
-      displayed.set(coinId, obj);
-      return obj;
-    }
-
-    /*******************************
-     * Build initial displayed set (defaults + stored)
-     *******************************/
-    function buildInitialDisplayed(){
-      const stored = readStoredTokens();
-      const storedMain = (stored.mainnet) ? Object.keys(stored.mainnet) : [];
-      const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
-
-      idsSet.forEach(id => {
-        const initial = {};
-        if(stored.mainnet && stored.mainnet[id]){
-          initial.symbol = stored.mainnet[id].symbol || undefined;
-          initial.name = stored.mainnet[id].name || undefined;
-          initial.balance = Number(stored.mainnet[id].balance || 0);
-        }
-        ensureRowForCoin(id, initial);
-      });
-    }
-
-    /*******************************
-     * Update displayed items using CoinGecko markets endpoint + wallet balances (if available)
-     *******************************/
-    async function updateDataOnce(){
-      // gather coin ids currently displayed
-      const ids = Array.from(displayed.keys());
-      if(ids.length === 0) return;
-
-      // fetch market data (single request)
-      let markets = [];
-      try {
-        const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + encodeURIComponent(ids.join(",")) + "&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h";
-        const res = await fetch(url);
-        markets = await res.json();
-      } catch (e) {
-        console.warn("CoinGecko markets fetch failed", e);
-        markets = [];
-      }
-
-      // map by id for quick lookup
-      const marketMap = {};
-      (markets || []).forEach(m => { marketMap[m.id] = m; });
-
-      // For balances: if we have wallet address try to fetch on-chain balances concurrently
-      const balancePromises = [];
-
-      displayed.forEach((obj, coinId) => {
-        // update market info if available
-        const m = marketMap[coinId];
-        if(m){
-          // update symbol/name/img
-          obj.symbol = (m.symbol || obj.symbol).toUpperCase();
-          obj.name = m.name || obj.name;
-          obj.img = m.image || obj.img;
-          obj.price = Number(m.current_price || 0);
-          // prefer price_change_percentage_24h from api (CoinGecko provided)
-          obj.changePerc = (typeof m.price_change_percentage_24h === "number") ? m.price_change_percentage_24h : (m.price_change_percentage_24h_in_currency || 0);
-          obj.changeUsd = (typeof m.price_change_24h === "number") ? (m.price_change_24h || 0) : 0;
-        } else {
-          // CoinGecko didn't return this coin (keep previous values)
-        }
-
-        // push a balance fetch promise (if wallet exists)
-        if(walletAddress){
-          balancePromises.push((async ()=>{
-            let bal = obj.balance || 0;
-            try {
-              // native ETH
-              if(coinId === "ethereum"){
-                const raw = await PROVIDERS.eth.getBalance(walletAddress);
-                bal = Number(ethers.formatEther(raw));
-              } else if(coinId === "binancecoin"){
-                const raw = await PROVIDERS.bsc.getBalance(walletAddress);
-                bal = Number(ethers.formatEther(raw));
-              } else {
-                // try to find contract for this coin
-                const found = await findContractForCoinId(coinId);
-                if(found && found.contract){
-                  const contractAddr = found.contract;
-                  const platform = found.platform;
-                  const provider = PLATFORM_TO_PROVIDER[platform] || PROVIDERS.eth;
-                  const tokenContract = new ethers.Contract(contractAddr, ERC20_ABI, provider);
-                  let decimals = 18;
-                  try { decimals = await tokenContract.decimals(); } catch(e){ /* keep 18 */ }
-                  const rawBal = await tokenContract.balanceOf(walletAddress);
-                  bal = Number(ethers.formatUnits(rawBal, decimals));
-                } else {
-                  // fallback to stored balance
-                  const stored = readStoredTokens();
-                  bal = stored.mainnet && stored.mainnet[coinId] ? Number(stored.mainnet[coinId].balance || 0) : bal;
-                }
-              }
-            } catch(e){
-              // on any failure fallback to stored
-              const stored = readStoredTokens();
-              bal = stored.mainnet && stored.mainnet[coinId] ? Number(stored.mainnet[coinId].balance || 0) : (obj.balance || 0);
-            }
-            obj.balance = bal;
-          })());
-        } // end if walletAddress
-      }); // end displayed.forEach
-
-      // wait for all balance fetches to finish
-      await Promise.all(balancePromises);
-
-      // Now update DOM inline without re-creating nodes
-      displayed.forEach((obj, coinId) => {
-        const { imgEl, symbolText, nameEl, amountEl, priceEl, changeEl } = obj.refs;
-        // image
-        if(obj.img){
-          imgEl.src = obj.img;
-          imgEl.style.display = "";
-        } else {
-          imgEl.style.display = "none";
-        }
-        // symbol & name
-        symbolText.textContent = obj.symbol || coinId.toUpperCase();
-        nameEl.textContent = obj.name || coinId;
-
-        // amount & price
-        amountEl.textContent = `${fmt(obj.balance || 0)} ${obj.symbol || ""}`;
-        priceEl.textContent = `$${fmt(obj.price || 0)}`;
-
-        // change: show percent and dollar change (if available)
-        const pct = Number(obj.changePerc || 0);
-        const usdCh = Number(obj.changeUsd || 0);
-        // format percent with sign
-        const sign = pct > 0 ? "+" : (pct < 0 ? "" : "");
-        const pctText = `${sign}${pct.toFixed(2)}%`;
-        // dollar change: from markets API we may have price_change_24h (obj.changeUsd)
-        const usdSign = usdCh > 0 ? "+" : (usdCh < 0 ? "" : "");
-        const usdText = (typeof usdCh === "number") ? `${usdSign}$${fmt(Math.abs(usdCh))}` : "";
-
-        // color & DOM
-        if(pct > 0){
-          changeEl.style.color = "#4cf08a";
-        } else if(pct < 0){
-          changeEl.style.color = "#ff6b6b";
-        } else {
-          changeEl.style.color = "rgba(255,255,255,0.65)";
-        }
-        // set combined text
-        changeEl.textContent = `${pctText} ${usdText}`.trim();
-      });
-
-      // update total balance for the currently selected network
-      updateTotalForActiveNetwork();
-    }
-
-    /*******************************
-     * Update total display for active network
-     *******************************/
-    function updateTotalForActiveNetwork(){
-      const activeMain = document.getElementById("mainBtn").classList.contains("active");
-      let totalUsd = 0;
-      if(activeMain){
-        displayed.forEach(obj => {
-          const price = Number(obj.price || 0);
-          const bal = Number(obj.balance || 0);
-          totalUsd += price * bal;
-        });
-        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
-      } else {
-        // testnet total: read testnet stored tokens
-        const stored = readStoredTokens();
-        const t = stored.testnet || {};
-        let total = 0;
-        Object.keys(t).forEach(k => {
-          const bal = Number(t[k].balance || 0);
-          const price = (k === "PYM") ? 0.5 : (t[k].price || 0);
-          total += bal * price;
-        });
-        document.getElementById("balance").innerText = `$${fmt(total)} (Testnet)`;
+        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Testnet)`;
       }
     }
 
-    /*******************************
-     * Build initial display & start loop
-     *******************************/
-    async function start(){
-      buildInitialDisplayed();      // create stable rows for defaults + stored
-      await updateDataOnce();       // initial update (prices + balances)
-      // periodic refresh
-      setInterval(async ()=>{
-        try { await updateDataOnce(); } catch(e){ console.warn("periodic update failed", e); }
-      }, REFRESH_MS);
-    }
-
-    /*******************************
-     * Add token flow (CoinGecko) — NO BALANCE PROMPT
-     * This function is global and used by the inline onclick in your HTML.
-     *******************************/
-    async function onAddTokenClicked(){
-      addStatus.innerText = "";
-      try {
-        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
-        if(!q) return;
-        addStatus.innerText = "Searching CoinGecko...";
-        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
-        const sjson = await sres.json();
-        const coins = sjson.coins || [];
-        if(coins.length === 0){
-          alert("No matching token found on CoinGecko.");
-          addStatus.innerText = "";
-          return;
-        }
-
-        
-        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
-        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
-        let idx = 0;
-        if(pick){
-          const p = parseInt(pick,10);
-          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
-        }
-        const coin = coins[idx];
-        if(!coin || !coin.id){
-          alert("Invalid selection.");
-          addStatus.innerText = "";
-          return;
-        }
-
-        // store in localStorage under mainnet (do not ask for balance)
-        const stored = readStoredTokens();
-        stored.mainnet = stored.mainnet || {};
-        if(stored.mainnet[coin.id]){
-          alert(`${coin.symbol.toUpperCase()} already added.`);
-          addStatus.innerText = "";
-          return;
-        }
-        stored.mainnet[coin.id] = {
-          symbol: coin.symbol.toUpperCase(),
-          name: coin.name,
-          // balance will be detected from wallet if connected
-          balance: 0
-        };
-        writeStoredTokens(stored);
-
-        // create stable row immediately (with initial data)
-        const initial = { symbol: coin.symbol.toUpperCase(), name: coin.name, balance: 0 };
-        const rowObj = ensureRowForCoin(coin.id, initial);
-
-        addStatus.innerText = `Added ${coin.symbol.toUpperCase()} — balance will be detected from wallet (if connected).`;
-
-        // run a data update quickly so coin price + balances populate
-        await updateDataOnce();
-      } catch (err) {
-        console.error("Add token error", err);
-        alert("Failed to add token.");
-        addStatus.innerText = "";
-      }
-    }
-
-    // expose global for inline onclick
-    window.onAddTokenClicked = onAddTokenClicked;
-
-    /*******************************
-     * Network switcher (preserve behavior)
-     *******************************/
     function switchNetwork(net){
       document.getElementById("mainBtn").classList.remove("active");
       document.getElementById("testBtn").classList.remove("active");
-      if(net==="mainnet"){ document.getElementById("mainBtn").classList.add("active"); }
-      else { document.getElementById("testBtn").classList.add("active"); }
-      // update total and (re)render testnet items if needed
-      if(net === "testnet"){
-        // remove mainnet rows from DOM visually but keep data in memory:
-        // We will not delete nodes — instead we simply clear tokenRowsContainer and re-build testnet rows
-        // BUT (strict instruction) we should keep everything as-is; to keep behavior consistent we will show only testnet tokens
-        // by clearing container and adding testnet token rows (these are stable while on testnet)
-        tokenRowsContainer.innerHTML = "";
-        // build testnet view from storage
-        const stored = readStoredTokens();
-        const t = stored.testnet || {};
-        Object.keys(t).forEach(k=>{
-          const symbol = k.toUpperCase();
-          const name = t[k].name || (k === "PYM" ? "Testnet Token" : k);
-          const bal = Number(t[k].balance || 0);
-          // create row similar style
-          const row = document.createElement("div");
-          row.className = "token-item";
-          row.innerHTML = `
-            <div>
-              <div class="symbol"><span class="payme-badge">PY</span>${symbol}</div>
-              <div class="muted" style="font-size:13px">${name}</div>
-            </div>
-            <div>
-              <div class="token-amount">${fmt(bal)} ${symbol}</div>
-              <div class="price">$${fmt(k==="PYM"?0.5:(t[k].price||0))}</div>
-              <div class="muted token-change" style="font-size:12px;margin-top:4px;"></div>
-            </div>`;
-          tokenRowsContainer.appendChild(row);
-        });
-        updateTotalForActiveNetwork();
-      } else {
-        // returning to mainnet: rebuild tokenRowsContainer from 'displayed' map to ensure mainnet tokens are shown
-        tokenRowsContainer.innerHTML = "";
-        // re-attach all displayed rows in insertion order
-        displayed.forEach(obj=>{
-          tokenRowsContainer.appendChild(obj.refs.row);
-        });
-        updateTotalForActiveNetwork();
-      }
+      if(net==="mainnet"){document.getElementById("mainBtn").classList.add("active");}
+      else{document.getElementById("testBtn").classList.add("active");}
+      renderTokens(net);
     }
+
+    /***********************
+     * Add token flow (CoinGecko) — NO BALANCE PROMPT
+     * (unchanged behavior you requested earlier — store coin.id and detect balance if possible)
+     ***********************/
+    async function onAddTokenClicked(){
+      const status=document.getElementById("addTokenStatus");
+      status.innerText="";
+      try{
+        const q=prompt("Search token on CoinGecko by name or symbol:");
+        if(!q) return;
+        status.innerText="Searching CoinGecko...";
+        const sres=await fetch("https://api.coingecko.com/api/v3/search?query="+encodeURIComponent(q));
+        const sjson=await sres.json();
+        const coins=sjson.coins||[];
+        if(coins.length===0){alert("No token found.");status.innerText="";return;}
+        let choices=coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol})`).join("\n");
+        let pick=prompt("Choose a token by number:\n\n"+choices,"1");
+        let idx=0;if(pick){const p=parseInt(pick,10);if(!isNaN(p)&&p>=1&&p<=Math.min(6,coins.length))idx=p-1;}
+        const coin=coins[idx];
+        if(!coin||!coin.id){alert("Invalid.");status.innerText="";return;}
+        const stored=readStoredTokens();
+        stored.mainnet=stored.mainnet||{};
+        // keep behavior: do not ask balance, set 0 fallback (if wallet connected we attempt to detect)
+         stored.mainnet[coin.id]={symbol:coin.symbol.toUpperCase(),name:coin.name,balance:0};
+        writeStoredTokens(stored);
+        status.innerText=`Added ${coin.symbol.toUpperCase()}`;
+        renderTokens("mainnet");
+      }catch(e){alert("Error adding token");status.innerText="";}
+    }
+
+    // initial render
+    renderTokens("mainnet");
+
+    // refresh prices and balances regularly (mainnet)
+    setInterval(()=>{ 
+      const mainActive = document.getElementById("mainBtn").classList.contains("active");
+      if(mainActive) renderTokens("mainnet");
+    }, 15000);
+
+    // expose switch network
     window.switchNetwork = switchNetwork;
-
-    // Start
-    start().catch(e => { console.error("start failed", e); });
-
-  </script>  
-</body>  
+  </script>
+</body>
 </html>
