@@ -561,5 +561,245 @@
       // replace tokenRows children in one go (prevents flicker)
       tokenRows.replaceChildren(frag);
 
-      // Now that DOM nodes exist, attach swipe handlers for each wrapper
-      Array.from(tokenRows.quer
+       // Now that DOM nodes exist, attach swipe handlers for each wrapper
+      Array.from(tokenRows.querySelectorAll(".swipe-row")).forEach(wrapper=>{
+        const contentEl = wrapper.querySelector(".swipe-content");
+        const deleteBtn = wrapper.querySelector(".delete-btn");
+        attachSwipeHandlers(wrapper, contentEl, deleteBtn);
+      });
+
+      // After building UI, run immediate price & balance updates (async, no DOM wipe)
+      await updatePricesAndPcts();   // updates price/pct fields
+      await updateBalances();        // updates token-amounts and recomputes balance total
+    }
+
+    /***********************
+     * Update prices (non-destructive)
+     ***********************/
+    async function updatePricesAndPcts(){
+      // gather coingecko ids currently in DOM for mainnet
+      if (CURRENT_NET !== "mainnet") return;
+      const tokenRows = document.getElementById("tokenRows");
+      const idElements = tokenRows.querySelectorAll('.token-amount[data-id]');
+      const ids = Array.from(idElements).map(el => el.getAttribute('data-id')).filter(Boolean);
+      if(ids.length === 0) return;
+
+      try {
+        const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids="+encodeURIComponent(ids.join(","))+"&price_change_percentage=24h");
+        const markets = await res.json();
+        const map = {};
+        (markets||[]).forEach(m => map[m.id] = m);
+
+        let totalUsd = 0;
+
+        // Update each row inline
+        ids.forEach(id => {
+          const m = map[id];
+          const priceEl = document.querySelector(`[data-price-id="${id}"]`);
+          const pctEl = document.querySelector(`[data-pct-id="${id}"]`);
+          // determine balance from token-amount text
+          const amtEl = document.querySelector(`.token-amount[data-id="${id}"]`);
+          let bal = 0;
+          if (amtEl) {
+            const txt = amtEl.textContent || "";
+            const parts = txt.split(" ");
+            const maybe = parseFloat(parts[0].replace(/,/g,'')) || 0;
+            bal = maybe;
+          }
+          const price = m ? Number(m.current_price || 0) : 0;
+          const pct24 = m ? Number(m.price_change_percentage_24h || 0) : 0;
+          if(priceEl) priceEl.innerText = `$${fmt(price)}`;
+          if(pctEl) {
+            pctEl.innerText = `${pct24>=0? '▲':'▼'} ${Math.abs(Number(pct24||0)).toFixed(2)}%`;
+            pctEl.style.color = pct24 >= 0 ? '#9fffc9' : '#ff9b9b';
+          }
+          totalUsd += bal * price;
+        });
+
+        // update big balance header only if mainnet
+        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
+      } catch (e){
+        console.warn("updatePrices failed", e);
+      }
+    }
+
+    /***********************
+     * Update on-chain balances (non-destructive)
+     ***********************/
+    async function updateBalances(){
+      const tokenRows = document.getElementById("tokenRows");
+      const amtEls = tokenRows.querySelectorAll('.token-amount[data-id]');
+      if(amtEls.length === 0) return;
+
+      const stored = readStoredTokens();
+      let totalUsd = 0;
+
+      // We'll gather ids for which we need market price later
+      const marketIdsToFetch = new Set();
+
+      // iterate sequentially (avoid many parallel provider calls at once)
+      for (const el of amtEls){
+        const id = el.getAttribute('data-id');
+        // determine whether this id is mainnet coingecko id or testnet symbol
+        const wrapper = el.closest('.swipe-row');
+        const net = wrapper ? wrapper.dataset.net : "mainnet";
+
+        if (net === "mainnet") {
+          // try to determine on-chain balance
+          let bal = 0;
+          try {
+            if (id === "ethereum") {
+              const balWei = await PROVIDERS.ethereum.getBalance(walletAddress);
+              bal = Number(ethers.formatEther(balWei));
+            } else if (id === "binancecoin") {
+              const balWei = await PROVIDERS["binance-smart-chain"].getBalance(walletAddress);
+              bal = Number(ethers.formatEther(balWei));
+            } else {
+              // try to find token contract from CoinGecko
+              const found = await findContractForCoinId(id);
+              if (found && found.contract) {
+                const provider = PLATFORM_TO_PROVIDER[found.platform] || PROVIDERS.ethereum;
+                try {
+                  const tokenContract = new ethers.Contract(found.contract, ERC20_ABI, provider);
+                  let decimals = 18;
+                  try { decimals = await tokenContract.decimals(); } catch(e){}
+                  const raw = await tokenContract.balanceOf(walletAddress);
+                  bal = Number(ethers.formatUnits(raw, decimals));
+                } catch(e) {
+                  // fallback to stored balance
+                  bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
+                }
+              } else {
+                bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
+              }
+            }
+          } catch(e){
+            console.warn("balance fetch failed for", id, e);
+            bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
+          }
+
+          // update DOM
+          const symbol = (document.querySelector(`.swipe-row[data-id="${id}"] .symbol`)?.textContent || "").replace(/\s+/g,"").trim();
+          el.innerText = `${fmt(bal)} ${symbol || id.toUpperCase()}`;
+
+          // mark id for price fetch
+          marketIdsToFetch.add(id);
+
+        } else { // testnet
+          const t = stored.testnet || {};
+          const item = t[id] || {};
+          const bal = Number(item.balance || 0);
+          el.innerText = `${fmt(bal)} ${id.toUpperCase()}`;
+          // price known (PYM=0.5) -> accumulate
+          const price = id === "PYM" ? 0.5 : (item.price || 0);
+          totalUsd += bal * price;
+        }
+      }
+
+      // fetch prices for marketIdsToFetch and update price & accumulate totalUsd
+      if (marketIdsToFetch.size > 0) {
+        const ids = Array.from(marketIdsToFetch).join(",");
+        try {
+          const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids="+encodeURIComponent(ids));
+          const markets = await res.json();
+          const map = {};
+          (markets||[]).forEach(m => map[m.id] = m);
+          for (const id of marketIdsToFetch){
+            const price = map[id] ? Number(map[id].current_price || 0) : 0;
+            const amtEl = document.querySelector(`.token-amount[data-id="${id}"]`);
+            const priceEl = document.querySelector(`[data-price-id="${id}"]`);
+            if (amtEl) {
+              const txt = amtEl.textContent || "";
+              const parts = txt.split(" ");
+              const bal = parseFloat(parts[0].replace(/,/g,'')) || 0;
+              totalUsd += bal * price;
+            }
+            if (priceEl) priceEl.innerText = `$${fmt(price)}`;
+          }
+        } catch(e){
+          console.warn("price fetch failed during updateBalances", e);
+        }
+      }
+
+      // update big balance header depending on CURRENT_NET
+      if (CURRENT_NET === "mainnet") {
+        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Mainnet)`;
+      } else {
+        // testnet total already computed above
+        document.getElementById("balance").innerText = `$${fmt(totalUsd)} (Testnet)`;
+      }
+    }
+
+    /***********************
+     * Add token flow (CoinGecko) — no balance prompt
+     ***********************/
+    async function onAddTokenClicked(){
+      const status = document.getElementById("addTokenStatus");
+      status.innerText = "";
+      try {
+        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
+        if(!q) return;
+        status.innerText = "Searching CoinGecko...";
+        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
+        const sjson = await sres.json();
+        const coins = sjson.coins || [];
+        if(coins.length === 0){
+          alert("No matching token found on CoinGecko.");
+          status.innerText = "";
+          return;
+        }
+        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
+        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
+        let idx = 0;
+        if(pick){
+          const p = parseInt(pick,10);
+          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
+        }
+        const coin = coins[idx];
+        if(!coin || !coin.id){
+          alert("Invalid selection.");
+          status.innerText = "";
+          return;
+        }
+        const stored = readStoredTokens();
+        stored.mainnet = stored.mainnet || {};
+        if (stored.mainnet[coin.id]) {
+          status.innerText = `${coin.symbol.toUpperCase()} already added.`;
+          return;
+        }
+        stored.mainnet[coin.id] = { symbol: coin.symbol.toUpperCase(), name: coin.name, balance: 0 };
+        writeStoredTokens(stored);
+        status.innerText = `Added ${coin.symbol.toUpperCase()}`;
+        // render tokens (will detect balances if wallet is connected)
+        renderTokens(CURRENT_NET);
+      } catch (err) {
+        console.error("Add token error", err);
+        alert("Failed to add token.");
+        document.getElementById("addTokenStatus").innerText = "";
+      }
+    }
+
+    /***********************
+     * Network switching & initial setup
+     ***********************/
+    window.switchNetwork = function(net){
+      document.getElementById("mainBtn").classList.remove("active");
+      document.getElementById("testBtn").classList.remove("active");
+      if(net==="mainnet"){ document.getElementById("mainBtn").classList.add("active"); }
+      else { document.getElementById("testBtn").classList.add("active"); }
+      renderTokens(net);
+    };
+
+    // initial render
+    renderTokens("mainnet");
+
+    // periodic updates (prices & balances) without wiping DOM
+    setInterval(() => {
+      if (CURRENT_NET === "mainnet") updatePricesAndPcts();
+      updateBalances();
+    }, 15000); // every 15s
+
+  </script>
+</body>
+</html>
+```0
