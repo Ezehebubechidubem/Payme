@@ -51,7 +51,6 @@
     }
     .network-toggle .active { background: #00ffae; color: #00221a; }
     .balance { font-size: 24px; font-weight: bold; margin: 8px 0 2px 0; color: #00ffae; }
-    /* small area for $change and % */
     .balance-change { font-size: 14px; margin-bottom: 8px; }
 
     /* ACTIONS: always horizontal (desktop & mobile) */
@@ -62,14 +61,13 @@
       gap: 10px;
       margin: 15px 0;
       flex-direction: row; /* horizontal */
-      /* allow horizontal scrolling on very narrow screens while keeping horizontal layout */
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       padding-bottom: 2px;
     }
     .actions button {
-      flex: 1;           /* equal width across row */
-      min-width: 80px;  /* ensures they remain usable on small screens */
+      flex: 1;
+      min-width: 80px;
       padding: 12px 16px;
       font-size: 16px;
       border: none;
@@ -84,14 +82,24 @@
     .sell { background: #ffa500; color: #fff; }
 
     .token-list { margin-top: 15px; }
+    /* a 'row container' that holds swipe inner + delete button */
+    .token-row {
+      position: relative;
+      overflow: hidden;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+    .swipe-inner {
+      transition: transform 180ms ease;
+      will-change: transform;
+    }
     .token-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 12px;
-      border-radius: 10px;
       background: rgba(255,255,255,0.06);
-      margin-bottom: 10px;
+      border-radius: 10px;
     }
 
     /* Left column: token symbol (with optional logo) on first line, full name below */
@@ -101,7 +109,6 @@
       align-items: flex-start;
       gap: 6px;
     }
-    /* Symbol row shows logo + ticker inline */
     .symbol {
       font-weight: bold;
       display:flex;
@@ -109,7 +116,6 @@
       gap:10px;
       font-size:15px;
     }
-
     /* Right column: amount on top, price below */
     .token-item > div:last-child {
       text-align: right;
@@ -130,6 +136,24 @@
       align-items:center;justify-content:center;font-weight:800;font-size:12px;margin-right:8px;
     }
 
+    .delete-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #ff4d4f;
+      color: white;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-weight: 700;
+      display: none; /* only appear when revealed */
+      z-index: 5;
+    }
+    /* revealed state: show delete btn and keep swipe-inner translated */
+    .token-row.revealed .delete-btn { display: block; }
+    .token-row.revealed .swipe-inner { /* ensure swipe inner stays left to show delete */ }
+
     .add-token-btn {
       display: inline-block;
       margin-top: 12px;
@@ -145,18 +169,16 @@
 
     .muted { color: rgba(255,255,255,0.65); font-size:13px; }
 
+    /* small helpers */
+    .up { color: #4cd08a; font-weight:700; }
+    .down { color: #ff7b7b; font-weight:700; }
+
     /* keep horizontal layout on phones — do not convert actions or token rows to vertical */
     @media (max-width:420px){
-      .token-item { /* keep row layout but allow wrapping if needed */
-        flex-wrap: nowrap;
-      }
+      .token-item { flex-wrap: nowrap; }
       .actions { gap:8px; }
       .actions button { padding:10px 12px; min-width:70px; }
     }
-
-    /* tiny green/red helper */
-    .up { color: #4cd08a; font-weight:700; }
-    .down { color: #ff7b7b; font-weight:700; }
   </style>
 </head>
 <body>
@@ -243,7 +265,6 @@
       return "$" + fmt(v);
     }
     function fmtSignedUsd(val){
-      // returns like "+$0.01" or "-$0.01" or "<$0.01"
       const v = Number(val || 0);
       if (v !== 0 && Math.abs(v) < 0.01) {
         return (v >= 0 ? "+<$0.01" : "-<$0.01");
@@ -275,15 +296,175 @@
      * Token rows management (avoid flicker)
      ***********************/
     const tokenRowsEl = document.getElementById("tokenRows");
-    const tokenRowMap = new Map(); // coinId -> DOM row
+    const tokenRowMap = new Map(); // coinId -> { outer, inner, deleteBtn }
 
-    // Ensure add button stays (we use tokenRows for rows only)
+    // create or update a row for id (mainnet coin id) or key for testnet
+    function ensureRowExists(key, isTestnet=false){
+      if(tokenRowMap.has(key)) return tokenRowMap.get(key);
+      // else create
+      const outer = document.createElement("div");
+      outer.className = "token-row";
+
+      const swipeInner = document.createElement("div");
+      swipeInner.className = "swipe-inner";
+
+      // ensure inner contains token-item skeleton
+      const item = document.createElement("div");
+      item.className = "token-item";
+      // skeleton content (will be replaced)
+      item.innerHTML = `
+        <div>
+          <div class="symbol"><div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>SYM</div>
+          <div class="muted" style="font-size:13px">Name</div>
+        </div>
+        <div>
+          <div class="token-amount">0.00 SYM</div>
+          <div style="font-size:13px"><span class="price-value">$0.00</span> <span class="price-change muted"></span></div>
+        </div>
+      `;
+      swipeInner.appendChild(item);
+
+      // delete button (hidden until swipe reveals)
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "delete-btn";
+      deleteBtn.textContent = "Delete";
+
+      // append elements
+      outer.appendChild(swipeInner);
+      outer.appendChild(deleteBtn);
+      tokenRowsEl.appendChild(outer);
+
+      // swipe functionality
+      setupSwipeBehavior(outer, swipeInner);
+
+      const entry = { outer, swipeInner, deleteBtn, item };
+      tokenRowMap.set(key, entry);
+      return entry;
+    }
+
+    // swipe behavior: slide left to reveal delete
+    function setupSwipeBehavior(outer, swipeInner){
+      let startX = 0;
+      let currentX = 0;
+      let touching = false;
+      const revealThreshold = 60; // px to reveal
+      const revealAmount = 84; // how far inner should translate to show delete
+
+      function setTranslate(x){
+        swipeInner.style.transform = `translateX(${x}px)`;
+      }
+
+      function onStart(clientX){
+        touching = true;
+        startX = clientX;
+        currentX = 0;
+        // reset other rows
+        tokenRowMap.forEach((v) => {
+          if(v.outer !== outer){
+            v.outer.classList.remove('revealed');
+            setTranslateFor(v.swipeInner, 0);
+          }
+        });
+      }
+      function onMove(clientX){
+        if(!touching) return;
+        const dx = clientX - startX;
+        // only allow left swipe (negative dx)
+        let tx = Math.min(0, dx);
+        // limit
+        if(tx < -revealAmount) tx = -revealAmount;
+        setTranslate(tx);
+        currentX = tx;
+        // toggle revealed class early only when beyond threshold
+        if(Math.abs(tx) > revealThreshold){
+          outer.classList.add('revealed');
+        } else {
+          outer.classList.remove('revealed');
+        }
+      }
+      function onEnd(){
+        touching = false;
+        // if revealed keep inner translated to -revealAmount, otherwise reset to 0
+        if(Math.abs(currentX) > revealThreshold){
+          setTranslate(-revealAmount);
+          outer.classList.add('revealed');
+        } else {
+          setTranslate(0);
+          outer.classList.remove('revealed');
+        }
+      }
+
+      function setTranslateFor(node, x){ node.style.transform = `translateX(${x}px)`; }
+
+      // pointer / touch events
+      swipeInner.addEventListener('pointerdown', (e)=> {
+        swipeInner.setPointerCapture(e.pointerId);
+        onStart(e.clientX);
+      }, {passive:true});
+      swipeInner.addEventListener('pointermove', (e)=> {
+        if(e.pressure === 0 && e.buttons === 0 && !touching) return;
+        onMove(e.clientX);
+      }, {passive:true});
+      swipeInner.addEventListener('pointerup', ()=> onEnd());
+      swipeInner.addEventListener('pointercancel', ()=> onEnd());
+      // also mouse fallback
+      swipeInner.addEventListener('mousedown', (e)=>{
+        startX = e.clientX; touching = true;
+        onStart(e.clientX);
+        const move = (ev)=>{
+          onMove(ev.clientX);
+        };
+        const up = ()=>{
+          onEnd();
+          window.removeEventListener('mousemove', move);
+          window.removeEventListener('mouseup', up);
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+      });
+    }
+
+    // remove row DOM & storage entry
+    function removeToken(key, net="mainnet"){
+      const stored = readStoredTokens();
+      if(net === "mainnet"){
+        if(stored.mainnet && stored.mainnet[key]) delete stored.mainnet[key];
+      } else {
+        if(stored.testnet && stored.testnet[key]) delete stored.testnet[key];
+      }
+      writeStoredTokens(stored);
+      // remove DOM
+      if(tokenRowMap.has(key)){
+        const e = tokenRowMap.get(key);
+        try { e.outer.remove(); } catch(_) {}
+        tokenRowMap.delete(key);
+      }
+      // re-render top balance
+      const activeNet = document.getElementById("mainBtn").classList.contains("active") ? "mainnet" : "testnet";
+      renderTokens(activeNet);
+    }
+
+    /***********************
+     * Rendering logic (in-place updates)
+     ***********************/
     async function renderTokens(net){
       const stored = readStoredTokens();
+
       if(net === "mainnet"){
         const storedMain = (stored.mainnet) ? Object.keys(stored.mainnet) : [];
         const idsSet = new Set([...DEFAULT_MAINNET_IDS, ...storedMain]);
         const ids = Array.from(idsSet);
+
+        // ensure any previously created testnet rows not in mainnet are preserved? requirement: show only mainnet tokens on mainnet
+        // We'll remove rows that are not in ids (clean up)
+        [...tokenRowMap.keys()].forEach(k=>{
+          if(!ids.includes(k) && (!stored.testnet || !stored.testnet[k])){
+            // If a row exists for a mainnet id no longer present, remove it
+            const entry = tokenRowMap.get(k);
+            if(entry) entry.outer.remove();
+            tokenRowMap.delete(k);
+          }
+        });
 
         if(ids.length === 0){
           // clear rows
@@ -293,7 +474,7 @@
           return;
         }
 
-        // fetch market data from CoinGecko
+        // fetch market data from CoinGecko with price_change_percentage=24h
         let markets = [];
         try {
           const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + encodeURIComponent(ids.join(",")) + "&price_change_percentage=24h");
@@ -305,17 +486,17 @@
         const marketMap = {};
         (markets || []).forEach(m => { marketMap[m.id] = m; });
 
-        // compute all balances/prices and update/create rows
         let totalUsd = 0;
         let totalChangeUsd = 0;
 
+        // Process tokens sequentially
         for (const id of ids){
           const m = marketMap[id];
           const symbol = m ? (m.symbol || id).toUpperCase() : (stored.mainnet && stored.mainnet[id] ? (stored.mainnet[id].symbol||id).toUpperCase() : id.toUpperCase());
           const name = m ? (m.name || id) : (stored.mainnet && stored.mainnet[id] ? stored.mainnet[id].name || id : id);
           const price = m ? Number(m.current_price || 0) : 0;
           const priceChange24h = m ? Number(m.price_change_24h || 0) : 0;
-          const priceChangePct24h = m ? Number(m.price_change_percentage_24h || 0) : 0;
+          const priceChangePct24h = (m && m.price_change_percentage_24h) ? Number(m.price_change_percentage_24h) : 0;
 
           // determine balance:
           let bal = 0;
@@ -339,21 +520,19 @@
                   const platform = found.platform;
                   const provider = PLATFORM_TO_PROVIDER[platform] || PROVIDERS.eth;
                   const tokenContract = new ethers.Contract(contractAddr, ERC20_ABI, provider);
-                  // fetch decimals & balance (graceful fallback)
                   let decimals = 18;
                   try { decimals = await tokenContract.decimals(); } catch(e){ /* keep 18 */ }
                   let raw = await tokenContract.balanceOf(walletAddress);
                   bal = Number(ethers.formatUnits(raw, decimals));
                 } else {
-                  // No on-chain contract found: fallback to stored balance if present
+                  // fallback to stored (if any)
                   bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
                 }
               }
             } else {
-              // no wallet: fallback to stored balance
               bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
             }
-          } catch(e) {
+          } catch(e){
             console.warn("balance fetch failed for", id, e);
             bal = stored.mainnet && stored.mainnet[id] ? Number(stored.mainnet[id].balance || 0) : 0;
           }
@@ -363,201 +542,19 @@
           totalUsd += usdVal;
           totalChangeUsd += changeUsd;
 
-          // create or update row
-          if(tokenRowMap.has(id)){
-            // update existing
-            const row = tokenRowMap.get(id);
-            // update amount
-            const amtEl = row.querySelector(".token-amount");
-            if(amtEl) amtEl.textContent = `${fmt(bal)} ${symbol}`;
-            // update price
-            const priceEl = row.querySelector(".price-value");
-            if(priceEl) priceEl.textContent = fmtUsd(price);
-            // update change
-            const changeEl = row.querySelector(".price-change");
-            if(changeEl){
-              const pct = isFinite(priceChangePct24h) ? priceChangePct24h : 0;
-              const signed = changeUsd;
-              const cls = signed >= 0 ? "up" : "down";
-              changeEl.innerHTML = `<span class="${cls}">${fmtSignedUsd(signed)} (${pct>=0?'+': ''}${pct.toFixed(2)}%)</span>`;
-            }
-            // update small image if changed
-            const imgEl = row.querySelector(".token-img");
-            if(imgEl && m && m.image && imgEl.src !== m.image) imgEl.src = m.image;
-          } else {
-            // create
-            const row = document.createElement("div");
-            row.className = "token-item";
-            const imgHtml = (m && m.image) ? `<img class="token-img" src="${m.image}" alt="${symbol}">` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
-            const pct = isFinite(priceChangePct24h) ? priceChangePct24h : 0;
-            const changeHtml = `<span class="${(priceChange24h*bal)>=0 ? 'up' : 'down'}">${fmtSignedUsd(priceChange24h*bal)} (${pct>=0?'+': ''}${pct.toFixed(2)}%)</span>`;
+          // create or update a row in place
+          const key = id;
+          const entry = ensureRowExists(key, false);
+          const { outer, swipeInner, deleteBtn, item } = entry;
 
-            row.innerHTML = `
-              <div>
-                <div class="symbol">${imgHtml}${symbol}</div>
-                <div class="muted" style="font-size:13px">${name}</div>
-              </div>
-              <div>
-                <div class="token-amount">${fmt(bal)} ${symbol}</div>
-                <div style="font-size:13px">${fmtUsd(price)} <span class="price-change" style="margin-left:8px">${changeHtml}</span></div>
-              </div>
-            `;
-            tokenRowsEl.appendChild(row);
-            tokenRowMap.set(id, row);
-          }
-        } // end for
-
-        // update top balance and change
-        updateTopBalance(totalUsd, totalChangeUsd);
-
-      } else { // testnet
-        const storedTest = stored.testnet || {};
-        // we keep PYM only for testnet scenario (user requested)
-        let totalUsd = 0;
-        const keys = Object.keys(storedTest);
-        // ensure rows correspond to test tokens only: remove any mainnet rows present
-        // We'll rebuild tokenRows for testnet to keep consistent with requirement "only testnet tokens"
-        tokenRowsEl.innerHTML = "";
-        tokenRowMap.clear();
-
-        if(keys.length === 0){
-          // nothing to show; balance remains
-        } else {
-          for(const k of keys){
-            const item = storedTest[k];
-            const symbol = k.toUpperCase();
-            const name = item.name || (k === "PYM" ? "Testnet Token" : k);
-            const bal = Number(item.balance || 0);
-            const price = (k === "PYM") ? 0.5 : Number(item.price || 0);
-            totalUsd += bal * price;
-            const row = document.createElement("div");
-            row.className = "token-item";
-            const imgHtml = (k === "PYM") ? `<span class="payme-badge">PY</span>` : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.03);display:inline-block;margin-right:8px;"></div>`;
-            row.innerHTML = `
-              <div>
-                <div class="symbol">${imgHtml}${symbol}</div>
-                <div class="muted" style="font-size:13px">${name}</div>
-              </div>
-              <div>
-                <div class="token-amount">${fmt(bal)} ${symbol}</div>
-                <div style="font-size:13px">${fmtUsd(price)} <span class="price-change" style="margin-left:8px"><span class="muted">0.00 (0.00%)</span></span></div>
-              </div>
-            `;
-            tokenRowsEl.appendChild(row);
-            tokenRowMap.set(k, row);
-          }
-        }
-        updateTopBalance(totalUsd, 0);
-      }
-    }
-
-    // update top balance big number and the change line (adds +$ and +% like Trust Wallet)
-    function updateTopBalance(totalUsd, totalChangeUsd){
-      const balanceEl = document.getElementById("balance");
-      const changeEl = document.getElementById("balanceChange");
-      // format
-      const display = fmtUsd(totalUsd);
-      // determine percent change
-      let percent = 0;
-      const prev = totalUsd - totalChangeUsd;
-      if(prev !== 0) percent = (totalChangeUsd / Math.abs(prev)) * 100;
-      // sign class
-      const cls = totalChangeUsd >= 0 ? "up" : "down";
-      // show
-      // preserve (Mainnet)/(Testnet) suffix — read currently active
-      const activeNet = document.getElementById("mainBtn").classList.contains("active") ? "Mainnet" : "Testnet";
-      balanceEl.innerText = `${display} (${activeNet})`;
-      // change line — if tiny values, use < notation
-      const changeUsdText = fmtSignedUsd(totalChangeUsd);
-      const percentText = (Math.abs(percent) !== 0 && Math.abs(percent) < 0.01) ? "<0.01%" : `${percent >= 0 ? '+' : '-'}${Math.abs(percent).toFixed(2)}%`;
-      changeEl.innerHTML = `<span class="${cls}">${changeUsdText}</span> <span class="muted" style="margin-left:8px">${percentText}</span>`;
-    }
-
-    // initial render default mainnet
-    renderTokens("mainnet");
-
-    // Keep prices live for mainnet tokens (refresh every 15s) — update in-place to avoid blink
-    setInterval(async () => {
-      const mainActive = document.getElementById("mainBtn").classList.contains("active");
-      if(mainActive){
-        await renderTokens("mainnet");
-      } else {
-        await renderTokens("testnet");
-      }
-    }, 15000);
-
-    /***********************
-     * Network switching
-     ***********************/
-    function switchNetwork(net){
-      document.getElementById("mainBtn").classList.remove("active");
-      document.getElementById("testBtn").classList.remove("active");
-      if(net==="mainnet"){document.getElementById("mainBtn").classList.add("active");}
-      else{document.getElementById("testBtn").classList.add("active");}
-      renderTokens(net);
-    }
-
-    /***********************
-     * Add token flow (CoinGecko) — NO BALANCE PROMPT
-     * - search endpoint -> user chooses coin -> store coin.id + metadata
-     * - balance will be detected automatically from the connected wallet (if available)
-     ***********************/
-    async function onAddTokenClicked(){
-      const status = document.getElementById("addTokenStatus");
-      status.innerText = "";
-      try {
-        const q = prompt("Search token on CoinGecko by name or symbol (e.g. 'uniswap' or 'uni'):");
-        if(!q) return;
-
-        status.innerText = "Searching CoinGecko...";
-        const sres = await fetch("https://api.coingecko.com/api/v3/search?query=" + encodeURIComponent(q));
-        const sjson = await sres.json();
-        const coins = sjson.coins || [];
-        if(coins.length === 0){
-          alert("No matching token found on CoinGecko.");
-          status.innerText = "";
-          return;
-        }
-
-        // show top 6 candidates for user to choose
-        let choices = coins.slice(0,6).map((c,i)=>`${i+1}. ${c.name} (${c.symbol}) : id=${c.id}`).join("\n");
-        let pick = prompt("Choose a token by number (or press Cancel to pick first):\n\n" + choices, "1");
-        let idx = 0;
-        if(pick){
-          const p = parseInt(pick,10);
-          if(!isNaN(p) && p >= 1 && p <= Math.min(6, coins.length)) idx = p-1;
-        }
-        const coin = coins[idx];
-        if(!coin || !coin.id){
-          alert("Invalid selection.");
-          status.innerText = "";
-          return;
-        }
-
-        // store in localStorage under mainnet (no balance asked)
-        const stored = readStoredTokens();
-        stored.mainnet = stored.mainnet || {};
-        // don't overwrite existing balance if already present
-        stored.mainnet[coin.id] = stored.mainnet[coin.id] || {
-          symbol: coin.symbol.toUpperCase(),
-          name: coin.name,
-          // balance will be detected from wallet if connected
-          balance: 0
-        };
-        writeStoredTokens(stored);
-        status.innerText = `Added ${coin.symbol.toUpperCase()} — balance will be detected from wallet (if connected).`;
-        // re-render (mainnet)
-        renderTokens("mainnet");
-      } catch (err) {
-        console.error("Add token error", err);
-        alert("Failed to add token.");
-        document.getElementById("addTokenStatus").innerText = "";
-      }
-    }
-
-    // Expose switchNetwork globally (keep same behavior as before)
-    window.switchNetwork = switchNetwork;
-  </script>
-</body>
-</html>
-
+          // build inner content (but update only pieces to avoid flicker)
+          // update symbol/name
+          const symEl = item.querySelector(".symbol");
+          const nameEl = item.querySelector(".muted");
+          if(m && m.image){
+            // ensure token-img exists
+            let img = symEl.querySelector("img.token-img");
+            if(!img){
+              // insert before text node
+              img = document.createElement("img");
+          
