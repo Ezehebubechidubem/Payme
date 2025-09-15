@@ -1,124 +1,97 @@
-<!-- airtime.html — standalone, fully integrated with your backend and auto-notify dashboard/transactions -->
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Airtime — PayGo</title>
+  <title>PAYME — Airtime</title>
+
+  <!-- font + icons like your dashboard -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+
   <style>
+    /* Keep styles compact and consistent with your dashboard */
     :root{
-      --bg:#f6f7f8; --card:#fff; --muted:#8d9498; --accent-strong:#05b884;
-      --radius:14px; --shadow:0 6px 18px rgba(18,24,30,0.06);
-      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      --primary:#00c853; --primary-dark:#009624; --bg:#ffffff; --card:#ffffff;
+      --muted:#777; --soft:#e8f5e9; --line:#e0e0e0; --text:#1b1b1b;
+      --radius:14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     }
-    *{box-sizing:border-box}
-    body{ margin:0; background:var(--bg); color:#111; padding:18px; display:flex; justify-content:center; -webkit-font-smoothing:antialiased;}
-    .wrap{ width:100%; max-width:420px; }
-
-    .topbar{ display:flex; align-items:center; gap:12px; margin-bottom:12px }
-    .topbar h1{ margin:0; font-size:18px; font-weight:600; flex:1 }
-    .balance{ font-weight:700; color:#333; text-align:right; font-size:14px }
-
-    .card{ background:var(--card); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow); margin-bottom:12px }
-
-    /* carrier */
-    .carrier-row{ display:flex; align-items:center; gap:10px }
-    .carrier-select{ display:flex; align-items:center; gap:12px; flex:1; padding:10px; border-radius:10px; border:1px solid #f0f0f0; background:transparent; cursor:pointer }
-    .logo-badge{ width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:white; font-weight:700; flex-shrink:0 }
-    .phone-input{ border:0; outline:0; font-weight:500; color:#444; width:100%; font-size:15px; background:transparent }
-    .profile-btn{ border:none; background:transparent; color:var(--accent-strong); font-size:20px }
-
-    /* amounts */
-    .section-title{ margin:0 0 8px 2px; font-weight:600 }
-    .amount-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px }
-    .amt{ background:#fbfbfb; border-radius:10px; padding:12px; border:1px solid #f1f4f5; display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer; min-height:72px; text-align:center }
-    .cashback{ background:#e8f9f3; color:#047a54; padding:4px 8px; border-radius:8px; font-size:11px; width:100%; text-align:center }
-    .amt strong{ font-size:16px }
-    .amt small{ color:var(--muted) }
-    .amt.active{ outline:2px solid rgba(5,184,132,0.12); transform:translateY(-3px) }
-
-    .custom-row{ display:flex; gap:10px; align-items:center; margin-top:12px }
-    .naira{ padding:10px 12px; border-radius:10px; background:#fff; border:1px solid #eee; font-weight:700 }
-    .amount-input{ flex:1; padding:12px; border-radius:10px; border:1px solid #eee; font-size:15px }
-
-    .pay-btn{ background:var(--accent-strong); color:#fff; border:0; padding:10px 16px; border-radius:999px; font-weight:700; cursor:pointer }
-    .pay-btn[disabled]{ opacity:0.45; cursor:not-allowed }
-
-    .tiny{ font-size:13px; color:var(--muted) }
-    .service-row{ display:flex; align-items:center; justify-content:space-between; gap:10px }
-    .service-left{ display:flex; gap:12px; align-items:center }
-    .service-icon{ width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#e6f7ef;color:#06a96b; font-weight:700 }
-
-    /* modal (carrier list) */
-    .modal-overlay{ position:fixed; inset:0; display:none; align-items:flex-end; justify-content:center; background:rgba(0,0,0,0.36); z-index:60 }
-    .modal-overlay.show{ display:flex }
-    .modal{ width:100%; max-width:420px; background:var(--card); border-top-left-radius:18px; border-top-right-radius:18px; padding:12px; box-shadow:0 -10px 30px rgba(12,18,20,0.12) }
-    .modal-handle{ width:36px;height:6px;background:#e6ecea;border-radius:8px;margin:4px auto 10px }
-    .modal-list{ max-height:60vh; overflow:auto; }
-    .carrier-item{ display:flex; align-items:center; gap:12px; padding:12px; border-radius:10px; margin-bottom:8px; border:1px solid #f3f6f6; cursor:pointer }
-    .carrier-item .logo-badge{ width:44px; height:36px; border-radius:8px; flex-shrink:0 }
-    .carrier-item .name{ font-weight:700; flex:1 }
-    .carrier-check{ width:18px;height:18px;border-radius:50%;border:1.6px solid #d3d8d9; display:flex;align-items:center;justify-content:center }
-    .carrier-item.active .carrier-check{ background:var(--accent-strong); color:#fff; border:0 }
-
-    /* confirm overlay */
-    .confirm-overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.28); z-index:80 }
-    .confirm-overlay.show{ display:flex }
-    .confirm-card{ background:#fff; padding:16px; border-radius:12px; width:92%; max-width:420px; box-shadow:0 10px 30px rgba(12,18,20,0.12) }
-    .confirm-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px }
-
-    /* toast */
-    .toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:26px; background:#0e9f72; color:#fff; padding:10px 16px; border-radius:999px; z-index:90; display:none }
-
-    @media (max-width:360px){ .amount-grid{ gap:8px } }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);padding-bottom:84px}
+    .wrap{max-width:440px;margin:0 auto;padding:12px}
+    .topbar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+    .topbar h1{font-size:18px;margin:0;font-weight:700}
+    .card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:0 1px 0 rgba(0,0,0,.03) inset}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .label{font-size:12px;color:var(--muted)}
+    .amount-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .amt{background:#fbfbfb;border-radius:10px;padding:10px;text-align:center;cursor:pointer;border:1px solid #f1f4f5}
+    .amt.active{outline:2px solid rgba(0,200,83,0.12);transform:translateY(-3px)}
+    .cashback{background:#e8f9f3;color:#047a54;padding:4px 6px;border-radius:8px;font-size:12px;margin-bottom:6px}
+    .custom-row{display:flex;gap:10px;align-items:center;margin-top:12px}
+    .naira{padding:10px;border-radius:10px;background:#fff;border:1px solid #eee}
+    input[type=number], input[type=tel]{flex:1;padding:10px;border-radius:10px;border:1px solid #eee}
+    .pay-btn{background:var(--primary);color:#fff;border:0;padding:10px 14px;border-radius:999px;font-weight:700;cursor:pointer}
+    .pay-btn[disabled]{opacity:0.45;cursor:not-allowed}
+    .tiny{font-size:13px;color:var(--muted)}
+    /* modal */
+    .modal-overlay{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.36);z-index:60}
+    .modal-overlay.show{display:flex}
+    .modal{width:100%;max-width:420px;background:var(--card);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px;box-shadow:0 -10px 30px rgba(12,18,20,0.12)}
+    .modal-list{max-height:60vh;overflow:auto}
+    .carrier-item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;border:1px solid #f3f6f6;margin-bottom:8px;cursor:pointer}
+    .logo-badge{width:44px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+    .confirm-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.28);z-index:80}
+    .confirm-overlay.show{display:flex}
+    .confirm-card{background:#fff;padding:16px;border-radius:12px;width:92%;max-width:420px}
+    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0e9f72;color:#fff;padding:10px 14px;border-radius:999px;display:none}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="topbar">
+    <header class="topbar">
       <h1>Airtime</h1>
-      <div class="balance" id="balanceDisplay">₦0</div>
-    </div>
+      <a href="dashboard.html" style="margin-left:auto;color:var(--muted);font-weight:700">Back</a>
+    </header>
 
-    <!-- Carrier selection -->
+    <!-- Recipient -->
     <div class="card">
-      <div class="carrier-row">
-        <div id="carrierSelect" class="carrier-select" aria-haspopup="dialog" title="Choose network">
-          <div id="carrierLogo" class="logo-badge" style="background:#e53935"><!-- svg inserted later --></div>
-          <input id="phoneInput" class="phone-input" placeholder="e.g 906*******" inputmode="tel" />
-          <div style="color:#b7c6c1">▾</div>
+      <div class="label">Recipient Number</div>
+      <div style="margin-top:8px" class="row">
+        <div id="selectedNetworkBadge" style="display:flex;align-items:center;gap:10px">
+          <div id="networkBadge" class="logo-badge" style="background:#e53935">A</div>
+          <div id="networkName" style="font-weight:700">Airtel</div>
         </div>
+        <button id="chooseNetworkBtn" class="tiny">Change</button>
+      </div>
 
-        <button class="profile-btn" title="Profile" aria-label="Profile">
-          <!-- profile icon -->
-          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4 0-8 2-8 6v2h16v-2c0-4-4-6-8-6z"/></svg>
-        </button>
+      <div style="margin-top:10px">
+        <input id="recipientInput" type="tel" placeholder="e.g 0803xxxxxxx" inputmode="tel" />
       </div>
     </div>
 
-    <!-- Amounts -->
+    <!-- Amount -->
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <div class="row" style="align-items:flex-end">
         <div>
-          <div class="section-title">Select Amount</div>
-          <div class="tiny">Cashback shown for each box</div>
+          <div class="label">Amount</div>
+          <div class="tiny">Choose quick amount or enter custom</div>
         </div>
-        <div><button id="topupBtn" class="tiny">Top up</button></div>
       </div>
 
-      <div class="amount-grid" id="amountGrid">
-        <button class="amt" data-value="50"><div class="cashback">₦1 Cashback</div><strong>₦50</strong><small class="tiny">Pay ₦50</small></button>
-        <button class="amt" data-value="100"><div class="cashback">₦2 Cashback</div><strong>₦100</strong><small class="tiny">Pay ₦100</small></button>
-        <button class="amt" data-value="200"><div class="cashback">₦4 Cashback</div><strong>₦200</strong><small class="tiny">Pay ₦200</small></button>
+      <div class="amount-grid" id="amountGrid" style="margin-top:10px">
+        <div class="amt" data-value="50"><div class="cashback">₦1 Cashback</div><strong>₦50</strong></div>
+        <div class="amt" data-value="100"><div class="cashback">₦2 Cashback</div><strong>₦100</strong></div>
+        <div class="amt" data-value="200"><div class="cashback">₦4 Cashback</div><strong>₦200</strong></div>
 
-        <button class="amt" data-value="1000"><div class="cashback">₦10 Cashback</div><strong>₦1,000</strong><small class="tiny">Pay ₦1,000</small></button>
-        <button class="amt" data-value="2000"><div class="cashback">₦20 Cashback</div><strong>₦2,000</strong><small class="tiny">Pay ₦2,000</small></button>
-        <button class="amt" data-value="10000"><div class="cashback">₦100 Cashback</div><strong>₦10,000</strong><small class="tiny">Pay ₦10,000</small></button>
+        <div class="amt" data-value="1000"><div class="cashback">₦10 Cashback</div><strong>₦1,000</strong></div>
+        <div class="amt" data-value="2000"><div class="cashback">₦20 Cashback</div><strong>₦2,000</strong></div>
+        <div class="amt" data-value="10000"><div class="cashback">₦100 Cashback</div><strong>₦10,000</strong></div>
       </div>
 
       <div class="custom-row">
         <div class="naira">₦</div>
-        <input id="customAmount" class="amount-input" type="number" placeholder="50-500,000" min="50" max="500000" />
+        <input id="customAmount" type="number" placeholder="50 - 500,000" min="50" max="500000" />
         <button id="payBtn" class="pay-btn" disabled>Pay</button>
       </div>
 
@@ -129,404 +102,246 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
-          <div style="font-weight:700">Save Beneficiary</div>
+          <div style="font-weight:700">Save as beneficiary</div>
           <div class="tiny">Save this number for next time</div>
         </div>
-        <label>
-          <input id="saveToggle" type="checkbox" />
-        </label>
+        <label><input id="saveToggle" type="checkbox" /></label>
       </div>
-    </div>
-
-    <!-- Service -->
-    <div class="card service-row">
-      <div class="service-left">
-        <div class="service-icon">USSD</div>
-        <div>
-          <div style="font-weight:700">USSD Enquiry</div>
-          <div class="tiny">Check phone balance and more</div>
-        </div>
-      </div>
-      <div>›</div>
     </div>
   </div>
 
-  <!-- Carrier selection modal with logos -->
+  <!-- carrier modal -->
   <div id="modalOverlay" class="modal-overlay" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true">
-      <div class="modal-handle"></div>
-      <div id="carrierList" class="modal-list"></div>
+    <div class="modal" role="dialog">
+      <div class="modal-list" id="carrierList"></div>
     </div>
   </div>
 
-  <!-- Confirm modal -->
+  <!-- confirm -->
   <div id="confirmOverlay" class="confirm-overlay" aria-hidden="true">
-    <div class="confirm-card" role="dialog">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:44px;height:44px;border-radius:8px;background:#f0fdf6;display:flex;align-items:center;justify-content:center">✓</div>
-        <div>
-          <div id="confirmTitle" style="font-weight:700"></div>
-          <div id="confirmSub" class="tiny"></div>
-        </div>
-      </div>
+    <div class="confirm-card">
+      <div style="font-weight:700" id="confirmTitle">Confirm Purchase</div>
+      <div style="margin-top:8px" class="tiny" id="confirmSub"></div>
 
       <div style="margin-top:12px">
         <div style="display:flex;justify-content:space-between"><div class="tiny">Amount</div><div id="confirmAmount" style="font-weight:800"></div></div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Fee</div><div id="confirmFee" style="font-weight:700"></div></div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Total</div><div id="confirmTotal" style="font-weight:900"></div></div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Phone</div><div id="confirmPhone"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Fee</div><div id="confirmFee"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Total</div><div id="confirmTotal" style="font-weight:800"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">To</div><div id="confirmTo"></div></div>
       </div>
 
-      <div class="confirm-actions">
-        <button id="cancelConfirm" class="tiny">Cancel</button>
-        <button id="okConfirm" class="pay-btn">Confirm</button>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+        <button id="cancelBtn" class="tiny">Cancel</button>
+        <button id="confirmBtn" class="pay-btn">Confirm</button>
       </div>
     </div>
   </div>
 
-  <div id="toast" class="toast">Payment successful ✅</div>
+  <div id="toast" class="toast">Payment successful</div>
 
-  <script>
-  /*******************************************************
-   * CONFIG
-   *******************************************************/
-  const BACKEND_URL = 'https://payme-update.onrender.com'; // <-- your Render backend
-  const USER_ID = 1; // <-- change to dynamic logged-in user ID in your app
+<script>
+/* ---------------- CONFIG ---------------- */
+const API_BASE = "https://payme-update.onrender.com"; // your backend
+/* ---------------- helpers (same keys as dashboard) ---------------- */
+function getStoredUser() {
+  const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+  try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
+}
+function setStoredUser(u) {
+  try {
+    localStorage.setItem("loggedInUser", JSON.stringify(u));
+    localStorage.setItem("user", JSON.stringify(u));
+    // also write a short-lived event key so other pages can pick up
+    const ev = { type: "airtime_purchase", user: u, ts: Date.now() };
+    localStorage.setItem("payme_event", JSON.stringify(ev));
+    setTimeout(()=> localStorage.removeItem("payme_event"), 600);
+  } catch(e){ console.error("storage error", e); }
+}
+function showToast(msg,ms=1800){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',ms); }
 
-  /*******************************************************
-   * NETWORKS (logos use inline SVG or shapes; replace with images if you have them)
-   *******************************************************/
-  const networks = [
-    {
-      id: 'airtel',
-      name: 'Airtel',
-      color: '#e53935',
-      short: 'A',
-      // inline SVG (simple circle + letter). You can replace `svg` value with <img src="...">
-      svg: `<svg width="34" height="22" viewBox="0 0 50 30" xmlns="http://www.w3.org/2000/svg">
-             <rect width="50" height="30" rx="6" fill="#e53935"></rect>
-             <text x="25" y="20" fill="#fff" font-size="14" font-family="Inter, Arial" font-weight="700" text-anchor="middle">airtel</text>
-           </svg>`
-    },
-    {
-      id: 'mtn',
-      name: 'MTN',
-      color: '#ffd54f',
-      short: 'M',
-      svg: `<svg width="40" height="26" viewBox="0 0 60 34">
-             <rect width="60" height="34" rx="6" fill="#ffd54f"></rect>
-             <text x="30" y="22" fill="#111" font-size="14" font-family="Inter, Arial" font-weight="800" text-anchor="middle">MTN</text>
-           </svg>`
-    },
-    {
-      id: 'glo',
-      name: 'Glo',
-      color: '#35b44a',
-      short: 'g',
-      svg: `<svg width="34" height="22" viewBox="0 0 50 30">
-             <rect width="50" height="30" rx="6" fill="#35b44a"></rect>
-             <text x="25" y="20" fill="#fff" font-size="14" font-family="Inter, Arial" font-weight="800" text-anchor="middle">glo</text>
-           </svg>`
-    },
-    {
-      id: '9mobile',
-      name: '9Mobile',
-      color: '#00a0b0',
-      short: '9',
-      svg: `<svg width="34" height="22" viewBox="0 0 50 30">
-             <rect width="50" height="30" rx="6" fill="#00a0b0"></rect>
-             <text x="25" y="20" fill="#fff" font-size="14" font-family="Inter, Arial" font-weight="800" text-anchor="middle">9</text>
-           </svg>`
+/* ---------------- networks (inline badges) ---------------- */
+const networks = [
+  { id: 'airtel', name:'Airtel', color:'#e53935', label:'airtel', svg: `<svg width="90" height="28" xmlns="http://www.w3.org/2000/svg"><rect rx="6" width="90" height="28" fill="#e53935"/><text x="45" y="19" font-family="Inter, Arial" font-weight="700" font-size="12" text-anchor="middle" fill="#fff">AIRTEL</text></svg>` },
+  { id: 'mtn', name:'MTN', color:'#ffd54f', label:'MTN', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#ffd54f"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#111">MTN</text></svg>` },
+  { id: 'glo', name:'Glo', color:'#35b44a', label:'GLO', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#35b44a"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">GLO</text></svg>` },
+  { id: '9mobile', name:'9Mobile', color:'#00a0b0', label:'9M', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#00a0b0"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">9MOBILE</text></svg>` }
+];
+
+/* ---------------- init UI ---------------- */
+let selectedNetwork = networks[0];
+const networkBadge = document.getElementById('networkBadge');
+const networkName = document.getElementById('networkName');
+const chooseNetworkBtn = document.getElementById('chooseNetworkBtn');
+const modalOverlay = document.getElementById('modalOverlay');
+const carrierList = document.getElementById('carrierList');
+const recipientInput = document.getElementById('recipientInput');
+const amountBtns = document.querySelectorAll('.amt');
+const customAmount = document.getElementById('customAmount');
+const payBtn = document.getElementById('payBtn');
+const confirmOverlay = document.getElementById('confirmOverlay');
+const confirmAmount = document.getElementById('confirmAmount');
+const confirmFee = document.getElementById('confirmFee');
+const confirmTotal = document.getElementById('confirmTotal');
+const confirmTo = document.getElementById('confirmTo');
+const confirmTitle = document.getElementById('confirmTitle');
+const cancelBtn = document.getElementById('cancelBtn');
+const confirmBtn = document.getElementById('confirmBtn');
+const amountGrid = document.getElementById('amountGrid');
+
+function renderNetworkBadge(n){
+  networkBadge.style.background = n.color;
+  networkBadge.innerHTML = n.svg;
+  networkName.textContent = n.name;
+}
+renderNetworkBadge(selectedNetwork);
+
+/* show modal list */
+chooseNetworkBtn.addEventListener('click', ()=> {
+  carrierList.innerHTML = '';
+  networks.forEach(n => {
+    const div = document.createElement('div');
+    div.className = 'carrier-item';
+    div.innerHTML = `<div class="logo-badge" style="background:${n.color}">${n.svg}</div><div style="font-weight:700;flex:1">${n.name}</div><div style="color:#999">${n.label}</div>`;
+    div.addEventListener('click', () => {
+      selectedNetwork = n;
+      renderNetworkBadge(n);
+      modalOverlay.classList.remove('show');
+    });
+    carrierList.appendChild(div);
+  });
+  modalOverlay.classList.add('show');
+});
+modalOverlay.addEventListener('click', (e)=> { if(e.target === modalOverlay) modalOverlay.classList.remove('show'); });
+
+/* amount selection */
+amountBtns.forEach(b => {
+  b.addEventListener('click', () => {
+    amountBtns.forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    customAmount.value = '';
+    updatePayState(Number(b.dataset.value));
+  });
+});
+customAmount.addEventListener('input', ()=> {
+  amountBtns.forEach(x=>x.classList.remove('active'));
+  const v = Number(customAmount.value);
+  updatePayState(isNaN(v) ? null : v);
+});
+recipientInput.addEventListener('input', ()=> updatePayState(null));
+
+let selectedAmount = null;
+function validPhone(p){
+  if(!p) return false;
+  const digits = p.replace(/\D/g,'');
+  return digits.length >= 7; // keep flexible
+}
+function updatePayState(amountCandidate){
+  // amountCandidate if passed, else read custom or current selectedAmount
+  if (typeof amountCandidate === 'number') selectedAmount = amountCandidate;
+  else if (customAmount.value) selectedAmount = Number(customAmount.value) || null;
+  // validate
+  const to = (recipientInput.value || '').trim();
+  const ok = selectedAmount && selectedAmount >= 50 && selectedAmount <= 500000 && validPhone(to);
+  payBtn.disabled = !ok;
+}
+
+/* on load: prefill recipient with stored user phone (common UX) */
+window.addEventListener('load', ()=> {
+  const user = getStoredUser();
+  if (user && user.phone) {
+    // default recipient blank — but keep a hint: we won't autofill recipient with user phone
+    // you may want to show a "My number" quick button; for now leave blank
+  }
+});
+
+/* ---------------- Pay flow ---------------- */
+payBtn.addEventListener('click', ()=>{
+  const to = recipientInput.value.trim();
+  if (!validPhone(to)) return alert('Enter a valid recipient phone');
+  const amt = Number(selectedAmount || customAmount.value);
+  if (!amt || amt < 50) return alert('Enter a valid amount (minimum ₦50)');
+  const fee = Math.ceil(amt * 0.01);
+  const total = amt + fee;
+
+  confirmTitle.textContent = `Buy ${selectedNetwork.name} Airtime`;
+  document.getElementById('confirmSub').textContent = 'Confirm before we proceed';
+  confirmAmount.textContent = `₦${Number(amt).toLocaleString()}`;
+  confirmFee.textContent = `₦${Number(fee).toLocaleString()}`;
+  confirmTotal.textContent = `₦${Number(total).toLocaleString()}`;
+  confirmTo.textContent = to;
+  confirmOverlay.classList.add('show');
+});
+
+/* cancel/confirm actions */
+cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
+
+confirmBtn.addEventListener('click', async () => {
+  confirmBtn.disabled = true;
+  const recipient = recipientInput.value.trim();
+  const amount = Number(selectedAmount || customAmount.value);
+  const user = getStoredUser();
+  if (!user || !user.phone) { alert('You must be logged in'); confirmBtn.disabled=false; return; }
+
+  const payload = {
+    phone: user.phone,             // user's phone on record (sender)
+    network: selectedNetwork.name,
+    amount: amount,
+    recipient: recipient
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/buy_airtime`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert('Purchase failed: ' + (data.message || data.error || JSON.stringify(data)));
+      console.error('buy_airtime error', data);
+      confirmBtn.disabled = false;
+      return;
     }
-  ];
 
-  /*******************************************************
-   * UI elements
-   *******************************************************/
-  const balanceDisplay = document.getElementById('balanceDisplay');
-  const carrierSelect = document.getElementById('carrierSelect');
-  const carrierLogo = document.getElementById('carrierLogo');
-  const modalOverlay = document.getElementById('modalOverlay');
-  const carrierList = document.getElementById('carrierList');
+    // success -> update localStorage user balance so dashboard auto-refreshes
+    const newBalance = data.balance;
+    // update stored user object
+    const stored = getStoredUser() || {};
+    stored.balance = Number(newBalance);
+    setStoredUser(stored);
 
-  const amountBtns = document.querySelectorAll('.amt');
-  const customAmount = document.getElementById('customAmount');
-  const payBtn = document.getElementById('payBtn');
-  const phoneInput = document.getElementById('phoneInput');
-
-  const confirmOverlay = document.getElementById('confirmOverlay');
-  const confirmTitle = document.getElementById('confirmTitle');
-  const confirmSub = document.getElementById('confirmSub');
-  const confirmAmount = document.getElementById('confirmAmount');
-  const confirmFee = document.getElementById('confirmFee');
-  const confirmTotal = document.getElementById('confirmTotal');
-  const confirmPhone = document.getElementById('confirmPhone');
-  const okConfirm = document.getElementById('okConfirm');
-  const cancelConfirm = document.getElementById('cancelConfirm');
-
-  const toast = document.getElementById('toast');
-  const topupBtn = document.getElementById('topupBtn');
-
-  /*******************************************************
-   * State
-   *******************************************************/
-  let selectedNetwork = networks[0];
-  let selectedAmount = null;
-
-  /*******************************************************
-   * Helpers
-   *******************************************************/
-  function formatN(n){ return '₦' + Number(n).toLocaleString(); }
-  function showToast(msg, ms = 2000){
-    toast.textContent = msg; toast.style.display = 'block';
-    setTimeout(()=> toast.style.display = 'none', ms);
-  }
-
-  /*******************************************************
-   * Build carrier modal UI with logos
-   *******************************************************/
-  function renderCarrierList(){
-    carrierList.innerHTML = '';
-    networks.forEach(n => {
-      const item = document.createElement('div');
-      item.className = 'carrier-item';
-      item.dataset.id = n.id;
-      item.innerHTML = `
-        <div class="logo-badge" style="background:${n.color}">${n.svg}</div>
-        <div class="name">${n.name}</div>
-        <div class="carrier-check" aria-hidden="true"></div>
-      `;
-      item.addEventListener('click', () => {
-        setNetwork(n.id);
-        hideModal();
-      });
-      carrierList.appendChild(item);
-    });
-    // mark active
-    document.querySelectorAll('.carrier-item').forEach(it => {
-      it.classList.toggle('active', it.dataset.id === selectedNetwork.id);
-    });
-  }
-
-  function setNetwork(id){
-    const n = networks.find(x => x.id === id) || networks[0];
-    selectedNetwork = n;
-    // set badge (use svg innerHTML)
-    carrierLogo.innerHTML = n.svg;
-    carrierLogo.style.background = n.color;
-    // mark active in modal
-    document.querySelectorAll('.carrier-item').forEach(it => it.classList.toggle('active', it.dataset.id === id));
-  }
-
-  carrierSelect.addEventListener('click', (e) => {
-    renderCarrierList();
-    modalOverlay.classList.add('show');
-    modalOverlay.setAttribute('aria-hidden','false');
-  });
-
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) hideModal();
-  });
-  function hideModal(){ modalOverlay.classList.remove('show'); modalOverlay.setAttribute('aria-hidden','true'); }
-
-  // initialize carrier badge
-  setNetwork(selectedNetwork.id);
-
-  /*******************************************************
-   * Amount selection & validation
-   *******************************************************/
-  amountBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      amountBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedAmount = Number(btn.dataset.value);
-      customAmount.value = '';
-      updatePayState();
-    });
-  });
-
-  customAmount.addEventListener('input', () => {
-    amountBtns.forEach(b => b.classList.remove('active'));
-    const v = Number(customAmount.value);
-    selectedAmount = (isNaN(v) || v <= 0) ? null : v;
-    updatePayState();
-  });
-
-  phoneInput.addEventListener('input', updatePayState);
-
-  function validPhone(p){
-    if(!p) return false;
-    const digits = p.replace(/\D/g,'');
-    return digits.length >= 7; // approximate
-  }
-
-  function updatePayState(){
-    const amountOk = selectedAmount && selectedAmount >= 50 && selectedAmount <= 500000;
-    const phoneOk = validPhone(phoneInput.value.trim());
-    payBtn.disabled = !(amountOk && phoneOk);
-  }
-
-  /*******************************************************
-   * Fetch balance on load
-   *******************************************************/
-  async function fetchBalance(){
-    try {
-      const res = await fetch(`${BACKEND_URL}/get_balance?user_id=${USER_ID}`);
-      const json = await res.json();
-      if (res.ok) balanceDisplay.textContent = formatN(json.balance);
-      else console.error('balance error', json);
-    } catch(err){
-      console.error('fetchBalance error', err);
+    // optionally save beneficiary if toggle is checked (you can implement server-side later)
+    if (document.getElementById('saveToggle').checked) {
+      // store a small list in localStorage for beneficiaries
+      try {
+        const bs = JSON.parse(localStorage.getItem('beneficiaries') || '[]');
+        if (!bs.includes(recipient)) { bs.unshift(recipient); localStorage.setItem('beneficiaries', JSON.stringify(bs.slice(0,10))); }
+      } catch(e){}
     }
-  }
-  fetchBalance();
 
-  /*******************************************************
-   * Confirm -> call backend -> broadcast event to other pages
-   *******************************************************/
-  payBtn.addEventListener('click', () => {
-    if (!selectedAmount) return alert('Choose or enter an amount (₦50 - ₦500,000).');
-    if (!validPhone(phoneInput.value.trim())) return alert('Enter a valid phone number.');
-    const fee = Math.ceil(selectedAmount * 0.01);
-    const total = selectedAmount + fee;
-    confirmTitle.textContent = `${selectedNetwork.name} airtime`;
-    confirmSub.textContent = `Cashback applies automatically (if eligible)`;
-    confirmAmount.textContent = formatN(selectedAmount);
-    confirmFee.textContent = formatN(fee);
-    confirmTotal.textContent = formatN(total);
-    confirmPhone.textContent = phoneInput.value.trim();
-    confirmOverlay.classList.add('show');
-    confirmOverlay.setAttribute('aria-hidden','false');
-  });
-
-  cancelConfirm.addEventListener('click', () => {
     confirmOverlay.classList.remove('show');
-    confirmOverlay.setAttribute('aria-hidden','true');
-  });
+    showToast('Payment successful ✅');
+    // reset UI
+    amountBtns.forEach(x=>x.classList.remove('active'));
+    customAmount.value = '';
+    recipientInput.value = '';
+    selectedAmount = null;
+    updatePayState(null);
 
-  okConfirm.addEventListener('click', async () => {
-    okConfirm.disabled = true;
-    const amount = Number(selectedAmount);
-    const payload = {
-      user_id: USER_ID,
-      phone: phoneInput.value.trim(),
-      network: selectedNetwork.name,
-      amount
-    };
-    try {
-      const res = await fetch(`${BACKEND_URL}/buy_airtime`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert('Purchase failed: ' + (data.error || JSON.stringify(data)));
-        console.error('buy_airtime failed', data);
-        return;
-      }
+    // Optionally navigate back to dashboard or keep user here
+    // window.location.href = 'dashboard.html';
 
-      // success: update UI
-      balanceDisplay.textContent = formatN(data.balance);
-      showToast('Payment successful ✅');
-      confirmOverlay.classList.remove('show');
-
-      // reset selection
-      amountBtns.forEach(b => b.classList.remove('active'));
-      customAmount.value = '';
-      selectedAmount = null;
-      updatePayState();
-
-            // reset selection
-      amountBtns.forEach(b => b.classList.remove('active'));
-      customAmount.value = '';
-      selectedAmount = null;
-      updatePayState();
-
-      // Broadcast to other tabs/pages (dashboard, transactions)
-      const eventPayload = {
-        type: 'airtime_purchase',
-        transaction: data.transaction, // includes id, amount, fee, total, network, phone, date, status
-        balance: data.balance,
-        source: 'airtime.html',
-        ts: Date.now()
-      };
-
-      broadcastEvent(eventPayload);
-
-    } catch (err) {
-      console.error('network error', err);
-      alert('Network/server error');
-    } finally {
-      okConfirm.disabled = false;
-    }
-  });
-
-  /*******************************************************
-   * Topup helper (for testing) — calls /topup
-   *******************************************************/
-  topupBtn.addEventListener('click', async () => {
-    const val = prompt('Top up amount (for testing):', '5000');
-    if (!val) return;
-    const amt = Number(val);
-    if (isNaN(amt) || amt <= 0) return alert('Invalid amount');
-    try {
-      const res = await fetch(`${BACKEND_URL}/topup`, {
-        method:'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ user_id: USER_ID, amount: amt })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast('Topup successful');
-        balanceDisplay.textContent = formatN(data.balance);
-        // broadcast topup too
-        broadcastEvent({ type: 'topup', balance: data.balance, transaction: data.transaction, ts: Date.now() });
-      } else {
-        alert('Topup error: ' + (data.error || JSON.stringify(data)));
-      }
-    } catch(err) { console.error(err); alert('Topup failed'); }
-  });
-
-  /*******************************************************
-   * Cross-tab notification: BroadcastChannel + localStorage fallback
-   * So other pages (dashboard.html, transactions.html) can listen and refresh
-   *******************************************************/
-  const CHANNEL_NAME = 'paygo_channel';
-  let bc = null;
-  try { bc = new BroadcastChannel(CHANNEL_NAME); }
-  catch(e) { bc = null; }
-
-  function broadcastEvent(payload){
-    // BroadcastChannel (same-origin)
-    if (bc) {
-      try { bc.postMessage(payload); } catch(e) { console.warn('bc post error', e); }
-    }
-    // localStorage fallback (fires storage event in other tabs)
-    try {
-      const key = 'paygo_event';
-      localStorage.setItem(key, JSON.stringify(payload));
-      // remove quickly to keep storage tidy (note: storage events fire even if value removed)
-      setTimeout(()=> localStorage.removeItem(key), 500);
-    } catch(e) { console.warn('localStorage broadcast failed', e); }
+  } catch (err) {
+    console.error('network error', err);
+    alert('Network error while purchasing airtime');
+  } finally {
+    confirmBtn.disabled = false;
   }
+});
 
-  /*******************************************************
-   * optional: also send server-side webhook or event if you need real-time across devices
-   *******************************************************/
+/* close confirm with ESC */
+document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') { confirmOverlay.classList.remove('show'); modalOverlay.classList.remove('show'); } });
 
-  /*******************************************************
-   * Listen for escape key to close modals
-   *******************************************************/
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      hideModal();
-      confirmOverlay.classList.remove('show');
-    }
-  });
-
-  // keep balance up-to-date periodically
-  setInterval(fetchBalance, 30_000);
-  </script>
+</script>
 </body>
 </html>
-
