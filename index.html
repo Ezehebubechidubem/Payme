@@ -5,9 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login</title>
   <style>
+    :root{
+      --primary:#00c853;
+      --primary-dark:#009624;
+      --bg:#f4f6f8;
+      --card:#fff;
+    }
     body {
       font-family: Arial, sans-serif;
-      background: #f4f6f8;
+      background: var(--bg);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -15,7 +21,7 @@
       margin: 0;
     }
     .form-container {
-      background: #fff;
+      background: var(--card);
       padding: 24px;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
@@ -42,12 +48,13 @@
       font-size: 14px;
     }
     input:focus {
-      border-color: #00c853;
+      border-color: var(--primary);
       outline: none;
+      box-shadow: 0 0 0 3px rgba(0,200,83,0.08);
     }
     button {
       width: 100%;
-      background: #00c853;
+      background: var(--primary);
       border: none;
       color: #fff;
       padding: 12px;
@@ -56,78 +63,239 @@
       cursor: pointer;
       font-size: 14px;
     }
-    button:hover {
-      background: #009624;
-    }
+    button[disabled] { opacity: 0.65; cursor: not-allowed; }
+    button:hover { background: var(--primary-dark); }
     .switch {
       text-align: center;
       margin-top: 12px;
       font-size: 14px;
     }
     .switch a {
-      color: #00c853;
+      color: var(--primary);
       text-decoration: none;
       font-weight: bold;
     }
+
+    /* Modal styles (success + error) */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.45);
+      z-index: 9999;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      width: calc(100% - 48px);
+      max-width: 460px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 18px 40px rgba(10,20,30,0.15);
+      text-align: center;
+    }
+    .modal .badge {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+    .modal .badge.success { background: linear-gradient(135deg,#00c853,#43a047); }
+    .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
+    .modal h3 { margin: 6px 0 6px; font-size: 18px; }
+    .modal p { margin: 0 0 12px; color: #555; }
+    .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+    .modal .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
+    .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
+    .modal .btn-primary { background:var(--primary); color:#fff; border:0; }
+
+    /* small spinner */
+    .spinner {
+      display:inline-block;
+      width:16px;
+      height:16px;
+      border:2px solid rgba(255,255,255,0.3);
+      border-top-color:#fff;
+      border-radius:50%;
+      animation: spin .8s linear infinite;
+      vertical-align: middle;
+      margin-left:8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <div class="form-container">
+  <div class="form-container" role="main">
     <h2>Login</h2>
-    <form id="loginForm">
+    <form id="loginForm" autocomplete="on" novalidate>
       <label for="login">Username or Phone</label>
-      <input type="text" id="login" placeholder="Enter username or phone" required>
+      <input type="text" id="login" name="login" placeholder="Enter username or phone" required autocomplete="username">
 
       <label for="password">Password</label>
-      <input type="password" id="password" placeholder="Enter password" required>
+      <input type="password" id="password" name="password" placeholder="Enter password" required autocomplete="current-password">
 
-      <button type="submit">Login</button>
+      <button type="submit" id="submitBtn">Login</button>
     </form>
     <div class="switch">
       Don’t have an account? <a href="paymeregister.html">Register</a>
     </div>
   </div>
 
+  <!-- SUCCESS MODAL -->
+  <div id="successModal" class="modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal" role="document">
+      <div class="badge success">✓</div>
+      <h3 id="successHeading">Login successful</h3>
+      <p id="successText">You are now logged in.</p>
+      <div class="actions">
+        <button id="successOk" class="btn btn-primary">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ERROR MODAL -->
+  <div id="errorModal" class="modal-overlay" aria-hidden="true" role="alertdialog" aria-modal="true">
+    <div class="modal" role="document">
+      <div class="badge error">✕</div>
+      <h3 id="errorHeading">Error</h3>
+      <p id="errorText">An error occurred</p>
+      <div class="actions">
+        <button id="errorOk" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-  document.getElementById("loginForm").addEventListener("submit", async function(e) {
-    e.preventDefault();
+    (function(){
+      const API = "https://payme-update.onrender.com/login"; // unchanged
 
-    const login = document.getElementById("login").value.trim();
-    const password = document.getElementById("password").value;
+      const form = document.getElementById('loginForm');
+      const loginInput = document.getElementById('login');
+      const pwdInput = document.getElementById('password');
+      const submitBtn = document.getElementById('submitBtn');
 
-    try {
-      const response = await fetch("https://payme-update.onrender.com/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login, password })
+      const successModal = document.getElementById('successModal');
+      const successOk = document.getElementById('successOk');
+      const successText = document.getElementById('successText');
+
+      const errorModal = document.getElementById('errorModal');
+      const errorOk = document.getElementById('errorOk');
+      const errorText = document.getElementById('errorText');
+
+      // Helper: show/hide modal
+      function showSuccess(message, onOk) {
+        successText.textContent = message || "You are now logged in.";
+        successModal.classList.add('show');
+        successModal.setAttribute('aria-hidden', 'false');
+        successOk.focus();
+        successOk.onclick = () => {
+          hideModal(successModal);
+          successOk.onclick = null;
+          if (typeof onOk === 'function') onOk();
+        };
+      }
+      function showError(message, onOk) {
+        errorText.textContent = message || "An error occurred.";
+        errorModal.classList.add('show');
+        errorModal.setAttribute('aria-hidden', 'false');
+        errorOk.focus();
+        errorOk.onclick = () => {
+          hideModal(errorModal);
+          errorOk.onclick = null;
+          if (typeof onOk === 'function') onOk();
+        };
+      }
+      function hideModal(m) {
+        m.classList.remove('show');
+        m.setAttribute('aria-hidden', 'true');
+      }
+
+      // close modals on Escape
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          if (successModal.classList.contains('show')) hideModal(successModal);
+          if (errorModal.classList.contains('show')) hideModal(errorModal);
+        }
       });
 
-      const data = await response.json();
-
-      if (data.status === "success") {
-        // ✅ Save full user object (includes id, username, phone, etc.)
-        const user = {
-          id: data.user.id, // important for savings.html
-          username: data.user.username,
-          phone: data.user.phone,
-          accountNumber: data.user.account_number,
-          password: password // keep password so profile/settings don’t break
-        };
-
-        // Store in both keys for compatibility
-        localStorage.setItem("user", JSON.stringify(user));
-        localStorage.setItem("loggedInUser", JSON.stringify(user));
-
-        alert("✅ Login successful!");
-        window.location.href = "paymelogin.html"; // redirect to dashboard
-      } else {
-        alert("❌ " + data.message);
+      // disable/enable login button and show spinner
+      function setLoading(isLoading) {
+        if (isLoading) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = 'Logging in <span class="spinner" aria-hidden="true"></span>';
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = 'Login';
+        }
       }
-    } catch (error) {
-      alert("⚠️ Server error. Please try again later.");
-      console.error(error);
-    }
-  });
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const login = loginInput.value.trim();
+        const password = pwdInput.value;
+
+        // keep original behavior: don't change validation rules
+        // user can see modal errors instead of alert()
+        setLoading(true);
+        try {
+          const res = await fetch(API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ login, password })
+          });
+
+          // parse JSON safely
+          let data = null;
+          try { data = await res.json(); } catch (err) { data = null; }
+
+          if (data && data.status === "success" && data.user) {
+            // preserve exact fields as before (id, username, phone, accountNumber, password)
+            const user = {
+              id: data.user.id,
+              username: data.user.username,
+              phone: data.user.phone,
+              accountNumber: data.user.account_number,
+              password: password
+            };
+            // Store in both keys for compatibility
+            localStorage.setItem("user", JSON.stringify(user));
+            localStorage.setItem("loggedInUser", JSON.stringify(user));
+
+            // show modal; redirect only after user presses Continue (keeps UX similar to alert->redirect)
+            showSuccess("✅ Login successful!", () => {
+              // exact redirect kept
+              window.location.href = "paymelogin.html";
+            });
+
+          } else {
+            // error path: show modal with server-provided message if available
+            const msg = (data && data.message) ? data.message : `Login failed${res && res.status ? " (HTTP " + res.status + ")" : ""}`;
+            showError("❌ " + msg);
+          }
+
+        } catch (err) {
+          // network/server error -> modal
+          console.error("Login error:", err);
+          showError("⚠️ Server error. Please try again later.");
+        } finally {
+          setLoading(false);
+        }
+      });
+
+      // also allow Enter to submit when inputs focused (default form behavior handles it)
+      // Accessibility: focus first input on load
+      window.addEventListener('load', () => {
+        loginInput.focus();
+      });
+    })();
   </script>
 </body>
 </html>
