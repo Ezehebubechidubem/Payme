@@ -437,7 +437,96 @@
       selectedAmount = null;
       updatePayState();
 
+            // reset selection
+      amountBtns.forEach(b => b.classList.remove('active'));
+      customAmount.value = '';
+      selectedAmount = null;
+      updatePayState();
+
       // Broadcast to other tabs/pages (dashboard, transactions)
       const eventPayload = {
         type: 'airtime_purchase',
-        transaction: data.transaction, // includes id, amount, fee, tot
+        transaction: data.transaction, // includes id, amount, fee, total, network, phone, date, status
+        balance: data.balance,
+        source: 'airtime.html',
+        ts: Date.now()
+      };
+
+      broadcastEvent(eventPayload);
+
+    } catch (err) {
+      console.error('network error', err);
+      alert('Network/server error');
+    } finally {
+      okConfirm.disabled = false;
+    }
+  });
+
+  /*******************************************************
+   * Topup helper (for testing) — calls /topup
+   *******************************************************/
+  topupBtn.addEventListener('click', async () => {
+    const val = prompt('Top up amount (for testing):', '5000');
+    if (!val) return;
+    const amt = Number(val);
+    if (isNaN(amt) || amt <= 0) return alert('Invalid amount');
+    try {
+      const res = await fetch(`${BACKEND_URL}/topup`, {
+        method:'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ user_id: USER_ID, amount: amt })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Topup successful');
+        balanceDisplay.textContent = formatN(data.balance);
+        // broadcast topup too
+        broadcastEvent({ type: 'topup', balance: data.balance, transaction: data.transaction, ts: Date.now() });
+      } else {
+        alert('Topup error: ' + (data.error || JSON.stringify(data)));
+      }
+    } catch(err) { console.error(err); alert('Topup failed'); }
+  });
+
+  /*******************************************************
+   * Cross-tab notification: BroadcastChannel + localStorage fallback
+   * So other pages (dashboard.html, transactions.html) can listen and refresh
+   *******************************************************/
+  const CHANNEL_NAME = 'paygo_channel';
+  let bc = null;
+  try { bc = new BroadcastChannel(CHANNEL_NAME); }
+  catch(e) { bc = null; }
+
+  function broadcastEvent(payload){
+    // BroadcastChannel (same-origin)
+    if (bc) {
+      try { bc.postMessage(payload); } catch(e) { console.warn('bc post error', e); }
+    }
+    // localStorage fallback (fires storage event in other tabs)
+    try {
+      const key = 'paygo_event';
+      localStorage.setItem(key, JSON.stringify(payload));
+      // remove quickly to keep storage tidy (note: storage events fire even if value removed)
+      setTimeout(()=> localStorage.removeItem(key), 500);
+    } catch(e) { console.warn('localStorage broadcast failed', e); }
+  }
+
+  /*******************************************************
+   * optional: also send server-side webhook or event if you need real-time across devices
+   *******************************************************/
+
+  /*******************************************************
+   * Listen for escape key to close modals
+   *******************************************************/
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideModal();
+      confirmOverlay.classList.remove('show');
+    }
+  });
+
+  // keep balance up-to-date periodically
+  setInterval(fetchBalance, 30_000);
+  </script>
+</body>
+</html>
+
