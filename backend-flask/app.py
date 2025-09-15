@@ -806,6 +806,90 @@ def savings_withdraw():
 
     return jsonify({"status": "success", "message": f"₦{payout} credited to main balance"}), 200
 
+@app.route("/buy_airtime", methods=["POST"])
+def buy_airtime():
+    """
+    Body (JSON): { phone: <user phone (11 digits)>, network: <MTN|Glo|Airtel|9Mobile>, amount: <number>, recipient: <destination phone> }
+    Deducts (amount + 1% fee) from user's balance, writes a transaction, returns new balance + transaction.
+    """
+    data, err, code = json_required(["phone", "network", "amount", "recipient"])
+    if err:
+        return err, code
+
+    phone = str(data["phone"]).strip()
+    network = str(data["network"]).strip()
+    recipient = str(data["recipient"]).strip()
+    try:
+        amount = float(data["amount"])
+    except Exception:
+        return jsonify({"status": "error", "message": "amount must be a number"}), 400
+
+    if amount <= 0:
+        return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
+
+    # fee: 1% rounded up
+    fee = int(math.ceil(amount * 0.01))
+    total = float(amount + fee)
+
+    now_iso = datetime.now().isoformat()
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # find user by phone
+        cur.execute("SELECT id, balance FROM users WHERE phone = ?", (phone,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        user_id = user["id"]
+        balance = float(user["balance"])
+
+        if balance < total:
+            return jsonify({"status": "error", "message": "Insufficient balance", "balance": balance}), 400
+
+        # deduct user balance
+        cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (total, user_id))
+
+        # build 'other_party' with readable info
+        other_party = f"airtime|network:{network}|to:{recipient}|fee:{fee}|value:{amount}"
+
+        # insert transaction - compatible with SQLite and Postgres
+        if DATABASE_URL:
+            # Postgres: RETURNING id
+            cur.execute(
+                "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
+                (user_id, "Airtime", total, other_party, now_iso),
+            )
+            row = cur.fetchone()
+            txn_id = row["id"] if row and "id" in row else None
+        else:
+            cur.execute(
+                "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                (user_id, "Airtime", total, other_party, now_iso),
+            )
+            # sqlite cursor supports lastrowid
+            txn_id = cur.lastrowid
+
+        # fetch new balance
+        cur.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+        newbal = cur.fetchone()
+        new_balance = float(newbal["balance"]) if newbal else None
+
+    # prepare response transaction object
+    txn = {
+        "id": txn_id,
+        "type": "Airtime",
+        "network": network,
+        "recipient": recipient,
+        "amount": amount,
+        "fee": fee,
+        "total": total,
+        "date": now_iso,
+        "status": "success",
+    }
+
+    return jsonify({"status": "success", "message": "Airtime purchased", "balance": new_balance, "transaction": txn}), 200
 
 # -------------------------------------------------
 # Startup
