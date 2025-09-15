@@ -4,12 +4,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>PAYME — Airtime</title>
-
-  <!-- font + icons like your dashboard -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
-
   <style>
-    /* Keep styles compact and consistent with your dashboard */
     :root{
       --primary:#00c853; --primary-dark:#009624; --bg:#ffffff; --card:#ffffff;
       --muted:#777; --soft:#e8f5e9; --line:#e0e0e0; --text:#1b1b1b;
@@ -34,7 +30,6 @@
     .pay-btn{background:var(--primary);color:#fff;border:0;padding:10px 14px;border-radius:999px;font-weight:700;cursor:pointer}
     .pay-btn[disabled]{opacity:0.45;cursor:not-allowed}
     .tiny{font-size:13px;color:var(--muted)}
-    /* modal */
     .modal-overlay{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.36);z-index:60}
     .modal-overlay.show{display:flex}
     .modal{width:100%;max-width:420px;background:var(--card);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px;box-shadow:0 -10px 30px rgba(12,18,20,0.12)}
@@ -45,6 +40,9 @@
     .confirm-overlay.show{display:flex}
     .confirm-card{background:#fff;padding:16px;border-radius:12px;width:92%;max-width:420px}
     .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0e9f72;color:#fff;padding:10px 14px;border-radius:999px;display:none}
+    .muted-note{font-size:12px;color:#888;margin-top:8px}
+    .loader { display:inline-block; width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,0.2); border-top-color: #fff; animation: spin .7s linear infinite; vertical-align: middle; margin-left:8px; }
+    @keyframes spin { to { transform: rotate(360deg);} }
   </style>
 </head>
 <body>
@@ -68,6 +66,7 @@
       <div style="margin-top:10px">
         <input id="recipientInput" type="tel" placeholder="e.g 0803xxxxxxx" inputmode="tel" />
       </div>
+      <div class="muted-note">Tip: enter recipient number in local format (e.g. 0803xxxxxxx)</div>
     </div>
 
     <!-- Amount -->
@@ -140,9 +139,10 @@
   <div id="toast" class="toast">Payment successful</div>
 
 <script>
-/* ---------------- CONFIG ---------------- */
+/* ---------- CONFIG ---------- */
 const API_BASE = "https://payme-update.onrender.com"; // your backend
-/* ---------------- helpers (same keys as dashboard) ---------------- */
+
+/* ---------- small helpers ---------- */
 function getStoredUser() {
   const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
   try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
@@ -151,23 +151,26 @@ function setStoredUser(u) {
   try {
     localStorage.setItem("loggedInUser", JSON.stringify(u));
     localStorage.setItem("user", JSON.stringify(u));
-    // also write a short-lived event key so other pages can pick up
+    // short event so other tabs can pick up
     const ev = { type: "airtime_purchase", user: u, ts: Date.now() };
     localStorage.setItem("payme_event", JSON.stringify(ev));
-    setTimeout(()=> localStorage.removeItem("payme_event"), 600);
+    setTimeout(()=> localStorage.removeItem("payme_event"), 800);
   } catch(e){ console.error("storage error", e); }
 }
-function showToast(msg,ms=1800){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',ms); }
+function showToast(msg, ms=1600){
+  const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block';
+  setTimeout(()=> t.style.display = 'none', ms);
+}
 
-/* ---------------- networks (inline badges) ---------------- */
+/* ---------- networks ---------- */
 const networks = [
-  { id: 'airtel', name:'Airtel', color:'#e53935', label:'airtel', svg: `<svg width="90" height="28" xmlns="http://www.w3.org/2000/svg"><rect rx="6" width="90" height="28" fill="#e53935"/><text x="45" y="19" font-family="Inter, Arial" font-weight="700" font-size="12" text-anchor="middle" fill="#fff">AIRTEL</text></svg>` },
-  { id: 'mtn', name:'MTN', color:'#ffd54f', label:'MTN', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#ffd54f"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#111">MTN</text></svg>` },
-  { id: 'glo', name:'Glo', color:'#35b44a', label:'GLO', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#35b44a"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">GLO</text></svg>` },
-  { id: '9mobile', name:'9Mobile', color:'#00a0b0', label:'9M', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#00a0b0"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">9MOBILE</text></svg>` }
+  { id: 'airtel', name:'Airtel', color:'#e53935', short:'AIRTEL', svg: `<svg width="90" height="28" xmlns="http://www.w3.org/2000/svg"><rect rx="6" width="90" height="28" fill="#e53935"/><text x="45" y="19" font-family="Inter, Arial" font-weight="700" font-size="12" text-anchor="middle" fill="#fff">AIRTEL</text></svg>` },
+  { id: 'mtn', name:'MTN', color:'#ffd54f', short:'MTN', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#ffd54f"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#111">MTN</text></svg>` },
+  { id: 'glo', name:'Glo', color:'#35b44a', short:'GLO', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#35b44a"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">GLO</text></svg>` },
+  { id: '9mobile', name:'9Mobile', color:'#00a0b0', short:'9MOBILE', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#00a0b0"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">9MOBILE</text></svg>` }
 ];
 
-/* ---------------- init UI ---------------- */
+/* ---------- UI refs ---------- */
 let selectedNetwork = networks[0];
 const networkBadge = document.getElementById('networkBadge');
 const networkName = document.getElementById('networkName');
@@ -186,7 +189,6 @@ const confirmTo = document.getElementById('confirmTo');
 const confirmTitle = document.getElementById('confirmTitle');
 const cancelBtn = document.getElementById('cancelBtn');
 const confirmBtn = document.getElementById('confirmBtn');
-const amountGrid = document.getElementById('amountGrid');
 
 function renderNetworkBadge(n){
   networkBadge.style.background = n.color;
@@ -195,13 +197,15 @@ function renderNetworkBadge(n){
 }
 renderNetworkBadge(selectedNetwork);
 
-/* show modal list */
+/* ---------- modal ---------- */
 chooseNetworkBtn.addEventListener('click', ()=> {
   carrierList.innerHTML = '';
   networks.forEach(n => {
     const div = document.createElement('div');
     div.className = 'carrier-item';
-    div.innerHTML = `<div class="logo-badge" style="background:${n.color}">${n.svg}</div><div style="font-weight:700;flex:1">${n.name}</div><div style="color:#999">${n.label}</div>`;
+    div.innerHTML = `<div class="logo-badge" style="background:${n.color}">${n.svg}</div>
+                     <div style="font-weight:700;flex:1">${n.name}</div>
+                     <div style="color:#999">${n.short}</div>`;
     div.addEventListener('click', () => {
       selectedNetwork = n;
       renderNetworkBadge(n);
@@ -213,48 +217,49 @@ chooseNetworkBtn.addEventListener('click', ()=> {
 });
 modalOverlay.addEventListener('click', (e)=> { if(e.target === modalOverlay) modalOverlay.classList.remove('show'); });
 
-/* amount selection */
+/* ---------- amount selection & validation ---------- */
+let selectedAmount = null;
 amountBtns.forEach(b => {
   b.addEventListener('click', () => {
     amountBtns.forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     customAmount.value = '';
-    updatePayState(Number(b.dataset.value));
+    selectedAmount = Number(b.dataset.value);
+    updatePayState();
   });
 });
 customAmount.addEventListener('input', ()=> {
   amountBtns.forEach(x=>x.classList.remove('active'));
   const v = Number(customAmount.value);
-  updatePayState(isNaN(v) ? null : v);
+  selectedAmount = isNaN(v) ? null : v;
+  updatePayState();
 });
-recipientInput.addEventListener('input', ()=> updatePayState(null));
+recipientInput.addEventListener('input', updatePayState);
 
-let selectedAmount = null;
 function validPhone(p){
   if(!p) return false;
   const digits = p.replace(/\D/g,'');
-  return digits.length >= 7; // keep flexible
+  return digits.length >= 7; // len >=7 is flexible for different formats; server will handle correctness for user phone
 }
-function updatePayState(amountCandidate){
-  // amountCandidate if passed, else read custom or current selectedAmount
-  if (typeof amountCandidate === 'number') selectedAmount = amountCandidate;
-  else if (customAmount.value) selectedAmount = Number(customAmount.value) || null;
-  // validate
+
+function updatePayState(){
   const to = (recipientInput.value || '').trim();
   const ok = selectedAmount && selectedAmount >= 50 && selectedAmount <= 500000 && validPhone(to);
   payBtn.disabled = !ok;
 }
 
-/* on load: prefill recipient with stored user phone (common UX) */
-window.addEventListener('load', ()=> {
+/* ---------- load guard: require logged-in user ---------- */
+window.addEventListener('load', () => {
   const user = getStoredUser();
-  if (user && user.phone) {
-    // default recipient blank — but keep a hint: we won't autofill recipient with user phone
-    // you may want to show a "My number" quick button; for now leave blank
+  if (!user || !user.phone) {
+    alert('You must be logged in to buy airtime. Redirecting to login/dashboard.');
+    // prefer redirect to dashboard or login page in your app:
+    window.location.href = 'dashboard.html';
+    return;
   }
 });
 
-/* ---------------- Pay flow ---------------- */
+/* ---------- purchase flow ---------- */
 payBtn.addEventListener('click', ()=>{
   const to = recipientInput.value.trim();
   if (!validPhone(to)) return alert('Enter a valid recipient phone');
@@ -272,9 +277,9 @@ payBtn.addEventListener('click', ()=>{
   confirmOverlay.classList.add('show');
 });
 
-/* cancel/confirm actions */
 cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
 
+/* Confirm + call backend */
 confirmBtn.addEventListener('click', async () => {
   confirmBtn.disabled = true;
   const recipient = recipientInput.value.trim();
@@ -282,8 +287,12 @@ confirmBtn.addEventListener('click', async () => {
   const user = getStoredUser();
   if (!user || !user.phone) { alert('You must be logged in'); confirmBtn.disabled=false; return; }
 
+  // small UI loading indicator
+  const oldHtml = confirmBtn.innerHTML;
+  confirmBtn.innerHTML = 'Processing <span class="loader"></span>';
+
   const payload = {
-    phone: user.phone,             // user's phone on record (sender)
+    phone: user.phone,             // your backend identifies sender via phone
     network: selectedNetwork.name,
     amount: amount,
     recipient: recipient
@@ -295,53 +304,82 @@ confirmBtn.addEventListener('click', async () => {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!res.ok) {
-      alert('Purchase failed: ' + (data.message || data.error || JSON.stringify(data)));
-      console.error('buy_airtime error', data);
+
+    // parse JSON safely
+    let data = null;
+    try { data = await res.json(); } catch(e) { data = null; }
+
+    // unified error handling: backend sometimes returns {"status":"error", "message":...}
+    if (!res.ok || (data && data.status && data.status !== 'success')) {
+      const reason = (data && (data.message || data.error)) ? (data.message || data.error) : (data ? JSON.stringify(data) : `HTTP ${res.status}`);
+      console.error('buy_airtime failed', res.status, data);
+      alert('Purchase failed: ' + reason);
       confirmBtn.disabled = false;
+      confirmBtn.innerHTML = oldHtml;
       return;
     }
 
-    // success -> update localStorage user balance so dashboard auto-refreshes
-    const newBalance = data.balance;
-    // update stored user object
-    const stored = getStoredUser() || {};
-    stored.balance = Number(newBalance);
-    setStoredUser(stored);
+    // Success path: backend should return new balance and optional transaction
+    // Accept multiple possible shapes: { balance: <num>, transaction: {...} } OR {status:'success', balance:..., transaction:...}
+    const newBalance = (data && (typeof data.balance !== 'undefined')) ? Number(data.balance) : null;
+    const txn = data && data.transaction ? data.transaction : {
+      id: null, type: 'Airtime', network: selectedNetwork.name, recipient: recipient, amount: amount,
+      fee: Math.ceil(amount * 0.01), total: (amount + Math.ceil(amount*0.01)), date: (new Date()).toISOString(), status: 'success'
+    };
 
-    // optionally save beneficiary if toggle is checked (you can implement server-side later)
-    if (document.getElementById('saveToggle').checked) {
-      // store a small list in localStorage for beneficiaries
+    // If backend didn't provide updated balance, fetch /user/<phone> to be sure
+    let updatedUser = user;
+    if (newBalance === null) {
       try {
-        const bs = JSON.parse(localStorage.getItem('beneficiaries') || '[]');
-        if (!bs.includes(recipient)) { bs.unshift(recipient); localStorage.setItem('beneficiaries', JSON.stringify(bs.slice(0,10))); }
-      } catch(e){}
+        const r2 = await fetch(`${API_BASE}/user/${encodeURIComponent(user.phone)}`);
+        if (r2.ok) {
+          const j = await r2.json();
+          if (j && j.status === 'success' && j.user) {
+            updatedUser = j.user;
+          }
+        }
+      } catch(err2){
+        console.warn('Could not refetch user after purchase', err2);
+      }
+    } else {
+      updatedUser = Object.assign({}, user, { balance: newBalance });
     }
 
+    // Persist updated user to localStorage so dashboard picks it up
+    setStoredUser(updatedUser);
+
+    // Fire event payload that transactions.html listener can parse
+    const evt = { type:'airtime_purchase', transaction: txn, balance: (updatedUser.balance || newBalance), ts: Date.now() };
+    try {
+      localStorage.setItem('payme_event', JSON.stringify(evt));
+      setTimeout(()=> localStorage.removeItem('payme_event'), 1000);
+    } catch(e){ /* ignore */ }
+
+    // success UI
     confirmOverlay.classList.remove('show');
     showToast('Payment successful ✅');
+
     // reset UI
     amountBtns.forEach(x=>x.classList.remove('active'));
     customAmount.value = '';
     recipientInput.value = '';
     selectedAmount = null;
-    updatePayState(null);
+    updatePayState();
 
-    // Optionally navigate back to dashboard or keep user here
+    // optional: redirect to dashboard or transactions
     // window.location.href = 'dashboard.html';
 
   } catch (err) {
-    console.error('network error', err);
-    alert('Network error while purchasing airtime');
+    console.error('Network error', err);
+    alert('Network error while purchasing airtime — check console for details.');
   } finally {
     confirmBtn.disabled = false;
+    confirmBtn.innerHTML = oldHtml;
   }
 });
 
-/* close confirm with ESC */
+/* close overlays on ESC */
 document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') { confirmOverlay.classList.remove('show'); modalOverlay.classList.remove('show'); } });
-
 </script>
 </body>
 </html>
