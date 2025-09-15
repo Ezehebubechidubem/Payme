@@ -89,6 +89,49 @@
     background: #ccc !important;
     cursor: not-allowed;
   }
+
+  /* Modal popup styles (used to replace alerts) */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.45);
+    z-index: 9999;
+  }
+  .modal-overlay.show {
+    display: flex;
+  }
+  .modal {
+    width: calc(100% - 48px);
+    max-width: 420px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 18px 40px rgba(10,20,30,0.15);
+    text-align: center;
+  }
+  .modal .badge {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    margin-bottom: 12px;
+    color: #fff;
+  }
+  .modal .badge.success { background: linear-gradient(135deg,#00c853,#43a047); }
+  .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
+  .modal h3 { margin: 6px 0 6px; font-size: 18px; }
+  .modal p { margin: 0 0 12px; color: #555; }
+  .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+  .modal .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
+  .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
+  .modal .btn-primary { background:#00c853; color:#fff; border:0; }
+
   </style>
 </head>
 <body>
@@ -143,10 +186,76 @@
     <!-- Back button -->
       <button class="back-btn" onclick="window.location.href='paymelogin.html'">⬅ Back to Dashboard</button>
 
+  <!-- SUCCESS / ERROR POPUPS (replace alert) -->
+  <div id="successModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="badge success">✓</div>
+      <h3 id="successTitle">Success</h3>
+      <p id="successMessage">Operation completed</p>
+      <div class="actions">
+        <button id="successOk" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="errorModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="alertdialog" aria-modal="true">
+      <div class="badge error">✕</div>
+      <h3 id="errorTitle">Error</h3>
+      <p id="errorMessage">Something went wrong</p>
+      <div class="actions">
+        <button id="errorOk" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script>
   (function(){
     // CONFIG: your backend base URL (unchanged)
     const API_BASE = "https://payme-update.onrender.com";
+
+    // modal helpers (replace alert)
+    const successModal = document.getElementById('successModal');
+    const successTitle = document.getElementById('successTitle');
+    const successMessage = document.getElementById('successMessage');
+    const successOk = document.getElementById('successOk');
+
+    const errorModal = document.getElementById('errorModal');
+    const errorTitle = document.getElementById('errorTitle');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorOk = document.getElementById('errorOk');
+
+    function showSuccess(message, title = "Success", onOk = null) {
+      successTitle.textContent = title;
+      successMessage.textContent = message || "";
+      successModal.classList.add('show');
+      successModal.setAttribute('aria-hidden','false');
+      successOk.focus();
+      // set one-time handler
+      successOk.onclick = function() {
+        successModal.classList.remove('show');
+        successModal.setAttribute('aria-hidden','true');
+        successOk.onclick = null;
+        if (typeof onOk === "function") {
+          try { onOk(); } catch(e){ console.warn(e); }
+        }
+      };
+    }
+    function showError(message, title = "Error", onOk = null) {
+      errorTitle.textContent = title;
+      errorMessage.textContent = message || "";
+      errorModal.classList.add('show');
+      errorModal.setAttribute('aria-hidden','false');
+      errorOk.focus();
+      errorOk.onclick = function() {
+        errorModal.classList.remove('show');
+        errorModal.setAttribute('aria-hidden','true');
+        errorOk.onclick = null;
+        if (typeof onOk === "function") {
+          try { onOk(); } catch(e){ console.warn(e); }
+        }
+      };
+    }
 
     // countdown intervals map
     const countdownMap = new Map();
@@ -381,7 +490,8 @@
     // withdraw handler
     async function handleWithdraw(user, savingsId, amount, type, rowId) {
       if (!user || !user.id) {
-        alert("User not ready. Try logging in again.");
+        // replaced alert with popup and return (original behavior returned immediately)
+        showError("User not ready. Try logging in again.", "User not ready");
         return;
       }
 
@@ -403,34 +513,45 @@
           // refresh stored balance so dashboard sees updated balance
           await refreshStoredBalance(user);
 
-          alert(json.message || `₦${amount} withdrawn and credited to main balance.`);
-          setTimeout(() => loadSavings(user), 800);
+          // replaced alert with popup; when user clicks OK, call loadSavings (to match original alert+setTimeout behavior)
+          showSuccess(json.message || `₦${amount} withdrawn and credited to main balance.`, "Withdrawn", function(){
+            setTimeout(() => loadSavings(user), 800);
+          });
         } else {
           const msg = (json && json.message) ? json.message : "Withdrawal failed";
-          alert("❌ " + msg);
-          setTimeout(() => loadSavings(user), 500);
+          // replace alert + immediate setTimeout -> show popup then reload
+          showError("❌ " + msg, "Withdraw failed", function(){
+            setTimeout(() => loadSavings(user), 500);
+          });
         }
       } catch (err) {
         console.error("Withdraw error:", err);
-        alert("❌ Withdraw failed (network error)");
-        setTimeout(() => loadSavings(user), 500);
+        // replace alert -> show error popup then reload after dismiss
+        showError("❌ Withdraw failed (network error)", "Network error", function(){
+          setTimeout(() => loadSavings(user), 500);
+        });
       }
     }
 
     // create savings
     async function handleCreateSavings(user, amount, savingsType, durationDays) {
       if (!user) {
-        alert("Please login first");
+        // replaced alert with popup and return
+        showError("Please login first", "Authentication required");
         return;
       }
       if (toFloat(amount) <= 0) {
-        return alert("Amount must be > 0");
+        // replaced return alert(...) with popup + return to mimic behavior
+        showError("Amount must be > 0", "Invalid amount");
+        return;
       }
       if (!["flexible","fixed"].includes(savingsType)) {
-        return alert("Invalid savings type");
+        showError("Invalid savings type", "Invalid input");
+        return;
       }
       if (toInt(durationDays) <= 0) {
-        return alert("Invalid duration");
+        showError("Invalid duration", "Invalid input");
+        return;
       }
 
       try {
@@ -453,14 +574,16 @@
         if (json && json.status === "success") {
           // Update balance from backend and reload savings to show new entry
           await refreshStoredBalance(user);
-          alert(json.message || "Savings created");
-          setTimeout(() => loadSavings(user), 300);
+          // replaced alert with popup; after OK reload savings (to match original alert + setTimeout)
+          showSuccess(json.message || "Savings created", "Saved", function(){
+            setTimeout(() => loadSavings(user), 300);
+          });
         } else {
-          alert("❌ " + (json && json.message ? json.message : "Could not create savings"));
+          showError("❌ " + (json && json.message ? json.message : "Could not create savings"), "Create failed");
         }
       } catch (err) {
         console.error("Create savings error:", err);
-        alert("❌ Create failed (network error)");
+        showError("❌ Create failed (network error)", "Network error");
       }
     }
 
@@ -474,42 +597,21 @@
     async function init() {
       let stored = readStoredUser();
       if (!stored) {
-        alert("Please login first");
-        window.location.href = "login.html";
+        // replaced alert+redirect with popup -> redirect on OK to preserve flow
+        showError("Please login first", "Not logged in", function(){
+          window.location.href = "login.html";
+        });
         return;
       }
 
       // ensure we have an id
       const user = await ensureUserHasId(stored);
       if (!user || !user.id) {
-        alert("Could not determine your user id. Please login again.");
-        window.location.href = "login.html";
+        showError("Could not determine your user id. Please login again.", "User error", function(){
+          window.location.href = "login.html";
+        });
         return;
       }
 
       // wire form submit
-      const form = document.getElementById("savingsForm");
-      form.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        const amount = document.getElementById("amount").value;
-        const savingsType = document.getElementById("savingsType").value;
-        const duration = document.getElementById("duration").value;
-        await handleCreateSavings(user, amount, savingsType, duration);
-      });
-
-      // refresh balance so stored user object is up-to-date
-      await refreshStoredBalance(user);
-
-      // initial load of savings
-      await loadSavings(user);
-
-      // clear timers when user navigates away (prevent leaking intervals)
-      window.addEventListener("beforeunload", () => clearCountdowns());
-    }
-
-    // start
-    init();
-  })();
-  </script>
-</body>
-</html>
+      
