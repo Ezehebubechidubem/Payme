@@ -428,4 +428,108 @@ function showError(title, msg) {
   errorMessage.textContent = msg || 'Something went wrong';
   errorPopup.classList.add('show');
   errorPopup.style.display = 'flex';
-  errorPo
+  errorPopup.setAttribute('aria-hidden','false');
+}
+function hideError(){ errorPopup.classList.remove('show'); errorPopup.style.display='none'; errorPopup.setAttribute('aria-hidden','true'); }
+
+closeSuccess.addEventListener('click', ()=> hideSuccess());
+viewTx.addEventListener('click', ()=> {
+  hideSuccess();
+  // go to transactions page
+  window.location.href = 'transactions.html';
+});
+closeError.addEventListener('click', ()=> hideError());
+
+/* ---------- make the backend call (confirm) ---------- */
+confirmBtn.addEventListener('click', async () => {
+  confirmBtn.disabled = true;
+  const recipient = onlyDigits(recipientInput.value);
+  const amount = Number(selectedAmount || customAmount.value);
+  const user = getStoredUser();
+  if (!user || !user.phone) { showError('Not logged', 'You must be logged in.'); confirmBtn.disabled=false; return; }
+
+  const oldHtml = confirmBtn.innerHTML;
+  confirmBtn.innerHTML = 'Processing <span class="loader"></span>';
+
+  const payload = {
+    phone: user.phone,
+    network: selectedNetwork.name,
+    amount: amount,
+    recipient: recipient
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/buy_airtime`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+
+    let data = null;
+    try { data = await res.json(); } catch(e){ data = null; }
+
+    if (!res.ok || (data && data.status && data.status !== 'success')) {
+      const reason = (data && (data.message || data.error)) ? (data.message || data.error) : (data ? JSON.stringify(data) : `HTTP ${res.status}`);
+      console.error('buy_airtime failed', res.status, data);
+      showError('Purchase failed', String(reason));
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = oldHtml;
+      return;
+    }
+
+    // response shape: {status:'success', balance:<num>, transaction:{...}} or {balance:..., transaction:...}
+    const newBalance = (data && (typeof data.balance !== 'undefined')) ? Number(data.balance) : null;
+    const txn = (data && data.transaction) ? data.transaction : {
+      id: null, type:'Airtime', network:selectedNetwork.name, recipient, amount, fee:Math.ceil(amount*0.01), total:amount+Math.ceil(amount*0.01), date:(new Date()).toISOString()
+    };
+
+    // if backend did not return balance fetch user
+    let updatedUser = user;
+    if (newBalance === null) {
+      try {
+        const r2 = await fetch(`${API_BASE}/user/${encodeURIComponent(user.phone)}`);
+        if (r2.ok) {
+          const j2 = await r2.json();
+          if (j2 && j2.status === 'success' && j2.user) updatedUser = j2.user;
+        }
+      } catch(e){ console.warn('refetch user failed', e); }
+    } else {
+      updatedUser = Object.assign({}, user, { balance: newBalance });
+    }
+
+    // persist user & emit event
+    setStoredUser(updatedUser);
+
+    // hide confirm, show success popup
+    confirmOverlay.classList.remove('show');
+    confirmOverlay.setAttribute('aria-hidden','true');
+
+    showSuccess('Payment successful', `₦${amount.toLocaleString()} airtime bought for ${recipient}`);
+
+    // reset UI but keep components
+    amountBtns.forEach(x=>x.classList.remove('active'));
+    customAmount.value = '';
+    recipientInput.value = '';
+    selectedAmount = null;
+    updatePayState();
+
+  } catch (err) {
+    console.error('network error', err);
+    showError('Network error', 'Could not reach server. Check your connection.');
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = oldHtml;
+  }
+});
+
+/* close overlays on ESC */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'Escape') {
+    confirmOverlay.classList.remove('show'); confirmOverlay.setAttribute('aria-hidden','true');
+    networkModal.classList.remove('show'); networkModal.setAttribute('aria-hidden','true');
+    hideSuccess(); hideError();
+  }
+});
+</script>
+</body>
+</html>
