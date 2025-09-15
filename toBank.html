@@ -73,6 +73,56 @@
       margin-bottom: 10px;
       display: none;
     }
+
+    /* Success popup modal (centered) */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .modal-overlay.show {
+      display: flex;
+    }
+    .modal {
+      width: calc(100% - 48px);
+      max-width: 420px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 18px 40px rgba(10,20,30,0.15);
+      text-align: center;
+    }
+    .modal .badge {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: linear-gradient(135deg,#00c853,#43a047);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+    .modal h3 { margin: 6px 0 6px; font-size: 18px; }
+    .modal p { margin: 0 0 12px; color: #555; }
+    .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+    .modal .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
+    .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
+    .modal .btn-primary { background:var(--primary,#00c853); color:#fff; border:0; }
+
+    /* Error popup style (reuses same layout; red badge) */
+    .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
+
+    /* small responsive */
+    @media (max-width:420px) {
+      .container { padding: 16px; }
+      .modal { padding: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -92,6 +142,31 @@
     <button class="back-btn" onclick="window.location.href='paymelogin.html'">⬅ Back to Dashboard</button>
   </div>
 
+  <!-- SUCCESS POPUP (replaces success alert) -->
+  <div id="successModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document">
+      <div class="badge">✓</div>
+      <h3 id="successHeader">Transfer Successful</h3>
+      <p id="successText">Your transfer was completed successfully.</p>
+      <div class="actions">
+        <button id="viewTransactionsBtn" class="btn btn-outline">View Transactions</button>
+        <button id="backDashboardBtn" class="btn btn-primary">Back to Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ERROR POPUP (replaces all alert() calls) -->
+  <div id="errorModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document">
+      <div class="badge error">✕</div>
+      <h3 id="errorHeader">Error</h3>
+      <p id="errorText">An error occurred</p>
+      <div class="actions">
+        <button id="errorOkBtn" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = "https://payme-update.onrender.com"; // ✅ backend URL
 
@@ -99,11 +174,25 @@
     const receiverInfo = document.getElementById("receiverInfo");
     const errorBox = document.getElementById("error");
 
- const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) 
-                 || JSON.parse(localStorage.getItem("user"));
+    const successModal = document.getElementById("successModal");
+    const successHeader = document.getElementById("successHeader");
+    const successText = document.getElementById("successText");
+    const viewTransactionsBtn = document.getElementById("viewTransactionsBtn");
+    const backDashboardBtn = document.getElementById("backDashboardBtn");
+
+    const errorModal = document.getElementById("errorModal");
+    const errorHeader = document.getElementById("errorHeader");
+    const errorText = document.getElementById("errorText");
+    const errorOkBtn = document.getElementById("errorOkBtn");
+
+    const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) 
+                     || JSON.parse(localStorage.getItem("user"));
+
+    // Replace original alert + immediate redirect behavior with popup + redirect on OK.
     if (!currentUser) {
-      alert("⚠️ No logged-in user found. Please login first.");
-      window.location.href = "paymelogin.html";
+      showErrorPopup("No logged-in user found. Please login first.", "Not logged in", () => {
+        window.location.href = "paymelogin.html";
+      });
     }
 
     let receiverUsername = ""; // ✅ store receiver name
@@ -158,72 +247,136 @@
 
     // ✅ Transfer money
     async function makeTransfer() {
-  const receiverAcc = document.getElementById("accountNumber").value.trim();
-  const amount = parseFloat(document.getElementById("amount").value);
+      const receiverAcc = document.getElementById("accountNumber").value.trim();
+      const amount = parseFloat(document.getElementById("amount").value);
 
-  if (!receiverAcc || receiverAcc.length !== 10) {
-    alert("⚠️ Please enter a valid 10-digit receiver account.");
-    return;
-  }
-  if (!amount || amount <= 0) {
-    alert("⚠️ Enter a valid amount.");
-    return;
-  }
+      if (!receiverAcc || receiverAcc.length !== 10) {
+        showErrorPopup("Please enter a valid 10-digit receiver account.", "Invalid account");
+        return;
+      }
+      if (!amount || amount <= 0) {
+        showErrorPopup("Enter a valid amount.", "Invalid amount");
+        return;
+      }
 
-  
-  // 🚫 Prevent sending to self (support different key names)
-const userAcc = currentUser.account_number || currentUser.acc_number || currentUser.accountNumber;
+      // 🚫 Prevent sending to self (support different key names)
+      const userAcc = currentUser.account_number || currentUser.acc_number || currentUser.accountNumber;
 
-if (receiverAcc === userAcc) {
-  alert("❌ You cannot send money to your own account!");
-  return;
-}
+      if (receiverAcc === userAcc) {
+        showErrorPopup("You cannot send money to your own account!", "Invalid transfer");
+        return;
+      }
 
-  const balance = await fetchBalance();
-  if (amount > balance) {
-    alert("❌ Insufficient funds.");
-    return;
-  }
+      const balance = await fetchBalance();
+      if (amount > balance) {
+        showErrorPopup("Insufficient funds.", "Insufficient balance");
+        return;
+      }
 
-  try {
-    const response = await fetch(`${API_BASE}/send_money`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sender_phone: currentUser.phone,
-        receiver_acc: receiverAcc,
-        amount: amount
-      })
+      try {
+        const response = await fetch(`${API_BASE}/send_money`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender_phone: currentUser.phone,
+            receiver_acc: receiverAcc,
+            amount: amount
+          })
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.status === "success") {
+          // Update balance inside loggedInUser
+          let user = JSON.parse(localStorage.getItem("loggedInUser"));
+          if (!user) user = JSON.parse(localStorage.getItem("user")) || {};
+          // keep previous logic: use fetched balance - amount
+          try {
+            user.balance = (parseFloat(balance) - parseFloat(amount));
+          } catch (e) {
+            user.balance = user.balance ? (user.balance - amount) : null;
+          }
+          localStorage.setItem("loggedInUser", JSON.stringify(user));
+          localStorage.setItem("user", JSON.stringify(user));
+
+          // Save transaction
+          let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+          transactions.push({
+            type: "Transfer Out",
+            amount: amount,
+            description: "Transfer to " + (receiverUsername || receiverAcc),
+            date: new Date().toLocaleString()
+          });
+          localStorage.setItem("transactions", JSON.stringify(transactions));
+
+          // --- REPLACED alert with popup ---
+          showSuccessPopup("✅ " + (result.message || "Transfer completed successfully."));
+          // ------------------------------------------------
+
+        } else {
+          showErrorPopup((result && result.message) ? result.message : "Transfer failed.", "Transfer failed");
+        }
+      } catch (err) {
+        console.error(err);
+        showErrorPopup("Error connecting to server.", "Network error");
+      }
+    }
+
+    /* ---------- Success popup handlers ---------- */
+    function showSuccessPopup(message){
+      successHeader.textContent = "Transfer successful";
+      successText.textContent = message;
+      successModal.classList.add("show");
+      successModal.setAttribute("aria-hidden","false");
+      // focus first action for accessibility
+      viewTransactionsBtn.focus();
+    }
+    function hideSuccessPopup(){
+      successModal.classList.remove("show");
+      successModal.setAttribute("aria-hidden","true");
+    }
+
+    viewTransactionsBtn.addEventListener("click", function(){
+      hideSuccessPopup();
+      // go to transactions page
+      window.location.href = "transactions.html";
     });
 
-    const result = await response.json();
+    backDashboardBtn.addEventListener("click", function(){
+      hideSuccessPopup();
+      // go back to dashboard
+      window.location.href = "paymelogin.html";
+    });
 
-    if (response.ok && result.status === "success") {
-      // Update balance inside loggedInUser
-      let user = JSON.parse(localStorage.getItem("loggedInUser"));
-      user.balance = balance - amount;
-      localStorage.setItem("loggedInUser", JSON.stringify(user));
+    // Close popup on Escape key
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape") {
+        if (successModal.classList.contains("show")) hideSuccessPopup();
+        if (errorModal.classList.contains("show")) hideErrorPopup();
+      }
+    });
 
-      // Save transaction
-      let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-      transactions.push({
-        type: "Transfer Out",
-        amount: amount,
-        description: "Transfer to " + (receiverUsername || receiverAcc),
-        date: new Date().toLocaleString()
-      });
-      localStorage.setItem("transactions", JSON.stringify(transactions));
-
-      alert("✅ " + result.message);
-      window.location.href = "paymelogin.html"; // go back to dashboard
-    } else {
-      alert("❌ " + (result.message || "Transfer failed."));
+    /* ---------- Error popup handlers (replaces alert) ---------- */
+    function showErrorPopup(message, title = "Error", onOk = null) {
+      errorHeader.textContent = title || "Error";
+      errorText.textContent = message || "";
+      errorModal.classList.add("show");
+      errorModal.setAttribute("aria-hidden","false");
+      // ensure old handler removed
+      errorOkBtn.onclick = null;
+      errorOkBtn.focus();
+      errorOkBtn.onclick = function() {
+        hideErrorPopup();
+        if (typeof onOk === "function") {
+          try { onOk(); } catch(e){ console.warn(e); }
+        }
+      };
     }
-  } catch (err) {
-    console.error(err);
-    alert("⚠️ Error connecting to server.");
-  }
-}
+    function hideErrorPopup() {
+      errorModal.classList.remove("show");
+      errorModal.setAttribute("aria-hidden","true");
+      errorOkBtn.onclick = null;
+    }
   </script>
 </body>
 </html>
