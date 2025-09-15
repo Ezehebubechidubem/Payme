@@ -614,4 +614,31 @@
       }
 
       // wire form submit
+    // wire form submit
+      const form = document.getElementById("savingsForm");
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const amount = document.getElementById("amount").value;
+        const savingsType = document.getElementById("savingsType").value;
+        const duration = document.getElementById("duration").value;
+        await handleCreateSavings(user, amount, savingsType, duration);
+      });
+
+      // refresh balance so stored user object is up-to-date
+      await refreshStoredBalance(user);
+
+      // initial load of savings
+      await loadSavings(user);
+
+      // clear timers when user navigates away (prevent leaking intervals)
+      window.addEventListener("beforeunload", () => clearCountdowns());
+    }
+
+    // start
+    init();
+  })();
+  </script>
+</body>
+</html>
+
       
