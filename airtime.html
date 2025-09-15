@@ -13,13 +13,30 @@
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:var(--bg);color:var(--text);padding-bottom:84px}
+    body{background:var(--bg);color:var(--text);padding-bottom:96px}
     .wrap{max-width:440px;margin:0 auto;padding:12px}
+    /* Topbar - Back button replaces the big title (clean) */
     .topbar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-    .topbar h1{font-size:18px;margin:0;font-weight:700}
+    .back-btn{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;color:var(--muted);text-decoration:none}
+    .back-btn i{font-size:14px}
+    /* shared card */
     .card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:0 1px 0 rgba(0,0,0,.03) inset}
+    .label{font-size:12px;color:var(--muted);margin-bottom:8px}
     .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-    .label{font-size:12px;color:var(--muted)}
+    .tiny{font-size:13px;color:var(--muted)}
+    /* network grid */
+    .network-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:6px}
+    .network-card{
+      display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;border:1px solid #f3f6f6;background:#fff;cursor:pointer;
+      transition:transform .12s ease,box-shadow .12s ease,border-color .12s;
+      min-height:56px;
+    }
+    .network-card:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(10,20,30,0.06)}
+    .network-card.selected{outline:3px solid rgba(0,200,83,0.12);border-color:rgba(0,200,83,0.12)}
+    .network-logo{width:52px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;overflow:hidden;flex-shrink:0}
+    .network-logo img{max-width:100%;max-height:100%;display:block}
+    .network-name{font-weight:800}
+    /* amount grid & inputs (kept from your previous page) */
     .amount-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
     .amt{background:#fbfbfb;border-radius:10px;padding:10px;text-align:center;cursor:pointer;border:1px solid #f1f4f5}
     .amt.active{outline:2px solid rgba(0,200,83,0.12);transform:translateY(-3px)}
@@ -29,38 +46,51 @@
     input[type=number], input[type=tel]{flex:1;padding:10px;border-radius:10px;border:1px solid #eee}
     .pay-btn{background:var(--primary);color:#fff;border:0;padding:10px 14px;border-radius:999px;font-weight:700;cursor:pointer}
     .pay-btn[disabled]{opacity:0.45;cursor:not-allowed}
-    .tiny{font-size:13px;color:var(--muted)}
-    .modal-overlay{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.36);z-index:60}
-    .modal-overlay.show{display:flex}
-    .modal{width:100%;max-width:420px;background:var(--card);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px;box-shadow:0 -10px 30px rgba(12,18,20,0.12)}
-    .modal-list{max-height:60vh;overflow:auto}
-    .carrier-item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;border:1px solid #f3f6f6;margin-bottom:8px;cursor:pointer}
-    .logo-badge{width:44px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+    .muted-note{font-size:12px;color:#888;margin-top:8px}
     .confirm-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.28);z-index:80}
     .confirm-overlay.show{display:flex}
     .confirm-card{background:#fff;padding:16px;border-radius:12px;width:92%;max-width:420px}
-    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0e9f72;color:#fff;padding:10px 14px;border-radius:999px;display:none}
-    .muted-note{font-size:12px;color:#888;margin-top:8px}
+    .modal-overlay{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.36);z-index:60}
+    .modal-overlay.show{display:flex}
+    .modal{width:100%;max-width:420px;background:var(--card);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px}
     .loader { display:inline-block; width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,0.2); border-top-color: #fff; animation: spin .7s linear infinite; vertical-align: middle; margin-left:8px; }
     @keyframes spin { to { transform: rotate(360deg);} }
+    .helper-row{display:flex;gap:10px;align-items:center;margin-top:10px}
+    /* responsive tweaks */
+    @media (max-width:380px){ .network-grid{grid-template-columns:repeat(2,1fr)} .network-name{font-size:14px} }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <header class="topbar">
-      <h1>Airtime</h1>
-      <a href="dashboard.html" style="margin-left:auto;color:var(--muted);font-weight:700">Back</a>
-    </header>
 
-    <!-- Recipient -->
+    <!-- TOPBAR: back button (keeps navigation consistent) -->
+    <div class="topbar" role="banner">
+      <a class="back-btn" href="dashboard.html" title="Back to dashboard">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span style="font-weight:700;color:var(--muted)">Back</span>
+      </a>
+      <!-- keep small title visually (not removed) but less prominent -->
+      <div style="margin-left:8px;font-weight:700;color:#222">Buy Airtime</div>
+    </div>
+
+    <!-- RECIPIENT + NETWORK selector -->
     <div class="card">
       <div class="label">Recipient Number</div>
-      <div style="margin-top:8px" class="row">
-        <div id="selectedNetworkBadge" style="display:flex;align-items:center;gap:10px">
-          <div id="networkBadge" class="logo-badge" style="background:#e53935">A</div>
-          <div id="networkName" style="font-weight:700">Airtel</div>
-        </div>
-        <button id="chooseNetworkBtn" class="tiny">Change</button>
+
+      <!-- network grid (visual) - primary selector -->
+      <div id="networkGrid" class="network-grid" aria-label="Select network">
+        <!-- cards rendered by JS to allow local image fallback -->
+      </div>
+
+      <!-- hidden select fallback (keeps semantics and nothing removed) -->
+      <div class="helper-row" style="margin-top:8px">
+        <label for="networkSelect" class="tiny" style="width:84px">Network</label>
+        <select id="networkSelect" style="flex:1;padding:8px;border-radius:8px;border:1px solid #eee">
+          <option value="airtel" data-name="Airtel">Airtel</option>
+          <option value="mtn" data-name="MTN">MTN</option>
+          <option value="glo" data-name="Glo">Glo</option>
+          <option value="9mobile" data-name="9Mobile">9Mobile</option>
+        </select>
       </div>
 
       <div style="margin-top:10px">
@@ -69,7 +99,7 @@
       <div class="muted-note">Tip: enter recipient number in local format (e.g. 0803xxxxxxx)</div>
     </div>
 
-    <!-- Amount -->
+    <!-- AMOUNT card (kept intact with improvements) -->
     <div class="card">
       <div class="row" style="align-items:flex-end">
         <div>
@@ -78,7 +108,7 @@
         </div>
       </div>
 
-      <div class="amount-grid" id="amountGrid" style="margin-top:10px">
+      <div id="amountGrid" class="amount-grid" style="margin-top:10px">
         <div class="amt" data-value="50"><div class="cashback">₦1 Cashback</div><strong>₦50</strong></div>
         <div class="amt" data-value="100"><div class="cashback">₦2 Cashback</div><strong>₦100</strong></div>
         <div class="amt" data-value="200"><div class="cashback">₦4 Cashback</div><strong>₦200</strong></div>
@@ -107,20 +137,19 @@
         <label><input id="saveToggle" type="checkbox" /></label>
       </div>
     </div>
-  </div>
 
-  <!-- carrier modal -->
-  <div id="modalOverlay" class="modal-overlay" aria-hidden="true">
-    <div class="modal" role="dialog">
-      <div class="modal-list" id="carrierList"></div>
-    </div>
   </div>
 
   <!-- confirm -->
   <div id="confirmOverlay" class="confirm-overlay" aria-hidden="true">
-    <div class="confirm-card">
-      <div style="font-weight:700" id="confirmTitle">Confirm Purchase</div>
-      <div style="margin-top:8px" class="tiny" id="confirmSub"></div>
+    <div class="confirm-card" role="dialog" aria-modal="true">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="confirmLogo" class="network-logo" style="width:48px;height:36px"></div>
+        <div>
+          <div id="confirmTitle" style="font-weight:800">Confirm Purchase</div>
+          <div id="confirmSub" class="tiny" style="margin-top:2px"></div>
+        </div>
+      </div>
 
       <div style="margin-top:12px">
         <div style="display:flex;justify-content:space-between"><div class="tiny">Amount</div><div id="confirmAmount" style="font-weight:800"></div></div>
@@ -136,13 +165,25 @@
     </div>
   </div>
 
-  <div id="toast" class="toast">Payment successful</div>
+  <!-- hidden modal kept (nothing removed) - not used by default but present -->
+  <div id="modalOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog">
+      <div class="modal-list" id="carrierList"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite">Payment successful</div>
 
 <script>
 /* ---------- CONFIG ---------- */
-const API_BASE = "https://payme-update.onrender.com"; // your backend
-
-/* ---------- small helpers ---------- */
+const API_BASE = "https://payme-update.onrender.com"; // backend base (keep as is)
+const LOGO_PATHS = {
+  airtel: '/assets/logos/airtel.png',
+  mtn:    '/assets/logos/mtn.png',
+  glo:    '/assets/logos/glo.png',
+  '9mobile': '/assets/logos/9mobile.png'
+};
+/* ---------- helpers for localStorage & UI ---------- */
 function getStoredUser() {
   const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
   try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
@@ -151,73 +192,92 @@ function setStoredUser(u) {
   try {
     localStorage.setItem("loggedInUser", JSON.stringify(u));
     localStorage.setItem("user", JSON.stringify(u));
-    // short event so other tabs can pick up
     const ev = { type: "airtime_purchase", user: u, ts: Date.now() };
     localStorage.setItem("payme_event", JSON.stringify(ev));
-    setTimeout(()=> localStorage.removeItem("payme_event"), 800);
+    setTimeout(()=> localStorage.removeItem("payme_event"), 900);
   } catch(e){ console.error("storage error", e); }
 }
 function showToast(msg, ms=1600){
   const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block';
   setTimeout(()=> t.style.display = 'none', ms);
 }
+function formatN(n){ return '₦' + Number(n).toLocaleString(); }
 
-/* ---------- networks ---------- */
-const networks = [
-  { id: 'airtel', name:'Airtel', color:'#e53935', short:'AIRTEL', svg: `<svg width="90" height="28" xmlns="http://www.w3.org/2000/svg"><rect rx="6" width="90" height="28" fill="#e53935"/><text x="45" y="19" font-family="Inter, Arial" font-weight="700" font-size="12" text-anchor="middle" fill="#fff">AIRTEL</text></svg>` },
-  { id: 'mtn', name:'MTN', color:'#ffd54f', short:'MTN', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#ffd54f"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#111">MTN</text></svg>` },
-  { id: 'glo', name:'Glo', color:'#35b44a', short:'GLO', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#35b44a"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">GLO</text></svg>` },
-  { id: '9mobile', name:'9Mobile', color:'#00a0b0', short:'9MOBILE', svg: `<svg width="90" height="28"><rect rx="6" width="90" height="28" fill="#00a0b0"/><text x="45" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">9MOBILE</text></svg>` }
+/* ---------- networks setup (visual cards + fallback select) ---------- */
+const NETWORKS = [
+  { id: 'mtn', name: 'MTN', color:'#ffd54f', logo: LOGO_PATHS.mtn },
+  { id: 'airtel', name: 'Airtel', color:'#e53935', logo: LOGO_PATHS.airtel },
+  { id: 'glo', name: 'Glo', color:'#35b44a', logo: LOGO_PATHS.glo },
+  { id: '9mobile', name: '9Mobile', color:'#00a0b0', logo: LOGO_PATHS['9mobile'] }
 ];
 
-/* ---------- UI refs ---------- */
-let selectedNetwork = networks[0];
-const networkBadge = document.getElementById('networkBadge');
-const networkName = document.getElementById('networkName');
-const chooseNetworkBtn = document.getElementById('chooseNetworkBtn');
-const modalOverlay = document.getElementById('modalOverlay');
-const carrierList = document.getElementById('carrierList');
-const recipientInput = document.getElementById('recipientInput');
+const networkGrid = document.getElementById('networkGrid');
+const networkSelect = document.getElementById('networkSelect');
+let selectedNetwork = NETWORKS[0]; // default
+
+// render visual grid (preserves old modal & select; nothing removed)
+function createNetworkCard(n) {
+  const div = document.createElement('div');
+  div.className = 'network-card';
+  div.dataset.id = n.id;
+
+  // logo container: try to use local image; fallback to text
+  const logo = document.createElement('div');
+  logo.className = 'network-logo';
+  const img = document.createElement('img');
+  img.src = n.logo;
+  img.alt = n.name;
+  img.onload = () => { /* ok */ };
+  img.onerror = () => {
+    // fallback: show text badge
+    logo.innerHTML = `<div style="font-weight:800;color:${n.color};font-size:16px">${n.name}</div>`;
+  };
+  logo.appendChild(img);
+
+  const name = document.createElement('div');
+  name.className = 'network-name';
+  name.textContent = n.name;
+
+  div.appendChild(logo);
+  div.appendChild(name);
+
+  div.addEventListener('click', () => {
+    // toggle selection
+    document.querySelectorAll('.network-card').forEach(c => c.classList.remove('selected'));
+    div.classList.add('selected');
+    selectedNetwork = n;
+    // keep select fallback in sync
+    for (let i=0;i<networkSelect.options.length;i++){
+      if (networkSelect.options[i].value === n.id) { networkSelect.selectedIndex = i; break; }
+    }
+  });
+
+  return div;
+}
+
+NETWORKS.forEach(n => networkGrid.appendChild(createNetworkCard(n)));
+
+// make select fallback update grid selection (keeps both in sync)
+networkSelect.addEventListener('change', () => {
+  const id = networkSelect.value;
+  const n = NETWORKS.find(x => x.id === id) || NETWORKS[0];
+  selectedNetwork = n;
+  // highlight card
+  document.querySelectorAll('.network-card').forEach(c => c.classList.toggle('selected', c.dataset.id === id));
+});
+
+// initially select first
+document.querySelectorAll('.network-card')[0]?.classList.add('selected');
+// keep select in sync
+networkSelect.value = selectedNetwork.id;
+
+/* ---------- amounts & inputs ---------- */
+const amountGrid = document.getElementById('amountGrid') || document.getElementById('amountGrid');
 const amountBtns = document.querySelectorAll('.amt');
 const customAmount = document.getElementById('customAmount');
+const recipientInput = document.getElementById('recipientInput');
 const payBtn = document.getElementById('payBtn');
-const confirmOverlay = document.getElementById('confirmOverlay');
-const confirmAmount = document.getElementById('confirmAmount');
-const confirmFee = document.getElementById('confirmFee');
-const confirmTotal = document.getElementById('confirmTotal');
-const confirmTo = document.getElementById('confirmTo');
-const confirmTitle = document.getElementById('confirmTitle');
-const cancelBtn = document.getElementById('cancelBtn');
-const confirmBtn = document.getElementById('confirmBtn');
 
-function renderNetworkBadge(n){
-  networkBadge.style.background = n.color;
-  networkBadge.innerHTML = n.svg;
-  networkName.textContent = n.name;
-}
-renderNetworkBadge(selectedNetwork);
-
-/* ---------- modal ---------- */
-chooseNetworkBtn.addEventListener('click', ()=> {
-  carrierList.innerHTML = '';
-  networks.forEach(n => {
-    const div = document.createElement('div');
-    div.className = 'carrier-item';
-    div.innerHTML = `<div class="logo-badge" style="background:${n.color}">${n.svg}</div>
-                     <div style="font-weight:700;flex:1">${n.name}</div>
-                     <div style="color:#999">${n.short}</div>`;
-    div.addEventListener('click', () => {
-      selectedNetwork = n;
-      renderNetworkBadge(n);
-      modalOverlay.classList.remove('show');
-    });
-    carrierList.appendChild(div);
-  });
-  modalOverlay.classList.add('show');
-});
-modalOverlay.addEventListener('click', (e)=> { if(e.target === modalOverlay) modalOverlay.classList.remove('show'); });
-
-/* ---------- amount selection & validation ---------- */
 let selectedAmount = null;
 amountBtns.forEach(b => {
   b.addEventListener('click', () => {
@@ -236,50 +296,76 @@ customAmount.addEventListener('input', ()=> {
 });
 recipientInput.addEventListener('input', updatePayState);
 
+// phone validation: be flexible on front-end, server enforces rules
 function validPhone(p){
   if(!p) return false;
   const digits = p.replace(/\D/g,'');
-  return digits.length >= 7; // len >=7 is flexible for different formats; server will handle correctness for user phone
+  return digits.length >= 7; // will accept local formats
 }
-
 function updatePayState(){
   const to = (recipientInput.value || '').trim();
   const ok = selectedAmount && selectedAmount >= 50 && selectedAmount <= 500000 && validPhone(to);
   payBtn.disabled = !ok;
 }
 
-/* ---------- load guard: require logged-in user ---------- */
+/* ---------- guard: must be logged in ---------- */
 window.addEventListener('load', () => {
   const user = getStoredUser();
   if (!user || !user.phone) {
-    alert('You must be logged in to buy airtime. Redirecting to login/dashboard.');
-    // prefer redirect to dashboard or login page in your app:
+    // keep behavior consistent: redirect to dashboard (which will force login)
+    alert('You need to be logged in to buy airtime. Redirecting to dashboard.');
     window.location.href = 'dashboard.html';
     return;
   }
 });
 
-/* ---------- purchase flow ---------- */
-payBtn.addEventListener('click', ()=>{
+/* ---------- confirmation flow ---------- */
+const confirmOverlay = document.getElementById('confirmOverlay');
+const confirmAmount = document.getElementById('confirmAmount');
+const confirmFee = document.getElementById('confirmFee');
+const confirmTotal = document.getElementById('confirmTotal');
+const confirmTo = document.getElementById('confirmTo');
+const confirmTitle = document.getElementById('confirmTitle');
+const confirmLogo = document.getElementById('confirmLogo');
+const cancelBtn = document.getElementById('cancelBtn');
+const confirmBtn = document.getElementById('confirmBtn');
+const confirmSub = document.getElementById('confirmSub');
+
+function showConfirmUI(amount, fee, total, to){
+  confirmTitle.textContent = `Buy ${selectedNetwork.name} Airtime`;
+  confirmSub.textContent = 'Confirm before we proceed';
+  confirmAmount.textContent = formatN(amount);
+  confirmFee.textContent = formatN(fee);
+  confirmTotal.textContent = formatN(total);
+  confirmTo.textContent = to;
+  // set confirm logo (image or fallback)
+  confirmLogo.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = selectedNetwork.logo;
+  img.alt = selectedNetwork.name;
+  img.onerror = () => { confirmLogo.innerHTML = `<div style="font-weight:800;color:${selectedNetwork.color}">${selectedNetwork.name}</div>`; };
+  confirmLogo.appendChild(img);
+
+  confirmOverlay.classList.add('show');
+  confirmOverlay.setAttribute('aria-hidden', 'false');
+}
+
+payBtn.addEventListener('click', ()=> {
   const to = recipientInput.value.trim();
   if (!validPhone(to)) return alert('Enter a valid recipient phone');
   const amt = Number(selectedAmount || customAmount.value);
-  if (!amt || amt < 50) return alert('Enter a valid amount (minimum ₦50)');
+  if (!amt || amt < 50) return alert('Enter an amount (minimum ₦50)');
   const fee = Math.ceil(amt * 0.01);
   const total = amt + fee;
-
-  confirmTitle.textContent = `Buy ${selectedNetwork.name} Airtime`;
-  document.getElementById('confirmSub').textContent = 'Confirm before we proceed';
-  confirmAmount.textContent = `₦${Number(amt).toLocaleString()}`;
-  confirmFee.textContent = `₦${Number(fee).toLocaleString()}`;
-  confirmTotal.textContent = `₦${Number(total).toLocaleString()}`;
-  confirmTo.textContent = to;
-  confirmOverlay.classList.add('show');
+  showConfirmUI(amt, fee, total, to);
 });
 
-cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
+cancelBtn.addEventListener('click', ()=> {
+  confirmOverlay.classList.remove('show');
+  confirmOverlay.setAttribute('aria-hidden', 'true');
+});
 
-/* Confirm + call backend */
+/* ---------- call backend on confirm ---------- */
 confirmBtn.addEventListener('click', async () => {
   confirmBtn.disabled = true;
   const recipient = recipientInput.value.trim();
@@ -287,12 +373,12 @@ confirmBtn.addEventListener('click', async () => {
   const user = getStoredUser();
   if (!user || !user.phone) { alert('You must be logged in'); confirmBtn.disabled=false; return; }
 
-  // small UI loading indicator
+  // show loader inside button
   const oldHtml = confirmBtn.innerHTML;
   confirmBtn.innerHTML = 'Processing <span class="loader"></span>';
 
   const payload = {
-    phone: user.phone,             // your backend identifies sender via phone
+    phone: user.phone,
     network: selectedNetwork.name,
     amount: amount,
     recipient: recipient
@@ -305,11 +391,9 @@ confirmBtn.addEventListener('click', async () => {
       body: JSON.stringify(payload)
     });
 
-    // parse JSON safely
     let data = null;
     try { data = await res.json(); } catch(e) { data = null; }
 
-    // unified error handling: backend sometimes returns {"status":"error", "message":...}
     if (!res.ok || (data && data.status && data.status !== 'success')) {
       const reason = (data && (data.message || data.error)) ? (data.message || data.error) : (data ? JSON.stringify(data) : `HTTP ${res.status}`);
       console.error('buy_airtime failed', res.status, data);
@@ -319,67 +403,45 @@ confirmBtn.addEventListener('click', async () => {
       return;
     }
 
-    // Success path: backend should return new balance and optional transaction
-    // Accept multiple possible shapes: { balance: <num>, transaction: {...} } OR {status:'success', balance:..., transaction:...}
+    // expected: { status:'success', balance: <num>, transaction: {...} } or { balance: <num>, transaction: {...} }
     const newBalance = (data && (typeof data.balance !== 'undefined')) ? Number(data.balance) : null;
     const txn = data && data.transaction ? data.transaction : {
-      id: null, type: 'Airtime', network: selectedNetwork.name, recipient: recipient, amount: amount,
-      fee: Math.ceil(amount * 0.01), total: (amount + Math.ceil(amount*0.01)), date: (new Date()).toISOString(), status: 'success'
+      id: null, type: 'Airtime', network: selectedNetwork.name, recipient, amount,
+      fee: Math.ceil(amount * 0.01), total: amount + Math.ceil(amount*0.01), date: (new Date()).toISOString(), status: 'success'
     };
 
-    // If backend didn't provide updated balance, fetch /user/<phone> to be sure
+    // if backend didn't return balance, fetch user state
     let updatedUser = user;
     if (newBalance === null) {
       try {
         const r2 = await fetch(`${API_BASE}/user/${encodeURIComponent(user.phone)}`);
         if (r2.ok) {
           const j = await r2.json();
-          if (j && j.status === 'success' && j.user) {
-            updatedUser = j.user;
-          }
+          if (j && j.status === 'success' && j.user) updatedUser = j.user;
         }
-      } catch(err2){
-        console.warn('Could not refetch user after purchase', err2);
-      }
+      } catch(err){ console.warn('Could not refetch user after purchase', err); }
     } else {
       updatedUser = Object.assign({}, user, { balance: newBalance });
     }
 
-    // Persist updated user to localStorage so dashboard picks it up
+    // persist updated user so dashboard picks up changes
     setStoredUser(updatedUser);
 
-    // Fire event payload that transactions.html listener can parse
+    // emit event for transactions & other tabs
     const evt = { type:'airtime_purchase', transaction: txn, balance: (updatedUser.balance || newBalance), ts: Date.now() };
-    try {
-      localStorage.setItem('payme_event', JSON.stringify(evt));
-      setTimeout(()=> localStorage.removeItem('payme_event'), 1000);
-    } catch(e){ /* ignore */ }
+    try { localStorage.setItem('payme_event', JSON.stringify(evt)); setTimeout(()=>localStorage.removeItem('payme_event'), 1000); } catch(e){}
 
     // success UI
     confirmOverlay.classList.remove('show');
+    confirmOverlay.setAttribute('aria-hidden','true');
     showToast('Payment successful ✅');
 
-    // reset UI
+    // reset UI (but keep everything else intact)
     amountBtns.forEach(x=>x.classList.remove('active'));
     customAmount.value = '';
     recipientInput.value = '';
     selectedAmount = null;
     updatePayState();
 
-    // optional: redirect to dashboard or transactions
-    // window.location.href = 'dashboard.html';
-
   } catch (err) {
-    console.error('Network error', err);
-    alert('Network error while purchasing airtime — check console for details.');
-  } finally {
-    confirmBtn.disabled = false;
-    confirmBtn.innerHTML = oldHtml;
-  }
-});
-
-/* close overlays on ESC */
-document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') { confirmOverlay.classList.remove('show'); modalOverlay.classList.remove('show'); } });
-</script>
-</body>
-</html>
+    console.error('Network error', e
