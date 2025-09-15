@@ -443,5 +443,34 @@ confirmBtn.addEventListener('click', async () => {
     selectedAmount = null;
     updatePayState();
 
-  } catch (err) {
-    console.error('Network error', e
+    } catch (err) {
+    console.error('Network error', err);
+    alert('Network error while purchasing airtime — check console.');
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = oldHtml;
+  }
+});
+
+/* close overlays on ESC */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'Escape') {
+    confirmOverlay.classList.remove('show');
+    confirmOverlay.setAttribute('aria-hidden','true');
+    document.getElementById('modalOverlay')?.classList.remove('show');
+  }
+});
+
+/* keep selection synced if user changes select (accessibility) */
+networkSelect.addEventListener('change', () => {
+  const id = networkSelect.value;
+  const n = NETWORKS.find(x => x.id === id);
+  if (n) {
+    selectedNetwork = n;
+    // highlight matching card
+    document.querySelectorAll('.network-card').forEach(c => c.classList.toggle('selected', c.dataset.id === id));
+  }
+});
+</script>
+</body>
+</html>
