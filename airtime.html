@@ -399,4 +399,69 @@ confirmBtn.addEventListener('click', async () => {
         }
       } catch(e){ console.warn('refetch user failed', e); }
     } else {
-      updatedUser = Object.assign({}, user, { balance:
+      updatedUser = Object.assign({}, user, { balance: newBalance });
+    }
+
+    // persist
+    setStoredUser(updatedUser);
+
+    // add local transaction
+    try {
+      const txs = JSON.parse(localStorage.getItem('transactions') || '[]');
+      txs.unshift({
+        type: 'Airtime',
+        network: selectedNetwork.name,
+        amount: amount,
+        fee: fee,
+        total: total,
+        other_party: recipient,
+        date: (new Date()).toISOString()
+      });
+      localStorage.setItem('transactions', JSON.stringify(txs));
+    } catch(e){ console.warn('store tx failed', e); }
+
+    confirmOverlay.classList.remove('show');
+
+    // show success popup
+    showSuccess(`You bought ₦${Number(amount).toLocaleString()} airtime on ${selectedNetwork.name}.`);
+    // reset UI
+    document.querySelectorAll('.amt').forEach(x=>x.classList.remove('active'));
+    customAmount.value = '';
+    recipientInput.value = '';
+    selectedAmount = null;
+    updatePayState(null);
+
+  } catch (err) {
+    console.error('network error', err);
+    showError('Network error while purchasing airtime');
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = oldHtml;
+  }
+});
+
+/* close confirm with ESC */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'Escape') {
+    confirmOverlay.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    hideSuccess();
+    hideError();
+  }
+});
+
+/* success/error modal close wiring for click outside */
+document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
+document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
+
+/* small helper: setStoredUser (used above) */
+function setStoredUser(u) { try {
+  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
+  const ev = { type: "airtime_purchase", transaction_for: "airtime", ts: Date.now(), user: u };
+  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
+} catch(e){ console.error(e); }}
+
+/* init finished */
+</script>
+</body>
+</html>
