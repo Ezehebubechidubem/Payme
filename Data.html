@@ -386,6 +386,7 @@ confirmBtn.addEventListener('click', async () => {
   const fee = Math.ceil(amount * 0.01);
   const total = amount + fee;
 
+  
   // UI loading
   const oldHtml = confirmBtn.innerHTML;
   confirmBtn.innerHTML = 'Processing <span class="loader" aria-hidden="true"></span>';
@@ -415,3 +416,87 @@ confirmBtn.addEventListener('click', async () => {
       showError('Purchase failed: ' + reason);
       confirmBtn.disabled = false;
       confirmBtn.innerHTML = oldHtml;
+      return;
+    }
+
+    // Success path: update local storage balance
+    const newBalance = (data && (typeof data.balance !== 'undefined')) ? Number(data.balance) : null;
+    let updatedUser = user;
+    if (newBalance === null) {
+      // try fetch /user/<phone>
+      try {
+        const r2 = await fetch(`${API_BASE}/user/${encodeURIComponent(user.phone)}`);
+        if (r2.ok) {
+          const j = await r2.json();
+          if (j && j.status === 'success' && j.user) updatedUser = j.user;
+        }
+      } catch(e){ console.warn('refetch user failed', e); }
+    } else {
+      updatedUser = Object.assign({}, user, { balance: newBalance });
+    }
+
+    // persist
+    setStoredUser(updatedUser);
+
+    // add local transaction (transactions.html reads localStorage.transactions if you use it)
+    try {
+      const txs = JSON.parse(localStorage.getItem('transactions') || '[]');
+      txs.unshift({
+        type: 'Data Purchase',
+        network: selectedNetwork.name,
+        plan: selectedPlanLabel,
+        amount: amount,
+        fee: fee,
+        total: total,
+        other_party: recipient,
+        date: (new Date()).toISOString()
+      });
+      localStorage.setItem('transactions', JSON.stringify(txs));
+    } catch(e){ console.warn('store tx failed', e); }
+
+    confirmOverlay.classList.remove('show');
+
+    // show success popup
+    showSuccess(`You bought ${selectedPlanLabel} (${selectedNetwork.name}) for ₦${Number(amount).toLocaleString()}.`);
+    // reset UI
+    document.querySelectorAll('.amt').forEach(x=>x.classList.remove('active'));
+    customAmount.value = '';
+    recipientInput.value = '';
+    selectedPrice = null;
+    selectedPlanLabel = null;
+    updatePayState(null,null);
+
+  } catch (err) {
+    console.error('network error', err);
+    showError('Network error while purchasing data');
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = oldHtml;
+  }
+});
+
+/* close confirm with ESC */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'Escape') {
+    confirmOverlay.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    hideSuccess();
+    hideError();
+  }
+});
+
+/* success/error modal close wiring for click outside */
+document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
+document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
+
+/* small helper: setStoredUser (used above) */
+function setStoredUser(u) { try {
+  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
+  const ev = { type: "data_purchase", transaction_for: "data", ts: Date.now(), user: u };
+  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
+} catch(e){ console.error(e); }}
+
+/* init finished */
+</script>
+</body>
+</html>
