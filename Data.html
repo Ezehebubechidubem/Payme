@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PAYME — Data</title>
+
+  <!-- Font Awesome (icons) -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+
+  <style>
+    :root{
+      --primary:#00c853; --primary-dark:#009624; --bg:#ffffff; --card:#ffffff;
+      --muted:#777; --soft:#e8f5e9; --line:#e0e0e0; --text:#1b1b1b;
+      --radius:14px;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);padding-bottom:84px}
+    .wrap{max-width:440px;margin:0 auto;padding:12px}
+    .topbar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+    .topbar h1{font-size:18px;margin:0;font-weight:700}
+    .card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:0 1px 0 rgba(0,0,0,.03) inset}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .label{font-size:12px;color:var(--muted)}
+    .amount-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .amt{background:#fbfbfb;border-radius:10px;padding:10px;text-align:center;cursor:pointer;border:1px solid #f1f4f5}
+    .amt.active{outline:2px solid rgba(0,200,83,0.12);transform:translateY(-3px)}
+    .cashback{background:#e8f9f3;color:#047a54;padding:4px 6px;border-radius:8px;font-size:12px;margin-bottom:6px;display:inline-block}
+    .custom-row{display:flex;gap:10px;align-items:center;margin-top:12px}
+    .naira{padding:10px;border-radius:10px;background:#fff;border:1px solid #eee}
+    input[type=number], input[type=tel], input[type=text]{flex:1;padding:10px;border-radius:10px;border:1px solid #eee}
+    .pay-btn{background:var(--primary);color:#fff;border:0;padding:10px 14px;border-radius:999px;font-weight:700;cursor:pointer}
+    .pay-btn[disabled]{opacity:0.45;cursor:not-allowed}
+    .tiny{font-size:13px;color:var(--muted)}
+    .modal-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.36);z-index:60}
+    .modal-overlay.show{display:flex}
+    .modal{width:100%;max-width:420px;background:var(--card);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px;box-shadow:0 -10px 30px rgba(12,18,20,0.12)}
+    .modal-list{max-height:60vh;overflow:auto}
+    .carrier-item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;border:1px solid #f3f6f6;margin-bottom:8px;cursor:pointer}
+    .logo-badge{width:64px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+    .confirm-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.28);z-index:80}
+    .confirm-overlay.show{display:flex}
+    .confirm-card{background:#fff;padding:16px;border-radius:12px;width:92%;max-width:420px}
+    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0e9f72;color:#fff;padding:10px 14px;border-radius:999px;display:none}
+    .success-modal { position: fixed; inset: 0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.45); z-index:100; }
+    .success-card { background:#fff; border-radius:12px; padding:18px; width:92%; max-width:420px; text-align:center; box-shadow: 0 18px 40px rgba(10,20,30,0.12); }
+    .success-badge { width:68px;height:68px;border-radius:999px; display:inline-grid; place-items:center; color:#fff; font-size:32px; margin-bottom:10px; background:linear-gradient(135deg,#00c853,#43a047); }
+    .error-badge { background:linear-gradient(135deg,#f44336,#e53935); }
+    .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+    .btn { padding:10px 12px; border-radius:8px; font-weight:700; border:0; cursor:pointer; }
+    .btn-outline { background:#fff; border:1px solid #ddd; color:#333 }
+    .btn-primary { background:var(--primary); color:#fff }
+    .muted-note{font-size:12px;color:#888;margin-top:8px}
+    .loader { display:inline-block; width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,0.2); border-top-color: #fff; animation: spin .7s linear infinite; vertical-align: middle; margin-left:8px; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <h1>Data</h1>
+      <a href="dashboard.html" style="margin-left:auto;color:var(--muted);font-weight:700">Back</a>
+    </header>
+
+    <!-- Recipient -->
+    <div class="card">
+      <div class="label">Recipient Number</div>
+      <div style="margin-top:8px" class="row">
+        <div id="selectedNetworkBadge" style="display:flex;align-items:center;gap:10px">
+          <div id="networkBadge" class="logo-badge" style="background:#e53935">A</div>
+          <div id="networkName" style="font-weight:700">Airtel</div>
+        </div>
+        <button id="chooseNetworkBtn" class="tiny">Change</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <input id="recipientInput" type="tel" placeholder="e.g 0803xxxxxxx" inputmode="tel" />
+      </div>
+      <div class="muted-note">Tip: enter recipient number in local format (11 digits, e.g. 0803xxxxxxxx)</div>
+    </div>
+
+    <!-- Data Plans -->
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div>
+          <div class="label">Data Plan</div>
+          <div class="tiny">Choose quick plan or enter custom amount (₦)</div>
+        </div>
+      </div>
+
+      <div class="amount-grid" id="amountGrid" style="margin-top:10px">
+        <!-- plan buttons inserted by JS -->
+      </div>
+
+      <div class="custom-row">
+        <div class="naira">₦</div>
+        <input id="customAmount" type="number" placeholder="Enter amount (₦)" min="50" />
+        <button id="payBtn" class="pay-btn" disabled>Pay</button>
+      </div>
+
+      <div style="margin-top:8px" class="tiny">Fee: 1% (rounded up). Total deducted = amount + fee.</div>
+    </div>
+
+    <!-- Save beneficiary -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700">Save as beneficiary</div>
+          <div class="tiny">Save this number for next time</div>
+        </div>
+        <label><input id="saveToggle" type="checkbox" /></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- carrier modal -->
+  <div id="modalOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog">
+      <div class="modal-list" id="carrierList"></div>
+    </div>
+  </div>
+
+  <!-- confirm -->
+  <div id="confirmOverlay" class="confirm-overlay" aria-hidden="true">
+    <div class="confirm-card">
+      <div style="font-weight:700" id="confirmTitle">Confirm Purchase</div>
+      <div style="margin-top:8px" class="tiny" id="confirmSub"></div>
+
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between"><div class="tiny">Plan</div><div id="confirmPlan" style="font-weight:800"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Amount</div><div id="confirmAmount" style="font-weight:800"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Fee</div><div id="confirmFee"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">Total</div><div id="confirmTotal" style="font-weight:800"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px"><div class="tiny">To</div><div id="confirmTo"></div></div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+        <button id="cancelBtn" class="tiny">Cancel</button>
+        <button id="confirmBtn" class="pay-btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- success popup -->
+  <div id="successModal" class="success-modal" aria-hidden="true">
+    <div class="success-card">
+      <div class="success-badge">✓</div>
+      <h3 id="successHeading">Payment successful</h3>
+      <p id="successMsg">Your data purchase was successful.</p>
+      <div class="actions">
+        <button id="viewTxBtn" class="btn btn-outline">View Transactions</button>
+        <button id="doneBtn" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- error popup -->
+  <div id="errorModal" class="success-modal" aria-hidden="true">
+    <div class="success-card">
+      <div class="success-badge error-badge">✕</div>
+      <h3 id="errorHeading">Error</h3>
+      <p id="errorMsg">Something went wrong</p>
+      <div class="actions">
+        <button id="errorOk" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ---------------- CONFIG ---------------- */
+const API_BASE = "https://payme-update.onrender.com"; // your backend
+
+/* ---------------- helpers (same keys as dashboard) ---------------- */
+function getStoredUser() {
+  const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+  try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
+}
+function setStoredUser(u) {
+  try {
+    localStorage.setItem("loggedInUser", JSON.stringify(u));
+    localStorage.setItem("user", JSON.stringify(u));
+    const ev = { type: "data_purchase", user: u, ts: Date.now() };
+    localStorage.setItem("payme_event", JSON.stringify(ev));
+    setTimeout(()=> localStorage.removeItem("payme_event"), 800);
+  } catch(e){ console.error("storage error", e); }
+}
+function showError(msg){ document.getElementById('errorMsg').textContent = msg; document.getElementById('errorModal').classList.add('show'); document.getElementById('errorModal').setAttribute('aria-hidden','false'); document.getElementById('errorOk').focus(); }
+function hideError(){ document.getElementById('errorModal').classList.remove('show'); document.getElementById('errorModal').setAttribute('aria-hidden','true'); }
+
+/* ---------------- networks (inline badges) ---------------- */
+const networks = [
+  { id: 'airtel', name:'Airtel', color:'#e53935', short:'AIRTEL', logoSvg: `<svg width="72" height="28" xmlns="http://www.w3.org/2000/svg"><rect rx="6" width="72" height="28" fill="#e53935"/><text x="36" y="19" font-family="Inter, Arial" font-weight="700" font-size="12" text-anchor="middle" fill="#fff">AIRTEL</text></svg>` },
+  { id: 'mtn', name:'MTN', color:'#ffd54f', short:'MTN', logoSvg: `<svg width="72" height="28"><rect rx="6" width="72" height="28" fill="#ffd54f"/><text x="36" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#111">MTN</text></svg>` },
+  { id: 'glo', name:'Glo', color:'#35b44a', short:'GLO', logoSvg: `<svg width="72" height="28"><rect rx="6" width="72" height="28" fill="#35b44a"/><text x="36" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">GLO</text></svg>` },
+  { id: '9mobile', name:'9Mobile', color:'#00a0b0', short:'9MOBILE', logoSvg: `<svg width="72" height="28"><rect rx="6" width="72" height="28" fill="#00a0b0"/><text x="36" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">9MOBILE</text></svg>` }
+];
+
+/* ---------------- data plans (each 500MB = ₦250) ---------------- */
+const plans = [
+  { label: '500MB', mb: 500, price: 250 },
+  { label: '1GB',   mb: 1024, price: 500 },
+  { label: '2GB',   mb: 2048, price: 1000 },
+  { label: '5GB',   mb: 5120, price: 2500 },
+  { label: '10GB',  mb: 10240, price: 5000 },
+  { label: '50GB',  mb: 51200, price: 25000 }
+];
+
+/* cashback calculation: mirror airtime behaviour (small packs slightly higher %)
+   <=200 -> 2%, else 1% (rounded up) */
+function cashbackFor(price) {
+  if (price <= 200) return Math.ceil(price * 0.02);
+  return Math.ceil(price * 0.01);
+}
+
+/* ---------------- init UI ---------------- */
+let selectedNetwork = networks[0];
+const networkBadge = document.getElementById('networkBadge');
+const networkName = document.getElementById('networkName');
+const chooseNetworkBtn = document.getElementById('chooseNetworkBtn');
+const modalOverlay = document.getElementById('modalOverlay');
+const carrierList = document.getElementById('carrierList');
+const recipientInput = document.getElementById('recipientInput');
+const amountGrid = document.getElementById('amountGrid');
+const amountBtns = [];
+
+/* render network badge */
+function renderNetworkBadge(n){
+  networkBadge.style.background = n.color;
+  networkBadge.innerHTML = n.logoSvg;
+  networkName.textContent = n.name;
+}
+renderNetworkBadge(selectedNetwork);
+
+/* build plan buttons */
+function renderPlanButtons(){
+  amountGrid.innerHTML = '';
+  plans.forEach(p => {
+    const cb = cashbackFor(p.price);
+    const div = document.createElement('div');
+    div.className = 'amt';
+    div.setAttribute('data-price', p.price);
+    div.setAttribute('data-plan', p.label);
+    div.innerHTML = `<div class="cashback">₦${cb} Cashback</div><div style="font-weight:800">${p.label}</div><div style="margin-top:6px;color:#666;font-size:13px">₦${Number(p.price).toLocaleString()}</div>`;
+    amountGrid.appendChild(div);
+    amountBtns.push(div);
+  });
+}
+renderPlanButtons();
+
+/* show modal list */
+chooseNetworkBtn.addEventListener('click', ()=> {
+  carrierList.innerHTML = '';
+  networks.forEach(n => {
+    const div = document.createElement('div');
+    div.className = 'carrier-item';
+    div.innerHTML = `<div class="logo-badge" style="background:${n.color}">${n.logoSvg}</div><div style="font-weight:700;flex:1">${n.name}</div><div style="color:#999">${n.short}</div>`;
+    div.addEventListener('click', () => {
+      selectedNetwork = n;
+      renderNetworkBadge(n);
+      modalOverlay.classList.remove('show');
+    });
+    carrierList.appendChild(div);
+  });
+  modalOverlay.classList.add('show');
+});
+modalOverlay.addEventListener('click', (e)=> { if(e.target === modalOverlay) modalOverlay.classList.remove('show'); });
+
+/* amount selection */
+const customAmount = document.getElementById('customAmount');
+const payBtn = document.getElementById('payBtn');
+amountGrid.addEventListener('click', (ev) => {
+  const b = ev.target.closest('.amt');
+  if(!b) return;
+  // remove active
+  document.querySelectorAll('.amt').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  customAmount.value = '';
+  updatePayState(Number(b.dataset.price), b.dataset.plan);
+});
+
+customAmount.addEventListener('input', ()=> {
+  document.querySelectorAll('.amt').forEach(x=>x.classList.remove('active'));
+  const v = Number(customAmount.value);
+  updatePayState(isNaN(v) ? null : v, 'Custom');
+});
+
+recipientInput.addEventListener('input', ()=> updatePayState(null,null));
+
+let selectedPrice = null;
+let selectedPlanLabel = null;
+function validPhone11(p){
+  if(!p) return false;
+  const digits = p.replace(/\D/g,'');
+  return /^\d{11}$/.test(digits); // exactly 11 digits required
+}
+function updatePayState(priceCandidate, planLabelCandidate){
+  if (typeof priceCandidate === 'number') {
+    selectedPrice = priceCandidate;
+    selectedPlanLabel = planLabelCandidate || 'Custom';
+  } else if (customAmount.value) {
+    selectedPrice = Number(customAmount.value) || null;
+    selectedPlanLabel = 'Custom';
+  }
+  const to = (recipientInput.value || '').trim();
+  const ok = selectedPrice && selectedPrice >= 50 && validPhone11(to);
+  payBtn.disabled = !ok;
+}
+
+/* on load: require logged user presence (but do not block if not) */
+window.addEventListener('load', ()=> {
+  const user = getStoredUser();
+  if (user && user.phone) {
+    // nothing to auto-fill
+  }
+});
+
+/* ---------------- Purchase flow ---------------- */
+const confirmOverlay = document.getElementById('confirmOverlay');
+const confirmTitle = document.getElementById('confirmTitle');
+const confirmSub = document.getElementById('confirmSub');
+const confirmPlan = document.getElementById('confirmPlan');
+const confirmAmount = document.getElementById('confirmAmount');
+const confirmFee = document.getElementById('confirmFee');
+const confirmTotal = document.getElementById('confirmTotal');
+const confirmTo = document.getElementById('confirmTo');
+const cancelBtn = document.getElementById('cancelBtn');
+const confirmBtn = document.getElementById('confirmBtn');
+
+payBtn.addEventListener('click', ()=>{
+  const to = recipientInput.value.trim();
+  if (!validPhone11(to)) return showError('Enter a valid 11-digit recipient phone');
+  const amt = Number(selectedPrice || customAmount.value);
+  if (!amt || amt < 50) return showError('Enter a valid amount (minimum ₦50)');
+  const fee = Math.ceil(amt * 0.01);
+  const total = amt + fee;
+
+  confirmTitle.textContent = `Buy ${selectedNetwork.name} Data`;
+  confirmSub.textContent = 'Confirm before we proceed';
+  confirmPlan.textContent = selectedPlanLabel || 'Custom';
+  confirmAmount.textContent = `₦${Number(amt).toLocaleString()}`;
+  confirmFee.textContent = `₦${Number(fee).toLocaleString()}`;
+  confirmTotal.textContent = `₦${Number(total).toLocaleString()}`;
+  confirmTo.textContent = to;
+  confirmOverlay.classList.add('show');
+});
+
+cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
+
+/* success/error modals handlers */
+const successModal = document.getElementById('successModal');
+const successHeading = document.getElementById('successHeading');
+const successMsg = document.getElementById('successMsg');
+const viewTxBtn = document.getElementById('viewTxBtn');
+const doneBtn = document.getElementById('doneBtn');
+const errorOk = document.getElementById('errorOk');
+
+document.getElementById('errorOk').addEventListener('click', hideError);
+document.getElementById('errorModal').addEventListener('click', (e)=> { if(e.target === document.getElementById('errorModal')) hideError(); });
+
+viewTxBtn.addEventListener('click', ()=> { hideSuccess(); window.location.href = 'transactions.html'; });
+doneBtn.addEventListener('click', ()=> { hideSuccess(); /* stay on page */ });
+
+function showSuccess(msg){
+  successHeading.textContent = 'Payment successful';
+  successMsg.textContent = msg || 'Your purchase was successful.';
+  successModal.classList.add('show');
+  successModal.style.display = 'flex';
+  successModal.setAttribute('aria-hidden','false');
+  doneBtn.focus();
+}
+function hideSuccess(){
+  successModal.classList.remove('show');
+  successModal.style.display = 'none';
+  successModal.setAttribute('aria-hidden','true');
+}
+
+/* Confirm -> call backend */
+confirmBtn.addEventListener('click', async () => {
+  confirmBtn.disabled = true;
+  const recipient = recipientInput.value.trim();
+  const amount = Number(selectedPrice || customAmount.value);
+  const user = getStoredUser();
+  if (!user || !user.phone) { showError('You must be logged in'); confirmBtn.disabled=false; return; }
+
+  const fee = Math.ceil(amount * 0.01);
+  const total = amount + fee;
+
+  // UI loading
+  const oldHtml = confirmBtn.innerHTML;
+  confirmBtn.innerHTML = 'Processing <span class="loader" aria-hidden="true"></span>';
+
+  const payload = {
+    phone: user.phone,
+    network: selectedNetwork.name,
+    amount: amount,
+    recipient: recipient,
+    product: 'data',
+    data_plan: selectedPlanLabel
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/buy_airtime`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+
+    let data = null;
+    try { data = await res.json(); } catch(e){ data = null; }
+
+    if (!res.ok || (data && data.status && data.status !== 'success')) {
+      const reason = (data && (data.message || data.error)) ? (data.message || data.error) : (data ? JSON.stringify(data) : `HTTP ${res.status}`);
+      console.error('buy_data failure', res.status, data);
+      showError('Purchase failed: ' + reason);
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = oldHtml;
