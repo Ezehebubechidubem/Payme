@@ -584,7 +584,7 @@
       toggleSeeMore(currentUserGlobal);
     });
 
-    // loadSavings now fetches entire list, stores in allSavings and renders the first page
+       // loadSavings now fetches entire list, stores in allSavings and renders the first page
     let currentUserGlobal = null;
     async function loadSavings(user) {
       if (!user || !user.id) {
@@ -592,4 +592,172 @@
         return;
       }
 
-      cl
+      clearCountdowns();
+      savingsTable.innerHTML = `<tr><td colspan="5">Loading...</td></tr>`;
+
+      try {
+        const res = await fetch(`${API_BASE}/savings/list/${encodeURIComponent(user.id)}`);
+        if (!res.ok) {
+          let errText = `Failed to load savings (${res.status})`;
+          try {
+            const j = await res.json();
+            if (j && j.message) errText = j.message;
+          } catch(e){}
+          savingsTable.innerHTML = `<tr><td colspan="5">${errText}</td></tr>`;
+          return;
+        }
+
+        const json = await res.json();
+        const rows = (json && json.savings) ? json.savings : [];
+        // sort rows by id descending (most recent first) — backend already does that but ensure it
+        rows.sort((a,b) => (b.id || 0) - (a.id || 0));
+        allSavings = rows;
+        displayedCount = Math.min(PAGE_SIZE, allSavings.length);
+        isExpanded = false;
+        currentUserGlobal = user;
+        renderSavingsSlice(user);
+      } catch (err) {
+        console.error("Error loading savings:", err);
+        savingsTable.innerHTML = `<tr><td colspan="5">Error loading savings</td></tr>`;
+      }
+    }
+
+    // withdraw handler (unchanged logic except alerts replaced with modal)
+    async function handleWithdraw(user, savingsId, amount, type, rowId) {
+      if (!user || !user.id) {
+        showError("User not ready. Try logging in again.", "User not ready");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/savings/withdraw`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: user.id, savings_id: savingsId })
+        });
+        const json = await res.json();
+
+        if (json && json.status === "success") {
+          const timerEl = document.getElementById(`timer-${savingsId}`);
+          if (timerEl) timerEl.innerText = "✅ Withdrawn";
+          const btn = document.querySelector(`button[data-id="${savingsId}"]`);
+          if (btn) { btn.disabled = true; btn.classList.add("disabled-btn"); btn.innerText = "Withdrawn"; }
+
+          await refreshStoredBalance(user);
+
+          showSuccess(json.message || `₦${amount} withdrawn and credited to main balance.`, "Withdrawn", function(){
+            setTimeout(() => loadSavings(user), 800);
+          });
+        } else {
+          const msg = (json && json.message) ? json.message : "Withdrawal failed";
+          showError("❌ " + msg, "Withdraw failed", function(){
+            setTimeout(() => loadSavings(user), 500);
+          });
+        }
+      } catch (err) {
+        console.error("Withdraw error:", err);
+        showError("❌ Withdraw failed (network error)", "Network error", function(){
+          setTimeout(() => loadSavings(user), 500);
+        });
+      }
+    }
+
+    // create savings (same behavior but alerts replaced)
+    async function handleCreateSavings(user, amount, savingsType, durationDays) {
+      if (!user) {
+        showError("Please login first", "Authentication required");
+        return;
+      }
+      if (toFloat(amount) <= 0) {
+        showError("Amount must be > 0", "Invalid amount");
+        return;
+      }
+      if (!["flexible","fixed"].includes(savingsType)) {
+        showError("Invalid savings type", "Invalid input");
+        return;
+      }
+      if (toInt(durationDays) <= 0) {
+        showError("Invalid duration", "Invalid input");
+        return;
+      }
+
+      try {
+        const payload = {
+          user_id: user.id,
+          phone: user.phone,
+          amount: toFloat(amount),
+          savings_type: savingsType,
+          duration_days: toInt(durationDays)
+        };
+
+        const res = await fetch(`${API_BASE}/savings/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const json = await res.json();
+
+        if (json && json.status === "success") {
+          await refreshStoredBalance(user);
+          showSuccess(json.message || "Savings created", "Saved", function(){
+            setTimeout(() => loadSavings(user), 300);
+          });
+        } else {
+          showError("❌ " + (json && json.message ? json.message : "Could not create savings"), "Create failed");
+        }
+      } catch (err) {
+        console.error("Create savings error:", err);
+        showError("❌ Create failed (network error)", "Network error");
+      }
+    }
+
+    // goBack preserved (some variants of your markup call window.goBack)
+    function goBack() {
+      window.location.href = "paymelogin.html";
+    }
+    window.goBack = goBack;
+
+    // init wiring
+    async function init() {
+      let stored = readStoredUser();
+      if (!stored) {
+        showError("Please login first", "Not logged in", function(){
+          window.location.href = "login.html";
+        });
+        return;
+      }
+
+      const user = await ensureUserHasId(stored);
+      if (!user || !user.id) {
+        showError("Could not determine your user id. Please login again.", "User error", function(){
+          window.location.href = "login.html";
+        });
+        return;
+      }
+
+      // wire form submit
+      const form = document.getElementById("savingsForm");
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const amount = document.getElementById("amount").value;
+        const savingsType = document.getElementById("savingsType").value;
+        const duration = document.getElementById("duration").value;
+        await handleCreateSavings(user, amount, savingsType, duration);
+      });
+
+      await refreshStoredBalance(user);
+
+      // initial load of savings -> allSavings will be populated; render first 5
+      await loadSavings(user);
+
+      // clear timers when user navigates away (prevent leaking intervals)
+      window.addEventListener("beforeunload", () => clearCountdowns());
+    }
+
+    // Start
+    init();
+  })();
+  </script>
+</body>
+</html>
