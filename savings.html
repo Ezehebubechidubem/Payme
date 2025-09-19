@@ -1,4 +1,3 @@
-<!-- savings.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,89 +5,145 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Savings Page</title>
   <style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #f3f3f3;
-    margin: 0;
-    padding: 0;
+  /* --- base / layout --- */
+  :root {
+    --bg: #f3f3f3;
+    --card-bg: #fff;
+    --primary: #00c853;
+    --muted: #666;
+    --danger: #e53935;
   }
 
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    font-family: Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+  }
+
+  /* Container is responsive and fits any screen */
   .container {
-    width: 90%;
-    margin: auto;
-    padding: 20px;
+    width: 100%;
+    max-width: 920px;          /* nice max width on large screens */
+    margin: 12px auto;         /* small top/bottom margin */
+    padding: 12px;
+    box-sizing: border-box;
+    min-height: calc(100vh - 24px); /* ensures full-screen feel on mobile */
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   h2 {
     text-align: center;
     color: #333;
+    margin: 6px 0 0 0;
   }
 
   .card {
-    background: #fff;
-    padding: 20px;
-    margin-top: 20px;
+    background: var(--card-bg);
+    padding: 14px;
     border-radius: 10px;
-    box-shadow: 0px 3px 6px rgba(0,0,0,0.1);
+    box-shadow: 0px 3px 6px rgba(0,0,0,0.06);
+    box-sizing: border-box;
+    width: 100%;
+    overflow: hidden;
   }
 
-  form label {
-    display: block;
-    margin: 10px 0 5px;
-  }
-
+  /* Form controls: full width and mobile-friendly */
+  form label { display:block; margin:10px 0 6px; color:var(--muted) }
   form input, form select {
     width: 100%;
     padding: 10px;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 15px;
+    box-sizing: border-box;
   }
-
   button {
-    background: #28a745;
+    background: var(--primary);
     color: white;
     padding: 10px;
     border: none;
     width: 100%;
-    border-radius: 5px;
+    border-radius: 8px;
     cursor: pointer;
+    font-weight: 700;
+    font-size: 15px;
+  }
+  button:hover { background: #018f44 }
+
+  .action-container { display:flex; gap:8px; justify-content:center; align-items:center; }
+
+  .back-btn { background:#007bff; margin-top:6px; }
+  .back-btn:hover { background:#0056b3 }
+
+  .disabled-btn { background:#ccc !important; cursor:not-allowed }
+
+  /* Table area: responsive and constrained to viewport */
+  .table-wrap {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 12px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #eee;
+    background: #fff;
   }
 
-  button:hover {
-    background: #218838;
+  /* Scrollable area that fits the screen: will not exceed viewport */
+  #savingsScroll {
+    max-height: calc(50vh); /* initial; will scroll independently */
+    overflow:auto;
   }
 
+  /* Table styles adapted to be responsive */
   table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 15px;
+    table-layout: fixed; /* prevent horizontal overflow */
+    min-width: 100%;
   }
-
-  table th, table td {
+  thead th {
+    background: #fafafa;
+    position: sticky;
+    top: 0;
+    z-index: 1;
     padding: 10px;
-    border: 1px solid #ddd;
+    text-align:center;
+    font-size: 13px;
+    color: #333;
+    border-bottom: 1px solid #eee;
+  }
+  tbody td {
+    padding: 10px;
+    border-bottom: 1px solid #f1f1f1;
     text-align: center;
+    font-size: 14px;
+    word-break: break-word; /* avoid overflow */
   }
 
-  .action-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
+  /* "Show more" holder */
+  .show-more-wrap {
+    display:flex;
+    justify-content:center;
+    padding:10px;
+    background:#fff;
+    border-top:1px solid #eee;
   }
-
-  .back-btn {
-    background: #007bff;
-    margin-top: 20px;
+  .show-more-btn {
+    background:#fff;
+    border:1px solid #ddd;
+    padding:8px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:700;
   }
-
-  .back-btn:hover {
-    background: #0056b3;
-  }
-
-  .disabled-btn {
-    background: #ccc !important;
-    cursor: not-allowed;
-  }
+  .show-more-btn:hover { background:#fafafa }
 
   /* Modal popup styles (used to replace alerts) */
   .modal-overlay {
@@ -100,9 +155,7 @@
     background: rgba(0,0,0,0.45);
     z-index: 9999;
   }
-  .modal-overlay.show {
-    display: flex;
-  }
+  .modal-overlay.show { display:flex; }
   .modal {
     width: calc(100% - 48px);
     max-width: 420px;
@@ -110,28 +163,26 @@
     border-radius: 12px;
     padding: 18px;
     box-shadow: 0 18px 40px rgba(10,20,30,0.15);
-    text-align: center;
+    text-align:center;
   }
-  .modal .badge {
-    width: 68px;
-    height: 68px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 32px;
-    margin-bottom: 12px;
-    color: #fff;
-  }
+  .modal .badge { width:68px; height:68px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:12px; color:#fff; }
   .modal .badge.success { background: linear-gradient(135deg,#00c853,#43a047); }
   .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
-  .modal h3 { margin: 6px 0 6px; font-size: 18px; }
-  .modal p { margin: 0 0 12px; color: #555; }
+  .modal h3 { margin:6px 0 6px; font-size:18px; }
+  .modal p { margin: 0 0 12px; color:#555; }
   .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
-  .modal .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
+  .modal .btn { padding:10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
   .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
-  .modal .btn-primary { background:#00c853; color:#fff; border:0; }
+  .modal .btn-primary { background:var(--primary); color:#fff; border:0; }
 
+  /* small screen tweaks */
+  @media (max-width: 600px) {
+    #savingsScroll { max-height: calc(55vh); }
+    .container { padding:10px; }
+    .card { padding:12px; }
+    input, select { font-size: 14px; padding:9px; }
+    thead th, tbody td { font-size: 13px; padding:8px; }
+  }
   </style>
 </head>
 <body>
@@ -169,22 +220,34 @@
     <!-- Active Savings -->
     <div class="card">
       <h3>Active Savings</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Amount</th>
-            <th>Type</th>
-            <th>End Date</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="savingsTable"></tbody>
-      </table>
+
+      <!-- table wrapper (scrollable, constrained) -->
+      <div class="table-wrap">
+        <div id="savingsScroll" tabindex="0" aria-label="Savings list">
+          <table aria-describedby="savings caption">
+            <thead>
+              <tr>
+                <th>Amount</th>
+                <th>Type</th>
+                <th>End Date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="savingsTable"></tbody>
+          </table>
+        </div>
+
+        <!-- show more holder (initially hidden; shown when more than 5 items exist) -->
+        <div class="show-more-wrap" id="showMoreWrap" style="display:none">
+          <button id="showMoreBtn" class="show-more-btn">Show more</button>
+        </div>
+      </div>
     </div>
 
     <!-- Back button -->
-      <button class="back-btn" onclick="window.location.href='paymelogin.html'">⬅ Back to Dashboard</button>
+    <button class="back-btn" onclick="window.location.href='paymelogin.html'">⬅ Back to Dashboard</button>
+  </div>
 
   <!-- SUCCESS / ERROR POPUPS (replace alert) -->
   <div id="successModal" class="modal-overlay" aria-hidden="true">
@@ -231,14 +294,11 @@
       successModal.classList.add('show');
       successModal.setAttribute('aria-hidden','false');
       successOk.focus();
-      // set one-time handler
       successOk.onclick = function() {
         successModal.classList.remove('show');
         successModal.setAttribute('aria-hidden','true');
         successOk.onclick = null;
-        if (typeof onOk === "function") {
-          try { onOk(); } catch(e){ console.warn(e); }
-        }
+        if (typeof onOk === "function") { try { onOk(); } catch(e){ console.warn(e); } }
       };
     }
     function showError(message, title = "Error", onOk = null) {
@@ -251,9 +311,7 @@
         errorModal.classList.remove('show');
         errorModal.setAttribute('aria-hidden','true');
         errorOk.onclick = null;
-        if (typeof onOk === "function") {
-          try { onOk(); } catch(e){ console.warn(e); }
-        }
+        if (typeof onOk === "function") { try { onOk(); } catch(e){ console.warn(e); } }
       };
     }
 
@@ -301,14 +359,8 @@
       }
     }
 
-    function toFloat(v) {
-      const n = parseFloat(v);
-      return isNaN(n) ? 0 : n;
-    }
-    function toInt(v) {
-      const n = parseInt(v, 10);
-      return isNaN(n) ? 0 : n;
-    }
+    function toFloat(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+    function toInt(v) { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
 
     // refresh stored balance from backend
     async function refreshStoredBalance(user) {
@@ -369,36 +421,43 @@
       countdownMap.set(id, iv);
     }
 
-    // render savings table using exactly what backend returns (no aggressive filtering)
-    function renderSavingsTable(rows, user) {
-      const table = document.getElementById("savingsTable");
-      table.innerHTML = "";
+    // --- Pagination state for savings list (show 5 last items initially) ---
+    const PAGE_SIZE = 5;
+    let allSavings = [];      // full list returned from backend (most recent first)
+    let displayedCount = 0;   // how many currently rendered
+    const savingsTable = document.getElementById("savingsTable");
+    const showMoreWrap = document.getElementById("showMoreWrap");
+    const showMoreBtn = document.getElementById("showMoreBtn");
+    const savingsScroll = document.getElementById("savingsScroll");
 
-      if (!rows || rows.length === 0) {
-        table.innerHTML = `<tr><td colspan="5">No savings found</td></tr>`;
+    // render a specific window (0 .. displayedCount-1) from allSavings
+    function renderSavingsSlice(user) {
+      // clear table
+      savingsTable.innerHTML = "";
+      if (!allSavings || allSavings.length === 0) {
+        savingsTable.innerHTML = `<tr><td colspan="5">No savings found</td></tr>`;
+        showMoreWrap.style.display = 'none';
         return;
       }
 
-      rows.forEach(s => {
+      // ensure displayedCount does not exceed length
+      displayedCount = Math.min(displayedCount || PAGE_SIZE, allSavings.length);
+
+      const visible = allSavings.slice(0, displayedCount);
+
+      for (const s of visible) {
         const id = s.id;
         const amount = s.amount;
-        // backend uses "type" but some code earlier used "savings_type" - support both
         const type = s.savings_type || s.type || "flexible";
         const endRaw = s.end_date || s.endDate || s.end || null;
         const endDate = endRaw ? new Date(endRaw) : null;
         const status = (s.status || "").toString().toLowerCase();
-        // backend now returns can_withdraw boolean — prefer that when available
         const canWithdraw = typeof s.can_withdraw !== "undefined" ? !!s.can_withdraw : null;
 
-        // status text
         let statusText = "Active";
         if (status === "withdrawn") statusText = "✅ Withdrawn";
         else if (endDate && endDate <= new Date()) statusText = "Completed";
 
-        // Decide action button:
-        // - If already withdrawn -> disabled Withdrawn
-        // - Else if backend says can_withdraw === true -> show Withdraw
-        // - Else fallback to type/endDate checks (flexible always withdrawable, fixed only if matured)
         let actionHtml = "";
         if (status === "withdrawn") {
           actionHtml = `<button class="disabled-btn" disabled>Withdrawn</button>`;
@@ -407,7 +466,6 @@
         } else if (canWithdraw === false) {
           actionHtml = `<button class="disabled-btn" disabled>Locked</button>`;
         } else {
-          // fallback behavior (maintains original UX)
           if (type === "flexible") {
             actionHtml = `<button data-id="${id}" class="withdraw-btn">Withdraw</button>`;
           } else if (type === "fixed") {
@@ -433,14 +491,13 @@
             </div>
           </td>
         `;
-        table.appendChild(tr);
+        savingsTable.appendChild(tr);
 
         // attach withdraw handler if button exists
         const btn = tr.querySelector("button.withdraw-btn");
         if (btn) {
           btn.addEventListener("click", async function () {
             const sid = toInt(this.getAttribute("data-id"));
-            // disable right away to avoid double-click
             this.disabled = true;
             this.classList.add("disabled-btn");
             await handleWithdraw(user, sid, amount, type, id);
@@ -451,10 +508,46 @@
         if (status !== "withdrawn" && endDate) {
           startCountdownForRow(id, endDate, user);
         }
-      });
+      }
+
+      // manage "show more"
+      if (allSavings.length > displayedCount) {
+        showMoreWrap.style.display = 'flex';
+      } else {
+        showMoreWrap.style.display = 'none';
+      }
     }
 
-    // load savings call
+    // show next page of savings (increments displayedCount by PAGE_SIZE)
+    function showNextSavingsPage(user) {
+      if (!allSavings || displayedCount >= allSavings.length) return;
+      displayedCount = Math.min(displayedCount + PAGE_SIZE, allSavings.length);
+      renderSavingsSlice(user);
+    }
+
+    // visible threshold detection for scroll (auto-load next page)
+    let isLoadingMore = false;
+    savingsScroll.addEventListener('scroll', function() {
+      if (isLoadingMore) return;
+      const scrolled = savingsScroll.scrollTop + savingsScroll.clientHeight;
+      const nearBottom = scrolled + 40 >= savingsScroll.scrollHeight;
+      if (nearBottom && allSavings && displayedCount < allSavings.length) {
+        isLoadingMore = true;
+        // small visual delay
+        setTimeout(() => {
+          showNextSavingsPage(currentUserGlobal);
+          isLoadingMore = false;
+        }, 250);
+      }
+    });
+
+    // attach show more button
+    showMoreBtn.addEventListener('click', function(){
+      showNextSavingsPage(currentUserGlobal);
+    });
+
+    // loadSavings now fetches entire list, stores in allSavings and renders the first page
+    let currentUserGlobal = null;
     async function loadSavings(user) {
       if (!user || !user.id) {
         console.error("loadSavings called without user id");
@@ -462,35 +555,37 @@
       }
 
       clearCountdowns();
-      const table = document.getElementById("savingsTable");
-      table.innerHTML = `<tr><td colspan="5">Loading...</td></tr>`;
+      savingsTable.innerHTML = `<tr><td colspan="5">Loading...</td></tr>`;
 
       try {
         const res = await fetch(`${API_BASE}/savings/list/${encodeURIComponent(user.id)}`);
         if (!res.ok) {
-          // try to surface server error if provided
           let errText = `Failed to load savings (${res.status})`;
           try {
             const j = await res.json();
             if (j && j.message) errText = j.message;
           } catch(e){}
-          table.innerHTML = `<tr><td colspan="5">${errText}</td></tr>`;
+          savingsTable.innerHTML = `<tr><td colspan="5">${errText}</td></tr>`;
           return;
         }
 
         const json = await res.json();
         const rows = (json && json.savings) ? json.savings : [];
-        renderSavingsTable(rows, user);
+        // sort rows by id descending (most recent first) — backend already does that but ensure it
+        rows.sort((a,b) => (b.id || 0) - (a.id || 0));
+        allSavings = rows;
+        displayedCount = Math.min(PAGE_SIZE, allSavings.length);
+        currentUserGlobal = user;
+        renderSavingsSlice(user);
       } catch (err) {
         console.error("Error loading savings:", err);
-        table.innerHTML = `<tr><td colspan="5">Error loading savings</td></tr>`;
+        savingsTable.innerHTML = `<tr><td colspan="5">Error loading savings</td></tr>`;
       }
     }
 
-    // withdraw handler
+    // withdraw handler (unchanged logic except alerts replaced with modal)
     async function handleWithdraw(user, savingsId, amount, type, rowId) {
       if (!user || !user.id) {
-        // replaced alert with popup and return (original behavior returned immediately)
         showError("User not ready. Try logging in again.", "User not ready");
         return;
       }
@@ -499,146 +594,4 @@
         const res = await fetch(`${API_BASE}/savings/withdraw`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: user.id, savings_id: savingsId })
-        });
-        const json = await res.json();
-
-        if (json && json.status === "success") {
-          // immediate UI feedback
-          const timerEl = document.getElementById(`timer-${savingsId}`);
-          if (timerEl) timerEl.innerText = "✅ Withdrawn";
-          const btn = document.querySelector(`button[data-id="${savingsId}"]`);
-          if (btn) { btn.disabled = true; btn.classList.add("disabled-btn"); btn.innerText = "Withdrawn"; }
-
-          // refresh stored balance so dashboard sees updated balance
-          await refreshStoredBalance(user);
-
-          // replaced alert with popup; when user clicks OK, call loadSavings (to match original alert+setTimeout behavior)
-          showSuccess(json.message || `₦${amount} withdrawn and credited to main balance.`, "Withdrawn", function(){
-            setTimeout(() => loadSavings(user), 800);
-          });
-        } else {
-          const msg = (json && json.message) ? json.message : "Withdrawal failed";
-          // replace alert + immediate setTimeout -> show popup then reload
-          showError("❌ " + msg, "Withdraw failed", function(){
-            setTimeout(() => loadSavings(user), 500);
-          });
-        }
-      } catch (err) {
-        console.error("Withdraw error:", err);
-        // replace alert -> show error popup then reload after dismiss
-        showError("❌ Withdraw failed (network error)", "Network error", function(){
-          setTimeout(() => loadSavings(user), 500);
-        });
-      }
-    }
-
-    // create savings
-    async function handleCreateSavings(user, amount, savingsType, durationDays) {
-      if (!user) {
-        // replaced alert with popup and return
-        showError("Please login first", "Authentication required");
-        return;
-      }
-      if (toFloat(amount) <= 0) {
-        // replaced return alert(...) with popup + return to mimic behavior
-        showError("Amount must be > 0", "Invalid amount");
-        return;
-      }
-      if (!["flexible","fixed"].includes(savingsType)) {
-        showError("Invalid savings type", "Invalid input");
-        return;
-      }
-      if (toInt(durationDays) <= 0) {
-        showError("Invalid duration", "Invalid input");
-        return;
-      }
-
-      try {
-        const payload = {
-          user_id: user.id,
-          phone: user.phone,
-          amount: toFloat(amount),
-          savings_type: savingsType,
-          duration_days: toInt(durationDays)
-        };
-
-        const res = await fetch(`${API_BASE}/savings/create`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        const json = await res.json();
-
-        if (json && json.status === "success") {
-          // Update balance from backend and reload savings to show new entry
-          await refreshStoredBalance(user);
-          // replaced alert with popup; after OK reload savings (to match original alert + setTimeout)
-          showSuccess(json.message || "Savings created", "Saved", function(){
-            setTimeout(() => loadSavings(user), 300);
-          });
-        } else {
-          showError("❌ " + (json && json.message ? json.message : "Could not create savings"), "Create failed");
-        }
-      } catch (err) {
-        console.error("Create savings error:", err);
-        showError("❌ Create failed (network error)", "Network error");
-      }
-    }
-
-    // goBack preserved (some variants of your markup call window.goBack)
-    function goBack() {
-      window.location.href = "paymelogin.html";
-    }
-    window.goBack = goBack;
-
-    // init wiring
-    async function init() {
-      let stored = readStoredUser();
-      if (!stored) {
-        // replaced alert+redirect with popup -> redirect on OK to preserve flow
-        showError("Please login first", "Not logged in", function(){
-          window.location.href = "login.html";
-        });
-        return;
-      }
-
-      // ensure we have an id
-      const user = await ensureUserHasId(stored);
-      if (!user || !user.id) {
-        showError("Could not determine your user id. Please login again.", "User error", function(){
-          window.location.href = "login.html";
-        });
-        return;
-      }
-
-      // wire form submit
-    // wire form submit
-      const form = document.getElementById("savingsForm");
-      form.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        const amount = document.getElementById("amount").value;
-        const savingsType = document.getElementById("savingsType").value;
-        const duration = document.getElementById("duration").value;
-        await handleCreateSavings(user, amount, savingsType, duration);
-      });
-
-      // refresh balance so stored user object is up-to-date
-      await refreshStoredBalance(user);
-
-      // initial load of savings
-      await loadSavings(user);
-
-      // clear timers when user navigates away (prevent leaking intervals)
-      window.addEventListener("beforeunload", () => clearCountdowns());
-    }
-
-    // start
-    init();
-  })();
-  </script>
-</body>
-</html>
-
-      
+          body: JSON.stringify({ user_i
