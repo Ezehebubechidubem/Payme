@@ -102,6 +102,12 @@
   </div>
 
   <script>
+    // ---------- CONFIG ----------
+    // Set this to your live backend URL (no trailing slash), e.g. "https://payme-update.onrender.com"
+    // If frontend is served from the same origin as backend, set BACKEND_URL = "" to use relative path.
+    const BACKEND_URL = "https://payme-update.onrender.com";
+
+    // ---------- DOM ----------
     const accountInput = document.getElementById("accountNumber");
     const bankSection = document.getElementById("bankSection");
     const bankSelect = document.getElementById("bankSelect");
@@ -125,40 +131,58 @@
       }
     });
 
-    // Step 2 → Select bank triggers API lookup
+    // Step 2 → Select bank triggers backend lookup (which proxies NubAPI)
     bankSelect.addEventListener("change", async function() {
-      if (this.value) {
-        const bankCode = this.value;
-        const url = `https://nubapi.com/verify?account_number=${currentAccount}&bank_code=${bankCode}`;
-
-        receiverName.textContent = "⏳ Looking up...";
-        receiverSection.classList.remove("hidden");
-
-        try {
-          const res = await fetch(url);
-          const data = await res.json();
-
-          if (data && data.account_name) {
-            receiverName.textContent = data.account_name;
-            amountSection.classList.remove("hidden");
-            sendSection.classList.remove("hidden");
-          } else {
-            receiverName.textContent = "❌ Account not found!";
-            amountSection.classList.add("hidden");
-            sendSection.classList.add("hidden");
-          }
-        } catch (err) {
-          console.error(err);
-          receiverName.textContent = "⚠️ Error connecting to Nubapi.";
-        }
-      } else {
+      if (!this.value) {
         receiverSection.classList.add("hidden");
+        amountSection.classList.add("hidden");
+        sendSection.classList.add("hidden");
+        return;
+      }
+
+      const bankCode = this.value;
+      // Build backend resolve endpoint (use relative path if BACKEND_URL is empty)
+      const base = BACKEND_URL ? BACKEND_URL : window.location.origin;
+      const url = `${base}/resolve_account?account_number=${encodeURIComponent(currentAccount)}&bank_code=${encodeURIComponent(bankCode)}`;
+
+      receiverName.textContent = "⏳ Looking up...";
+      receiverSection.classList.remove("hidden");
+
+      try {
+        const res = await fetch(url, { method: "GET", credentials: "include" });
+        // handle non-JSON / non-OK responses
+        if (!res.ok) {
+          let errMsg = `Server error ${res.status}`;
+          try {
+            const errJson = await res.json();
+            errMsg = errJson.message || errJson.error || errMsg;
+          } catch (e) { /* ignore JSON parse error */ }
+          receiverName.textContent = "❌ " + errMsg;
+          amountSection.classList.add("hidden");
+          sendSection.classList.add("hidden");
+          return;
+        }
+
+        const data = await res.json();
+
+        if (data.status === "success" && data.account_name) {
+          receiverName.textContent = data.account_name;
+          amountSection.classList.remove("hidden");
+          sendSection.classList.remove("hidden");
+        } else {
+          receiverName.textContent = "❌ " + (data.message || "Account not found!");
+          amountSection.classList.add("hidden");
+          sendSection.classList.add("hidden");
+        }
+      } catch (err) {
+        console.error("Resolve error:", err);
+        receiverName.textContent = "⚠️ Server error, please try again later!";
         amountSection.classList.add("hidden");
         sendSection.classList.add("hidden");
       }
     });
 
-    // Step 5 → Fake send money
+    // Step 5 → Fake send money (uses local receiver name shown)
     function sendMoney() {
       const amount = document.getElementById("amount").value;
       if (!amount || amount <= 0) {
