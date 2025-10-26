@@ -651,7 +651,9 @@ def find_flutter_code(bank_code_or_internal):
     return None, "Unable to determine Flutterwave bank code"
 # -------------------------------------------------------------------------------
 
-@app.route("/resolve-account", methods=["POST"])
+
+                
+                @app.route("/resolve-account", methods=["POST"])
 def resolve_account():
     """
     Resolve account_number + bank_code using Flutterwave (preferred) or NubAPI (fallback).
@@ -678,12 +680,43 @@ def resolve_account():
                 text = resp.text or ""
                 return None, text[:3000]
 
-        # 1) Try Flutterwave first
+        # -----------------------------
+        # (2) Determine flutter-compatible bank code
+        # -----------------------------
+        account_bank = None
+        mapping_error = None
         FLW_SECRET_KEY = os.environ.get("FLW_SECRET_KEY")
+
         if FLW_SECRET_KEY:
+            # Prefer using helper `find_flutter_code` if you added the helpers block.
+            # If helper missing, accept numeric codes (3 or 5 digits) as-is.
+            try:
+                account_bank, mapping_error = find_flutter_code(bank_code)
+            except NameError:
+                # helper not present: fall back to simple numeric acceptance
+                if bank_code.isdigit() and len(bank_code) in (3, 5):
+                    account_bank = bank_code
+                else:
+                    account_bank = None
+                    mapping_error = "find_flutter_code helper missing and bank_code not numeric"
+
+            # Sandbox override: Flutterwave sandbox only supports Access Bank (044) for account resolve
+            if not account_bank and "test" in FLW_SECRET_KEY.lower():
+                account_bank = "044"
+                mapping_error = None
+                print("Sandbox detected, forcing account_bank -> 044", flush=True)
+
+        if FLW_SECRET_KEY and not account_bank:
+            # If we have a secret but couldn't map the code, skip flutterwave and fall back to NubAPI.
+            print("Skipping Flutterwave: could not map bank:", mapping_error, "input:", bank_code, flush=True)
+
+        # -----------------------------
+        # 1) Try Flutterwave first (only if we have a secret key and a numeric account_bank)
+        # -----------------------------
+        if FLW_SECRET_KEY and account_bank:
             try:
                 flw_url = "https://api.flutterwave.com/v3/accounts/resolve"
-                payload = {"account_number": account_number, "account_bank": bank_code}
+                payload = {"account_number": account_number, "account_bank": account_bank}
                 headers = {
                     "Authorization": f"Bearer {FLW_SECRET_KEY}",
                     "Content-Type": "application/json",
@@ -705,7 +738,7 @@ def resolve_account():
                             "provider": "flutterwave",
                             "account_name": acct_name,
                             "account_number": account_number,
-                            "bank_code": bank_code,
+                            "bank_code": account_bank,
                             "raw": flw_json
                         }), 200
                     else:
@@ -727,7 +760,9 @@ def resolve_account():
             except requests.exceptions.RequestException as e:
                 print("Flutterwave request exception:", str(e), flush=True)
 
-        # 2) Fallback: NubAPI
+        # -----------------------------
+        # 3) Fallback: NubAPI (unchanged behavior)
+        # -----------------------------
         NUBAPI_KEY = os.environ.get("NUBAPI_KEY")
         if not NUBAPI_KEY:
             return jsonify({"status": "error", "message": "No verification provider configured (set FLW_SECRET_KEY or NUBAPI_KEY)"}), 500
@@ -777,6 +812,22 @@ def resolve_account():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
+
+
+# -----------------------------
+# (3) Optional: endpoint to force refresh Flutterwave banks cache
+# -----------------------------
+@app.route("/_refresh_flutter_banks", methods=["POST"])
+def _refresh_flutter_banks():
+    flw_secret = os.environ.get("FLW_SECRET_KEY")
+    if not flw_secret:
+        return jsonify({"status": "error", "message": "FLW_SECRET_KEY not configured"}), 400
+    # get_flutter_banks should be defined in the helpers you pasted earlier
+    data, err = get_flutter_banks(force_refresh=True)
+    if data:
+        return jsonify({"status": "success", "count": len(data)}), 200
+    return jsonify({"status": "error", "message": err}), 500
+```0
 
 # Savings (added, routes match your front-end)
 # -------------------------------------------------
