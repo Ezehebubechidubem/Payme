@@ -651,9 +651,7 @@ def find_flutter_code(bank_code_or_internal):
     return None, "Unable to determine Flutterwave bank code"
 # -------------------------------------------------------------------------------
 
-
-                
-                @app.route("/resolve-account", methods=["POST"])
+@app.route("/resolve-account", methods=["POST"])
 def resolve_account():
     """
     Resolve account_number + bank_code using Flutterwave (preferred) or NubAPI (fallback).
