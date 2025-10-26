@@ -511,38 +511,50 @@ if __name__ != "__main__":
 FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "FLWSECK_TEST-8a4eef00cb4d458b83e859c2f6178351-X")
 
 # ---------- /banks route (fetch from Flutterwave) ----------
+# ✅ Flutterwave Secret
+FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY", None)
+
 @app.route("/banks", methods=["GET"])
 def get_banks():
     try:
-        url = "https://api.flutterwave.com/v3/banks?country=NG"
-        headers = {"Authorization": f"Bearer {FLW_SECRET_KEY}"}
+        if not FLW_SECRET_KEY:
+            return jsonify({
+                "status": "error",
+                "message": "FLW_SECRET_KEY not configured in server."
+            }), 500
+
+        url = "https://api.flutterwave.com/v3/banks/NG"
+        headers = {
+            "Authorization": f"Bearer {FLW_SECRET_KEY}",
+            "Content-Type": "application/json"
+        }
         response = requests.get(url, headers=headers, timeout=10)
 
-        if response.status_code == 200:
-            data = response.json()
-            banks = [
-                {"name": bank.get("name"), "code": bank.get("code"), "slug": bank.get("slug", "")}
-                for bank in data.get("data", [])
-            ]
+        if response.status_code != 200:
             return jsonify({
-                "status": "success",
-                "message": "Bank list fetched from Flutterwave",
-                "banks": banks
-            }), 200
+                "status": "error",
+                "message": f"Flutterwave API failed with status {response.status_code}",
+                "details": response.text
+            }), response.status_code
+
+        body = response.json()
+        banks = [
+            {"name": bank["name"], "code": bank["code"]}
+            for bank in body.get("data", [])
+        ]
 
         return jsonify({
-            "status": "error",
-            "message": "Failed to fetch from Flutterwave",
-            "details": response.text
-        }), response.status_code
+            "status": "success",
+            "message": "Bank list fetched successfully",
+            "banks": banks
+        }), 200
 
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": "Server Error",
+            "message": "Server crashed while loading banks",
             "details": str(e)
         }), 500
-
 
 # ---------- Flutterwave banks cache & helpers ----------
 _FLW_BANKS_CACHE = {"ts": 0, "data": None}
