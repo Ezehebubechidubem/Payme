@@ -559,45 +559,152 @@ def get_banks():
 
 @app.route("/resolve-account", methods=["POST"])
 def resolve_account():
+    """
+    Resolve account_number + bank_code using Paystack (preferred) or NubAPI (fallback).
+    Expects JSON body: { "account_number": "2198579728", "bank_code": "000004" }
+    Returns structured JSON with helpful debug fields on failure.
+    """
     try:
-        data = request.get_json()
-        account_number = data.get("account_number")
-        bank_code = data.get("bank_code")
+        data = request.get_json(silent=True) or {}
+        account_number = str(data.get("account_number", "")).strip()
+        bank_code = str(data.get("bank_code", "")).strip()
 
-        if not account_number or not bank_code:
-            return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
+        # Basic validation
+        if not account_number.isdigit() or len(account_number) != 10:
+            return jsonify({"status": "error", "message": "Invalid account number"}), 400
 
-        NUBAPI_KEY = os.environ.get("NUBAPI_KEY", "your_api_key_here")
-
-        # ✅ NubAPI request (GET only)
-        url = "https://nubapi.com/api/verify"
-        params = {
-            "account_number": account_number,
-            "bank_code": bank_code,
-            "api_key": NUBAPI_KEY
-        }
-
-        nub_response = requests.get(url, params=params)
-
-        # 🟡 Return RAW NubAPI response for testing
+        # Ensure bank_code exists in your BANKS mapping (if BANKS exists)
         try:
-            json_data = nub_response.json()  # Try parsing JSON
-            return jsonify({
-                "status": "success" if nub_response.status_code == 200 else "error",
-                "nubapi_status": nub_response.status_code,
-                "data": json_data
-            }), nub_response.status_code
-        except ValueError:
-            # ❌ NubAPI didn't return JSON (HTML or plain text)
-            return jsonify({
-                "status": "error",
-                "message": "NubAPI did not return valid JSON",
-                "nubapi_status": nub_response.status_code,
-                "raw_response": nub_response.text[:500]  # Show first 500 characters
-            }), 500
+            if 'BANKS' in globals() and bank_code not in BANKS:
+                return jsonify({"status": "error", "message": "Unknown bank code"}), 400
+        except Exception:
+            # if BANKS isn't defined in this module, skip strict check
+            pass
+
+        # Helper for safe JSON parsing
+        def try_parse_json(resp):
+            try:
+                return resp.json(), None
+            except ValueError:
+                text = resp.text or ""
+                return None, text[:3000]
+
+        # 1) Try Paystack if API key available
+        PAYSTACK_KEY = os.environ.get("PAYSTACK_SECRET_KEY") or os.environ.get("PAYSTACK_KEY")
+        if PAYSTACK_KEY:
+            try:
+                paystack_url = "https://api.paystack.co/bank/resolve"
+                params = {"account_number": account_number, "bank_code": bank_code}
+                headers = {
+                    "Authorization": f"Bearer {PAYSTACK_KEY}",
+                    "Accept": "application/json",
+                    "User-Agent": "PayMe/1.0"
+                }
+                ps_res = requests.get(paystack_url, headers=headers, params=params, timeout=12)
+                ps_status = ps_res.status_code
+                ps_json, ps_preview = try_parse_json(ps_res)
+
+                # Debug prints to server logs
+                print("Paystack status:", ps_status, flush=True)
+                print("Paystack preview:", (ps_res.text or "")[:1000], flush=True)
+
+                if ps_json:
+                    # Paystack returns {status: true/false, message: ..., data: {...}}
+                    if ps_json.get("status") in (True, "true") and isinstance(ps_json.get("data"), dict):
+                        acct_name = ps_json["data"].get("account_name") or ps_json["data"].get("accountName")
+                        if acct_name:
+                            return jsonify({
+                                "status": "success",
+                                "provider": "paystack",
+                                "account_name": acct_name,
+                                "account_number": account_number,
+                                "bank_code": bank_code,
+                                "raw": ps_json
+                            }), 200
+                        else:
+                            # Paystack returned data but no account_name
+                            return jsonify({
+                                "status": "error",
+                                "provider": "paystack",
+                                "message": "Paystack returned no account_name",
+                                "raw": ps_json
+                            }), 400
+                    else:
+                        # paystack responded with JSON but not success
+                        msg = ps_json.get("message") or "Paystack unresolved"
+                        return jsonify({
+                            "status": "error",
+                            "provider": "paystack",
+                            "message": msg,
+                            "raw": ps_json
+                        }), 400
+                else:
+                    # non-JSON from Paystack (very unlikely)
+                    return jsonify({
+                        "status": "error",
+                        "provider": "paystack",
+                        "message": "Paystack did not return valid JSON",
+                        "paystack_status": ps_status,
+                        "paystack_preview": ps_preview
+                    }), 502
+
+            except requests.exceptions.RequestException as e:
+                # network error to Paystack; fall through to NubAPI fallback
+                print("Paystack request exception:", str(e), flush=True)
+
+        # 2) Fallback: NubAPI (existing behavior)
+        NUBAPI_KEY = os.environ.get("NUBAPI_KEY")
+        if not NUBAPI_KEY:
+            return jsonify({"status": "error", "message": "No verification provider configured (set PAYSTACK_SECRET_KEY or NUBAPI_KEY)"}), 500
+
+        try:
+            nubapi_url = "https://nubapi.com/api/verify"
+            headers = {"Accept": "application/json", "User-Agent": "PayMe/1.0"}
+            # keep legacy api_key param style
+            params = {"account_number": account_number, "bank_code": bank_code, "api_key": NUBAPI_KEY}
+
+            nub_res = requests.get(nubapi_url, headers=headers, params=params, timeout=12)
+            nub_status = nub_res.status_code
+            nub_json, nub_preview = try_parse_json(nub_res)
+
+            print("NubAPI status:", nub_status, flush=True)
+            print("NubAPI preview:", (nub_res.text or "")[:1000], flush=True)
+
+            if nub_json:
+                if nub_json.get("status") == "success" and nub_json.get("account_name"):
+                    return jsonify({
+                        "status": "success",
+                        "provider": "nubapi",
+                        "account_name": nub_json["account_name"],
+                        "account_number": account_number,
+                        "bank_code": bank_code,
+                        "raw": nub_json
+                    }), 200
+                # JSON but unsuccessful
+                return jsonify({
+                    "status": "error",
+                    "provider": "nubapi",
+                    "message": nub_json.get("message", "Unable to verify account"),
+                    "raw": nub_json
+                }), 400
+            else:
+                # NubAPI returned non-JSON (HTML or text) — surface preview for debugging
+                return jsonify({
+                    "status": "error",
+                    "provider": "nubapi",
+                    "message": "Invalid response from NubAPI",
+                    "nubapi_status": nub_status,
+                    "nubapi_preview": nub_preview
+                }), 502
+
+        except requests.exceptions.RequestException as re:
+            print("NubAPI request exception:", str(re), flush=True)
+            return jsonify({"status": "error", "message": f"Request failed: {str(re)}"}), 502
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
 
 # Savings (added, routes match your front-end)
 # -------------------------------------------------
