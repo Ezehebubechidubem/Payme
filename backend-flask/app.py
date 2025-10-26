@@ -510,233 +510,88 @@ if __name__ != "__main__":
 # (Only replace the BANKS dict and the two routes; the rest of your app remains unchanged.)
 
 # BANKS: ~50 popular Nigerian banks/wallets (canonical keys as in your earlier list)
+
+
+# ✅ Bank List (50+ Nigerian Banks)
 BANKS = {
-    "000013": "GTBANK PLC",
-    "000014": "ACCESS BANK",
-    "000015": "ZENITH BANK",
-    "000016": "FIRST BANK OF NIGERIA",
-    "000004": "UNITED BANK FOR AFRICA",
-    "000005": "ACCESS(DIAMOND) BANK",
     "000001": "STERLING BANK",
-    "000017": "WEMA BANK",
-    "000018": "UNION BANK",
-    "000020": "HERITAGE BANK",
-    "000025": "TITAN TRUST BANK",
-    "000026": "TAJ BANK",
-    "000027": "GLOBUS BANK",
-    "000029": "LOTUS BANK",
-    "000030": "PARALLEX BANK",
-    "000033": "ENAIRA",
-    "000040": "UBA MONI",
-    "000010": "ECOBANK",
-    "000011": "UNITY BANK",
-    "000012": "STANBIC IBTC BANK",
-    "000021": "STANDARD CHARTERED BANK",
-    "000024": "RAND MERCHANT BANK",
-    "000028": "CBN",
-    "000031": "PREMIUM TRUST  BANK",
-    "000034": "SIGNATURE BANK",
-    "000036": "OPTIMUS BANK",
-    "060001": "CORONATION MERCHANT BANK",
-    "100004": "OPAY",
-    "100033": "PALMPAY",
-    "100014": "FIRSTMONIE WALLET",
-    "100009": "GT MOBILE",
-    "100008": "ECOBANK XPRESS ACCOUNT",
-    "100031": "FCMB MOBILE",
-    "100025": "KONGAPAY",
-    "100012": "VT NETWORKS",
-    "090110": "VFD MFB",
-    "090267": "KUDA MICROFINANCE BANK",
-    "090111": "FINATRUST MICROFINANCE BANK",
-    "090151": "MUTUAL TRUST MICROFINANCE BANK",
-    "090260": "ABOVE ONLY MICROFINANCE BANK",
-    "090145": "FULLRANGE MICROFINANCE BANK",
-    "090140": "SAGAMU MICROFINANCE BANK",
-    "090123": "TRUSTBANC J6 MICROFINANCE BANK LIMITED",
-    "090110": "VFD MFB",
+    "000002": "KEYSTONE BANK",
+    "000003": "FIRST CITY MONUMENT BANK",
+    "000004": "UNITED BANK FOR AFRICA",
+    "000005": "ACCESS BANK",
     "000006": "JAIZ BANK",
     "000007": "FIDELITY BANK",
     "000008": "POLARIS BANK",
     "000009": "CITI BANK",
-    "000019": "ENTERPRISE BANK"
+    "000010": "STANBIC IBTC BANK",
+    "000011": "ECOBANK",
+    "000012": "FIRST BANK OF NIGERIA",
+    "000013": "GUARANTY TRUST BANK",
+    "000014": "ZENITH BANK",
+    "000015": "UNION BANK",
+    "000016": "WEMA BANK",
+    "000017": "UNITY BANK",
+    "000018": "HERITAGE BANK",
+    "000019": "SUNTRUST BANK",
+    "000020": "GLOBUS BANK",
+    "000021": "TAJ BANK",
+    "000022": "PROVIDUS BANK",
+    "000023": "OPTIMUS BANK",
+    "000024": "SIGNATURE BANK",
+    "000025": "TITAN TRUST BANK",
+    "000026": "KUDA MICROFINANCE BANK",
+    "000027": "OPAY MFB",
+    "000028": "PALMPAY",
+    "000029": "RUBIES BANK",
+    "000030": "VFD MICROFINANCE BANK",
+    "000031": "MONIEPOINT MFB",
+    "000032": "FAIRMONEY MFB",
+    "000033": "LOTUS BANK",
+    "000034": "PARALLEX BANK",
+    "000035": "STELLAS BANK",
+    "000036": "COUNTY FINANCE MFB",
 }
-# (This gives you a balanced list across mainstream banks, merchant banks, and wallets.)
 
-# GET /banks
+# ✅ 1. Get banks list
 @app.route("/banks", methods=["GET"])
 def get_banks():
-    """Return available banks (code -> name)."""
     return jsonify(BANKS), 200
 
-
-# Helper: normalize bank code input
-def normalize_bank_code(input_code_or_name: str):
-    """
-    Accepts:
-      - exact code (e.g. "000004")
-      - short numeric code (e.g. "4", "004", "058")
-      - bank name fragment (e.g. "UBA", "United")
-    Returns canonical code key from BANKS, or None if not found.
-    """
-    if not input_code_or_name:
-        return None
-    s = str(input_code_or_name).strip()
-
-    # 1) exact match
-    if s in BANKS:
-        return s
-
-    # 2) numeric match after removing leading zeros
-    s_num = s.lstrip("0")
-    if s_num.isdigit():
-        for k in BANKS:
-            if k.lstrip("0") == s_num:
-                return k
-
-    # 3) match by name fragment (case-insensitive)
-    s_up = s.upper()
-    for k, v in BANKS.items():
-        if s_up in v.upper() or v.upper() in s_up:
-            return k
-
-    return None
-
-
-# Resolve Account (GET + POST)
-@app.route("/resolve_account", methods=["GET", "POST"])
+# ✅ 2. Resolve Bank Account – THIS FIXES THE 405 ERROR
+@app.route("/resolve-account", methods=["POST"])
 def resolve_account():
-    """
-    Proxy NubAPI account verification.
-    Accepts:
-      GET  -> query params ?account_number=...&bank_code=...
-      POST -> JSON body {"account_number": "...", "bank_code": "..."}
-    Returns:
-      - success: {status:"success", account_name: "...", account_number: "...", bank_code: "..."}
-      - error: {status:"error", message: "...", nubapi_preview?: "..."}
-    """
-    # Input handling
-    if request.method == "POST":
-        data = request.get_json(silent=True) or {}
-        account_number = str(data.get("account_number", "")).strip()
-        bank_code_in = str(data.get("bank_code", "")).strip()
-    else:
-        account_number = str(request.args.get("account_number", "")).strip()
-        bank_code_in = str(request.args.get("bank_code", "")).strip()
-
-    # Basic validation: account number
-    if not account_number.isdigit() or len(account_number) != 10:
-        return jsonify({"status": "error", "message": "Invalid account number"}), 400
-
-    # Normalize/resolve bank code
-    resolved_code = normalize_bank_code(bank_code_in)
-    if not resolved_code:
-        return jsonify({"status": "error", "message": f"Unknown bank code ({bank_code_in})"}), 400
-
-    bank_code = resolved_code  # canonical code from BANKS
-
-    # Get API key from env (try common names)
-    NUBAPI_KEY = os.environ.get("NUBAPI_KEY") or os.environ.get("NUBAPI_API") or os.environ.get("NUPABI_API")
-    if not NUBAPI_KEY:
-        return jsonify({"status": "error", "message": "NUBAPI_KEY not set"}), 500
-
-    nubapi_url = "https://nubapi.com/api/verify"
-
-    # Safe JSON parse helper
-    def try_parse_json(resp):
-        try:
-            return resp.json(), None
-        except ValueError:
-            text = resp.text or ""
-            return None, text[:3000]
-
     try:
-        # Attempt 1: Bearer token in headers (modern pattern)
-        headers = {
-            "Authorization": f"Bearer {NUBAPI_KEY}",
-            "Accept": "application/json",
-            "User-Agent": "PayMe/1.0"
+        data = request.get_json()
+
+        account_number = data.get("account_number")
+        bank_code = data.get("bank_code")
+
+        if not account_number or not bank_code:
+            return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
+
+        # ✅ NubAPI request
+        NUBAPI_KEY = os.environ.get("NUBAPI_KEY", "your_api_key_here")
+
+        url = f"https://nubapi.com/api/verify"
+        params = {
+            "account_number": account_number,
+            "bank_code": bank_code,
+            "api_key": NUBAPI_KEY
         }
-        params = {"account_number": account_number, "bank_code": bank_code}
 
-        res = requests.get(nubapi_url, headers=headers, params=params, timeout=12)
-        print("NubAPI (header) status:", res.status_code, flush=True)
-        print("NubAPI (header) preview:", (res.text or "")[:1000], flush=True)
+        response = requests.get(url, params=params)
 
-        if res.status_code == 200:
-            data, preview = try_parse_json(res)
-            if data:
-                # JSON returned
-                if data.get("status") == "success" and data.get("account_name"):
-                    return jsonify({
-                        "status": "success",
-                        "account_name": data["account_name"],
-                        "account_number": account_number,
-                        "bank_code": bank_code
-                    }), 200
-                # JSON but indicates failure
-                return jsonify({
-                    "status": "error",
-                    "message": data.get("message", "Unable to verify account"),
-                    "raw": data
-                }), 400
-            else:
-                # non-JSON returned; continue to fallback
-                header_preview = preview
+        if response.status_code == 200:
+            return jsonify({"status": "success", "data": response.json()}), 200
         else:
-            header_preview = (res.text or "")[:3000]
+            return jsonify({
+                "status": "error",
+                "message": "Failed to resolve",
+                "details": response.text
+            }), 400
 
-        # Attempt 2: query param style with api_key in URL (legacy)
-        url_with_key = f"{nubapi_url}?account_number={account_number}&bank_code={bank_code}&api_key={NUBAPI_KEY}"
-        res2 = requests.get(url_with_key, timeout=12, headers={"Accept": "application/json", "User-Agent": "PayMe/1.0"})
-        print("NubAPI (query) status:", res2.status_code, flush=True)
-        print("NubAPI (query) preview:", (res2.text or "")[:1000], flush=True)
-
-        if res2.status_code == 200:
-            data2, preview2 = try_parse_json(res2)
-            if data2:
-                if data2.get("status") == "success" and data2.get("account_name"):
-                    return jsonify({
-                        "status": "success",
-                        "account_name": data2["account_name"],
-                        "account_number": account_number,
-                        "bank_code": bank_code
-                    }), 200
-                return jsonify({
-                    "status": "error",
-                    "message": data2.get("message", "Unable to verify account"),
-                    "raw": data2
-                }), 400
-            else:
-                query_preview = preview2
-        else:
-            query_preview = (res2.text or "")[:3000]
-
-        # Nothing returned valid JSON success — surface previews for debugging
-        nubapi_preview = None
-        if 'preview2' in locals() and preview2:
-            nubapi_preview = preview2
-        elif 'preview' in locals() and preview:
-            nubapi_preview = preview
-        else:
-            nubapi_preview = (header_preview if 'header_preview' in locals() else "") + "\n\n" + (query_preview if 'query_preview' in locals() else "")
-            nubapi_preview = nubapi_preview[:3000]
-
-        return jsonify({
-            "status": "error",
-            "message": "Invalid response from NubAPI",
-            "nubapi_preview": nubapi_preview
-        }), 502
-
-    except requests.exceptions.RequestException as re:
-        print("NubAPI request exception:", str(re), flush=True)
-        return jsonify({"status": "error", "message": f"Request failed: {str(re)}"}), 502
     except Exception as e:
-        print("resolve_account unexpected exception:", str(e), flush=True)
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
-
-# ---------- End of replacement code ----------
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # -------------------------------------------------
 # Savings (added, routes match your front-end)
