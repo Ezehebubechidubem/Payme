@@ -1,183 +1,175 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ToWallet</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      margin: 0;
-      padding: 20px;
-    }
-    .container {
-      max-width: 400px;
-      margin: auto;
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      padding: 20px;
-    }
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #00c853;
-    }
-    label {
-      font-size: 14px;
-      font-weight: bold;
-      margin-bottom: 6px;
-      display: block;
-    }
-    input, select {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 16px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    button {
-      width: 100%;
-      background: #00c853;
-      border: none;
-      color: #fff;
-      padding: 12px;
-      border-radius: 6px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    button:hover {
-      background: #009624;
-    }
-    .hidden {
-      display: none;
-    }
-    .info-box {
-      background: #e8f5e9;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 12px;
-    }
-    .error {
-      color: #d32f2f;
-    }
+    body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;padding:20px}
+    .container{max-width:480px;margin:auto;background:#fff;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:18px}
+    h2{text-align:center;margin-bottom:14px;color:#00c853}
+    label{font-size:13px;font-weight:700;margin-bottom:6px;display:block}
+    input,select,button{width:100%;padding:10px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:14px}
+    button{background:#00c853;color:#fff;border:none;cursor:pointer;font-weight:700}
+    button:hover{background:#009624}
+    .hidden{display:none}
+    .info{background:#e8f5e9;padding:10px;border-radius:8px;margin-bottom:12px}
+    .muted{color:#666;font-size:13px}
+    .row{display:flex;gap:8px}
   </style>
 </head>
 <body>
   <div class="container">
     <h2>Transfer Money</h2>
 
-    <!-- Step 1: Enter account number -->
     <label for="accountNumber">Receiver Account Number</label>
-    <input type="text" id="accountNumber" maxlength="10" placeholder="Enter 10-digit account" />
+    <input id="accountNumber" type="text" maxlength="10" placeholder="Enter 10-digit account" />
 
-    <!-- Step 2: Bank dropdown -->
     <div id="bankSection" class="hidden">
       <label for="bankSelect">Select Bank</label>
-      <select id="bankSelect">
-        <option value="">--Choose Bank--</option>
-        <!-- options will be populated dynamically from backend; fallback list is provided in script -->
-      </select>
+      <select id="bankSelect"><option value="">--Choose Bank--</option></select>
+      <div id="bankNote" class="muted">Loading banks…</div>
     </div>
 
-    <!-- Step 3: Show receiver name -->
     <div id="receiverSection" class="hidden">
-      <div class="info-box">
-        <p><strong>Receiver:</strong> <span id="receiverName"></span></p>
+      <div class="info">
+        <div><strong>Receiver:</strong> <span id="receiverName"></span></div>
+        <div id="receiverMeta" class="muted" style="margin-top:6px"></div>
       </div>
     </div>
 
-    <!-- Step 4: Amount input -->
     <div id="amountSection" class="hidden">
       <label for="amount">Amount (₦)</label>
-      <input type="number" id="amount" placeholder="Enter amount" />
+      <input id="amount" type="number" placeholder="Enter amount" />
     </div>
 
-    <!-- Step 5: Send button -->
     <div id="sendSection" class="hidden">
-      <button onclick="sendMoney()">Send Money</button>
+      <button id="sendBtn">Send Money</button>
     </div>
   </div>
 
   <script>
-    // ---------- CONFIG ----------
-    // YOUR backend on Render:
-    const BACKEND_URL = "https://payme-update.onrender.com"; // <- already provided by you
+    // POINT THIS TO YOUR BACKEND (Render)
+    const BACKEND_URL = "https://payme-update.onrender.com";
 
-    // ---------- DOM ----------
+    // DOM
     const accountInput = document.getElementById("accountNumber");
     const bankSection = document.getElementById("bankSection");
     const bankSelect = document.getElementById("bankSelect");
+    const bankNote = document.getElementById("bankNote");
     const receiverSection = document.getElementById("receiverSection");
     const receiverName = document.getElementById("receiverName");
+    const receiverMeta = document.getElementById("receiverMeta");
     const amountSection = document.getElementById("amountSection");
     const sendSection = document.getElementById("sendSection");
+    const sendBtn = document.getElementById("sendBtn");
 
     let currentAccount = "";
 
-    // Fallback bank list (keeps behavior if backend bank list can't be loaded)
-    const FALLBACK_BANKS = {
-      "044": "Access Bank",
-      "058": "Guaranty Trust Bank (GTBank)",
-      "033": "United Bank for Africa (UBA)",
-      "011": "First Bank",
-      "232": "Sterling Bank",
-      "057": "Zenith Bank",
-      "076": "Polaris Bank",
-      "214": "FCMB",
-      "221": "Stanbic IBTC",
-      "050": "Ecobank"
-    };
+    // dbg is a no-op in production (keeps code safe, nothing is shown to users)
+    function dbg(){}
 
-    // Populate bankSelect with an object {code: name}
-    function populateBanks(banksObj) {
-      // Clear existing (except first placeholder)
-      bankSelect.innerHTML = '<option value="">--Choose Bank--</option>';
-      for (const code in banksObj) {
-        const opt = document.createElement("option");
-        opt.value = code;
-        opt.textContent = `${banksObj[code]} (${code})`;
-        bankSelect.appendChild(opt);
-      }
-    }
+    // Populate banks (robust to multiple backend shapes)
+    async function loadBanks(){
+      bankNote.textContent = "Loading banks…";
+      try {
+        const res = await fetch(`${BACKEND_URL}/banks`, { method: "GET" , cache: "no-store" });
+        if (!res.ok) throw new Error("Banks endpoint returned " + res.status);
+        const data = await res.json();
 
-    // Try to fetch bank list from backend; fallback to FALLBACK_BANKS
-    async function loadBanks() {
-      const endpoints = [
-        `${BACKEND_URL}/banks`,
-        `${BACKEND_URL}/get_banks`,
-        `${BACKEND_URL}/bank`,
-        `${BACKEND_URL}/getbanks`
-      ];
+        // Case A: backend returns { status, message, banks: [ {name, code}, ... ] }
+        if (data && Array.isArray(data.banks)) {
+          bankSelect.innerHTML = '<option value="">--Choose Bank--</option>';
+          data.banks.forEach(b => {
+            const code = String(b.code || "").trim();
+            const name = b.name || b.bank || b.bank_name || "";
+            if (!code) return;
+            const opt = document.createElement("option");
+            opt.value = code;
+            opt.textContent = `${name} (${code})`;
+            bankSelect.appendChild(opt);
+          });
+          bankNote.textContent = "Banks loaded from backend.";
+          return;
+        }
 
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep, { method: "GET", credentials: "include" });
-          if (!res.ok) continue;
-          const data = await res.json();
-          // Expect data to be an object of code->name mapping
-          if (data && typeof data === "object" && !Array.isArray(data)) {
-            populateBanks(data);
+        // Case A2: backend returns { banks: { "044":"Access Bank", ... } }
+        if (data && data.banks && typeof data.banks === "object" && !Array.isArray(data.banks)) {
+          const mapping = data.banks;
+          bankSelect.innerHTML = '<option value="">--Choose Bank--</option>';
+          Object.keys(mapping).forEach(code => {
+            const name = mapping[code] || "";
+            const opt = document.createElement("option");
+            opt.value = code;
+            opt.textContent = `${name} (${code})`;
+            bankSelect.appendChild(opt);
+          });
+          bankNote.textContent = "Banks loaded from backend (banks mapping).";
+          return;
+        }
+
+        // Case B: backend returns a mapping object like { "044":"ACCESS BANK", "011":"FIRST BANK", ... }
+        if (data && typeof data === "object" && !Array.isArray(data) && !data.banks) {
+          const keys = Object.keys(data);
+          const isMapping = keys.length > 0 && keys.every(k => typeof data[k] === "string");
+          if (isMapping) {
+            bankSelect.innerHTML = '<option value="">--Choose Bank--</option>';
+            keys.forEach(code => {
+              const name = data[code];
+              const opt = document.createElement("option");
+              opt.value = code;
+              opt.textContent = `${name} (${code})`;
+              bankSelect.appendChild(opt);
+            });
+            bankNote.textContent = "Banks loaded from backend (mapping).";
             return;
           }
-        } catch (e) {
-          // try next endpoint
         }
-      }
 
-      // If we get here, fallback:
-      populateBanks(FALLBACK_BANKS);
+        // Case C: new backend shape: data.data array
+        if (data && data.data && Array.isArray(data.data)) {
+          bankSelect.innerHTML = '<option value="">--Choose Bank--</option>';
+          data.data.forEach(b => {
+            const code = String(b.code || "").trim();
+            const name = b.name || "";
+            if (!code) return;
+            const opt = document.createElement("option");
+            opt.value = code;
+            opt.textContent = `${name} (${code})`;
+            bankSelect.appendChild(opt);
+          });
+          bankNote.textContent = "Banks loaded from backend (data).";
+          return;
+        }
+
+        // Fallback: treat as invalid payload
+        throw new Error("Invalid banks payload");
+      } catch (err) {
+        // fallback minimal set (keeps your original keys if backend is unreachable)
+        const fallback = {
+          "000004":"UNITED BANK FOR AFRICA",
+          "000013":"GUARANTY TRUST BANK",
+          "000014":"ZENITH BANK",
+          "000015":"UNION BANK",
+          "000012":"FIRST BANK OF NIGERIA"
+        };
+        bankSelect.innerHTML = '<option value="">--Choose Bank--</option>';
+        Object.keys(fallback).forEach(code => {
+          const opt = document.createElement("option");
+          opt.value = code;
+          opt.textContent = `${fallback[code]} (${code})`;
+          bankSelect.appendChild(opt);
+        });
+        bankNote.textContent = "Using fallback bank list (backend unreachable).";
+      }
     }
 
-    // Step 1 → Show bank list when account number is complete
-    accountInput.addEventListener("input", function() {
-      // ensure digits only
-      const val = this.value.replace(/\D/g, "");
-      if (this.value !== val) this.value = val;
+    loadBanks();
 
+    // sanitize account input to digits only and show banks when length==10
+    accountInput.addEventListener("input", function(){
+      const digits = this.value.replace(/\D/g,'');
+      if (this.value !== digits) this.value = digits;
       if (this.value.length === 10) {
         currentAccount = this.value;
         bankSection.classList.remove("hidden");
@@ -189,79 +181,123 @@
       }
     });
 
-    // Step 2 → Select bank triggers backend lookup (which proxies NubAPI)
-    bankSelect.addEventListener("change", async function() {
-      if (!this.value) {
+    // Resolve account using POST /resolve-account
+    async function resolveAccountPOST(account, bankCode) {
+      try {
+        const res = await fetch(`${BACKEND_URL}/resolve-account`, {
+          method: "POST",
+          headers: {"Content-Type":"application/json","Accept":"application/json"},
+          body: JSON.stringify({account_number: account, bank_code: bankCode})
+        });
+        const body = await res.json().catch(()=>null);
+        return { httpStatus: res.status, body };
+      } catch (err) {
+        return { httpStatus: 0, body: null, error: String(err) };
+      }
+    }
+
+    // Helper to extract account name from various backend shapes
+    function extractAccountName(payload) {
+      if (!payload) return null;
+      if (payload.account_name) return payload.account_name;
+      if (payload.accountName) return payload.accountName;
+      if (payload.accountname) return payload.accountname;
+
+      if (payload.data && typeof payload.data === "object") {
+        const d = payload.data;
+        if (d.account_name) return d.account_name;
+        if (d.accountName) return d.accountName;
+        if (d.accountname) return d.accountname;
+        if (d.data && typeof d.data === "object") {
+          if (d.data.account_name) return d.data.account_name;
+          if (d.data.accountName) return d.data.accountName;
+        }
+      }
+
+      if (payload.raw && typeof payload.raw === "object") {
+        const r = payload.raw;
+        if (r.data && typeof r.data === "object") {
+          if (r.data.account_name) return r.data.account_name;
+          if (r.data.accountName) return r.data.accountName;
+        }
+        if (r.account_name) return r.account_name;
+        if (r.message && typeof r.message === "string") return null;
+      }
+      return null;
+    }
+
+    // On bank selection attempt resolve
+    bankSelect.addEventListener("change", async function(){
+      const bankCode = this.value;
+      receiverSection.classList.remove("hidden");
+      receiverName.textContent = "";
+      receiverMeta.textContent = "";
+      amountSection.classList.add("hidden");
+      sendSection.classList.add("hidden");
+
+      if (!bankCode) {
         receiverSection.classList.add("hidden");
-        amountSection.classList.add("hidden");
-        sendSection.classList.add("hidden");
+        return;
+      }
+      if (!currentAccount || currentAccount.length !== 10) {
+        receiverName.textContent = "❌ Enter a valid 10-digit account first";
         return;
       }
 
-      const bankCode = this.value;
+      receiverName.textContent = "⏳ Verifying…";
 
-      // Build backend resolve endpoint (GET with query params)
-      const url = `${BACKEND_URL}/resolve_account?account_number=${encodeURIComponent(currentAccount)}&bank_code=${encodeURIComponent(bankCode)}`;
+      const result = await resolveAccountPOST(currentAccount, bankCode);
 
-      receiverName.textContent = "⏳ Looking up...";
-      receiverSection.classList.remove("hidden");
+      // network error
+      if (result.httpStatus === 0) {
+        receiverName.textContent = "⚠️ Network error when contacting backend";
+        receiverMeta.textContent = String(result.error || "");
+        return;
+      }
 
-      try {
-        const res = await fetch(url, { method: "GET", credentials: "include" });
+      const payload = result.body || {};
 
-        // If method is not allowed or other server error, show message
-        if (!res.ok) {
-          // try to parse body for message
-          let errMsg = `Server error ${res.status}`;
-          try {
-            const errJson = await res.json();
-            if (errJson) {
-              if (errJson.message) errMsg = errJson.message;
-              else if (errJson.error) errMsg = errJson.error;
-              else if (errJson.status && errJson.status === "error") errMsg = errJson.message || errMsg;
-            }
-          } catch (parseErr) {
-            // ignore parse error
-          }
-          receiverName.textContent = "❌ " + errMsg;
-          amountSection.classList.add("hidden");
-          sendSection.classList.add("hidden");
-          return;
-        }
+      // Successful generic response
+      if (result.httpStatus === 200 && payload.status === "success") {
+        const acctName = extractAccountName(payload) || extractAccountName(payload.data) || extractAccountName(payload.raw);
+        receiverName.textContent = acctName || "Name not provided";
+        receiverMeta.textContent = `Account: ${currentAccount} • Bank: ${bankCode}`;
+        amountSection.classList.remove("hidden");
+        sendSection.classList.remove("hidden");
+        return;
+      }
 
-        const data = await res.json();
+      // Some backends return 200 with nested success shape (older versions)
+      if (result.httpStatus === 200 && payload && payload.data && (payload.data.account_name || (payload.data.data && payload.data.data.account_name))) {
+        const acctName = extractAccountName(payload.data);
+        receiverName.textContent = acctName || "Name not provided";
+        receiverMeta.textContent = `Account: ${currentAccount} • Bank: ${bankCode}`;
+        amountSection.classList.remove("hidden");
+        sendSection.classList.remove("hidden");
+        return;
+      }
 
-        if (data.status === "success" && data.account_name) {
-          receiverName.textContent = data.account_name;
-          amountSection.classList.remove("hidden");
-          sendSection.classList.remove("hidden");
-        } else {
-          // show message from backend if present
-          const msg = data.message || data.error || "Account not found!";
-          receiverName.textContent = "❌ " + msg;
-          amountSection.classList.add("hidden");
-          sendSection.classList.add("hidden");
-        }
-      } catch (err) {
-        console.error("Resolve error:", err);
-        receiverName.textContent = "⚠️ Server error, please try again later!";
-        amountSection.classList.add("hidden");
-        sendSection.classList.add("hidden");
+      // handle common failure patterns (friendly message)
+      let msg = "Account not found or verification failed";
+      if (payload && payload.message) msg = payload.message;
+      else if (payload && payload.error) msg = payload.error;
+      else if (payload && payload.details) msg = payload.details;
+
+      if (payload && payload.nubapi_preview) {
+        receiverName.textContent = "⚠️ NubAPI returned unexpected data";
+        receiverMeta.textContent = (payload.nubapi_preview + "").slice(0, 600);
+      } else {
+        receiverName.textContent = "❌ " + msg;
+        receiverMeta.textContent = `HTTP ${result.httpStatus}`;
       }
     });
 
-    // Step 5 → Fake send money (uses local receiver name shown)
-    function sendMoney() {
+    // Send money (fake)
+    sendBtn.addEventListener("click", function(){
       const amount = document.getElementById("amount").value;
-      if (!amount || amount <= 0) {
-        alert("⚠️ Enter a valid amount");
-        return;
-      }
+      if (!amount || Number(amount) <= 0) { alert("⚠️ Enter a valid amount"); return; }
       alert("✅ Transfer of ₦" + amount + " to " + receiverName.textContent + " successful!");
-    }
-
-    // Load banks on page load
-    loadBanks();
+    });
   </script>
 </body>
 </html>
