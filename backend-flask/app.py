@@ -557,43 +557,48 @@ BANKS = {
 def get_banks():
     return jsonify(BANKS), 200
 
-# ✅ 2. Resolve Bank Account – THIS FIXES THE 405 ERROR
 @app.route("/resolve-account", methods=["POST"])
 def resolve_account():
     try:
         data = request.get_json()
-
         account_number = data.get("account_number")
         bank_code = data.get("bank_code")
 
         if not account_number or not bank_code:
             return jsonify({"status": "error", "message": "Missing account_number or bank_code"}), 400
 
-        # ✅ NubAPI request
         NUBAPI_KEY = os.environ.get("NUBAPI_KEY", "your_api_key_here")
 
-        url = f"https://nubapi.com/api/verify"
+        # ✅ NubAPI request (GET only)
+        url = "https://nubapi.com/api/verify"
         params = {
             "account_number": account_number,
             "bank_code": bank_code,
             "api_key": NUBAPI_KEY
         }
 
-        response = requests.get(url, params=params)
+        nub_response = requests.get(url, params=params)
 
-        if response.status_code == 200:
-            return jsonify({"status": "success", "data": response.json()}), 200
-        else:
+        # 🟡 Return RAW NubAPI response for testing
+        try:
+            json_data = nub_response.json()  # Try parsing JSON
+            return jsonify({
+                "status": "success" if nub_response.status_code == 200 else "error",
+                "nubapi_status": nub_response.status_code,
+                "data": json_data
+            }), nub_response.status_code
+        except ValueError:
+            # ❌ NubAPI didn't return JSON (HTML or plain text)
             return jsonify({
                 "status": "error",
-                "message": "Failed to resolve",
-                "details": response.text
-            }), 400
+                "message": "NubAPI did not return valid JSON",
+                "nubapi_status": nub_response.status_code,
+                "raw_response": nub_response.text[:500]  # Show first 500 characters
+            }), 500
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# -------------------------------------------------
 # Savings (added, routes match your front-end)
 # -------------------------------------------------
 INTEREST_RATE = 0.20  # 20% annual simple interest
