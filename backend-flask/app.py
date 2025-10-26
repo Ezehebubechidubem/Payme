@@ -534,7 +534,7 @@ def get_banks():
             pass
 
         # Direct fetch as fallback (or if helper returned no data)
-        url = "https://api.flutterwave.com/v3/banks?country=NG"
+        url = "https://api.flutterwave.com/v3/banks/NG"
         headers = {"Authorization": f"Bearer {flw_key}", "User-Agent": "PayMe/1.0"}
         resp = requests.get(url, headers=headers, timeout=10)
 
