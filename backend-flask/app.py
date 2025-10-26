@@ -557,31 +557,27 @@ BANKS = {
 def get_banks():
     return jsonify(BANKS), 200
 
-@app.route("/resolve-account", methods=["POST"])
+
+        @app.route("/resolve-account", methods=["POST"])
 def resolve_account():
     """
-    Resolve account_number + bank_code using Paystack (preferred) or NubAPI (fallback).
+    Resolve account_number + bank_code using Flutterwave (preferred) or NubAPI (fallback).
     Expects JSON body: { "account_number": "2198579728", "bank_code": "000004" }
-    Returns structured JSON with helpful debug fields on failure.
     """
     try:
         data = request.get_json(silent=True) or {}
         account_number = str(data.get("account_number", "")).strip()
         bank_code = str(data.get("bank_code", "")).strip()
 
-        # Basic validation
         if not account_number.isdigit() or len(account_number) != 10:
             return jsonify({"status": "error", "message": "Invalid account number"}), 400
 
-        # Ensure bank_code exists in your BANKS mapping (if BANKS exists)
         try:
             if 'BANKS' in globals() and bank_code not in BANKS:
                 return jsonify({"status": "error", "message": "Unknown bank code"}), 400
         except Exception:
-            # if BANKS isn't defined in this module, skip strict check
             pass
 
-        # Helper for safe JSON parsing
         def try_parse_json(resp):
             try:
                 return resp.json(), None
@@ -589,78 +585,63 @@ def resolve_account():
                 text = resp.text or ""
                 return None, text[:3000]
 
-        # 1) Try Paystack if API key available
-        PAYSTACK_KEY = os.environ.get("PAYSTACK_SECRET_KEY") or os.environ.get("PAYSTACK_KEY")
-        if PAYSTACK_KEY:
+        # 1) Try Flutterwave first
+        FLW_SECRET_KEY = os.environ.get("FLW_SECRET_KEY")
+        if FLW_SECRET_KEY:
             try:
-                paystack_url = "https://api.paystack.co/bank/resolve"
-                params = {"account_number": account_number, "bank_code": bank_code}
+                flw_url = "https://api.flutterwave.com/v3/accounts/resolve"
+                payload = {"account_number": account_number, "account_bank": bank_code}
                 headers = {
-                    "Authorization": f"Bearer {PAYSTACK_KEY}",
-                    "Accept": "application/json",
+                    "Authorization": f"Bearer {FLW_SECRET_KEY}",
+                    "Content-Type": "application/json",
                     "User-Agent": "PayMe/1.0"
                 }
-                ps_res = requests.get(paystack_url, headers=headers, params=params, timeout=12)
-                ps_status = ps_res.status_code
-                ps_json, ps_preview = try_parse_json(ps_res)
 
-                # Debug prints to server logs
-                print("Paystack status:", ps_status, flush=True)
-                print("Paystack preview:", (ps_res.text or "")[:1000], flush=True)
+                flw_res = requests.post(flw_url, headers=headers, json=payload, timeout=12)
+                flw_status = flw_res.status_code
+                flw_json, flw_preview = try_parse_json(flw_res)
 
-                if ps_json:
-                    # Paystack returns {status: true/false, message: ..., data: {...}}
-                    if ps_json.get("status") in (True, "true") and isinstance(ps_json.get("data"), dict):
-                        acct_name = ps_json["data"].get("account_name") or ps_json["data"].get("accountName")
-                        if acct_name:
-                            return jsonify({
-                                "status": "success",
-                                "provider": "paystack",
-                                "account_name": acct_name,
-                                "account_number": account_number,
-                                "bank_code": bank_code,
-                                "raw": ps_json
-                            }), 200
-                        else:
-                            # Paystack returned data but no account_name
-                            return jsonify({
-                                "status": "error",
-                                "provider": "paystack",
-                                "message": "Paystack returned no account_name",
-                                "raw": ps_json
-                            }), 400
+                print("Flutterwave status:", flw_status, flush=True)
+                print("Flutterwave preview:", (flw_res.text or "")[:1000], flush=True)
+
+                if flw_json and flw_json.get("status") == "success" and isinstance(flw_json.get("data"), dict):
+                    acct_name = flw_json["data"].get("account_name")
+                    if acct_name:
+                        return jsonify({
+                            "status": "success",
+                            "provider": "flutterwave",
+                            "account_name": acct_name,
+                            "account_number": account_number,
+                            "bank_code": bank_code,
+                            "raw": flw_json
+                        }), 200
                     else:
-                        # paystack responded with JSON but not success
-                        msg = ps_json.get("message") or "Paystack unresolved"
                         return jsonify({
                             "status": "error",
-                            "provider": "paystack",
-                            "message": msg,
-                            "raw": ps_json
+                            "provider": "flutterwave",
+                            "message": "Flutterwave returned no account_name",
+                            "raw": flw_json
                         }), 400
                 else:
-                    # non-JSON from Paystack (very unlikely)
+                    msg = flw_json.get("message") if flw_json else "Flutterwave unresolved"
                     return jsonify({
                         "status": "error",
-                        "provider": "paystack",
-                        "message": "Paystack did not return valid JSON",
-                        "paystack_status": ps_status,
-                        "paystack_preview": ps_preview
-                    }), 502
+                        "provider": "flutterwave",
+                        "message": msg,
+                        "raw": flw_json
+                    }), 400
 
             except requests.exceptions.RequestException as e:
-                # network error to Paystack; fall through to NubAPI fallback
-                print("Paystack request exception:", str(e), flush=True)
+                print("Flutterwave request exception:", str(e), flush=True)
 
-        # 2) Fallback: NubAPI (existing behavior)
+        # 2) Fallback: NubAPI
         NUBAPI_KEY = os.environ.get("NUBAPI_KEY")
         if not NUBAPI_KEY:
-            return jsonify({"status": "error", "message": "No verification provider configured (set PAYSTACK_SECRET_KEY or NUBAPI_KEY)"}), 500
+            return jsonify({"status": "error", "message": "No verification provider configured (set FLW_SECRET_KEY or NUBAPI_KEY)"}), 500
 
         try:
             nubapi_url = "https://nubapi.com/api/verify"
             headers = {"Accept": "application/json", "User-Agent": "PayMe/1.0"}
-            # keep legacy api_key param style
             params = {"account_number": account_number, "bank_code": bank_code, "api_key": NUBAPI_KEY}
 
             nub_res = requests.get(nubapi_url, headers=headers, params=params, timeout=12)
@@ -680,7 +661,6 @@ def resolve_account():
                         "bank_code": bank_code,
                         "raw": nub_json
                     }), 200
-                # JSON but unsuccessful
                 return jsonify({
                     "status": "error",
                     "provider": "nubapi",
@@ -688,7 +668,6 @@ def resolve_account():
                     "raw": nub_json
                 }), 400
             else:
-                # NubAPI returned non-JSON (HTML or text) — surface preview for debugging
                 return jsonify({
                     "status": "error",
                     "provider": "nubapi",
