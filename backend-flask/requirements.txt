@@ -6,4 +6,4 @@ Werkzeug==3.0.3
 PyJWT
 requests
 psycopg2-binary
-
+python-dotenv
