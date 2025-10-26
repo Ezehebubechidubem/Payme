@@ -508,9 +508,11 @@ if __name__ != "__main__":
 
 
 
-# -------------------------------------------------
-# Banks (NubAPI codes)
-# -------------------------------------------------
+ # -------------------------
+# BANKS (replace/extend as needed)
+# -------------------------
+# NOTE: keep the full mapping you have. Below is a short example.
+# Replace with your full mapping JSON (you pasted it earlier) if you want all banks available.
 BANKS = {
     "000001": "STERLING BANK",
     "000002": "KEYSTONE BANK",
@@ -521,59 +523,151 @@ BANKS = {
     "000007": "FIDELITY BANK",
     "000008": "POLARIS BANK",
     "000009": "CITI BANK"
-    # 👉 Add the full NubAPI list you have
+    # 👉 Add the full NubAPI list you have here (or leave as-is if you prefer)
 }
-
 
 @app.route("/banks", methods=["GET"])
 def get_banks():
-    """Return available banks (code -> name)"""
+    """Return available banks (code -> name)."""
     return jsonify(BANKS), 200
 
-@app.route("/resolve_account", methods=["GET"])
-def resolve_account():
-    """Proxy NubAPI account verification"""
-    account_number = request.args.get("account_number", "").strip()
-    bank_code = request.args.get("bank_code", "").strip()
 
+# -------------------------
+# Resolve Account (GET + POST)
+# -------------------------
+@app.route("/resolve_account", methods=["GET", "POST"])
+def resolve_account():
+    """
+    Proxy NubAPI account verification.
+    Accepts:
+      GET  -> query params ?account_number=...&bank_code=...
+      POST -> JSON body {"account_number": "...", "bank_code": "..."}
+    Returns:
+      - success: {status:"success", account_name: "...", account_number: "...", bank_code: "..."}
+      - error: {status:"error", message: "...", nubapi_preview?: "..."}
+    """
+
+    # Input handling (GET or POST)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        account_number = str(data.get("account_number", "")).strip()
+        bank_code = str(data.get("bank_code", "")).strip()
+    else:
+        account_number = str(request.args.get("account_number", "")).strip()
+        bank_code = str(request.args.get("bank_code", "")).strip()
+
+    # Basic validation
     if not account_number.isdigit() or len(account_number) != 10:
         return jsonify({"status": "error", "message": "Invalid account number"}), 400
     if bank_code not in BANKS:
         return jsonify({"status": "error", "message": "Unknown bank code"}), 400
 
-    NUBAPI_KEY = os.environ.get("NUBAPI_KEY")
+    # Read key from env (try multiple names in case)
+    NUBAPI_KEY = os.environ.get("NUBAPI_KEY") or os.environ.get("NUBAPI_API") or os.environ.get("NUPABI_API")
     if not NUBAPI_KEY:
         return jsonify({"status": "error", "message": "NUBAPI_KEY not set"}), 500
 
-    # ✅ Fixed NubAPI call
-    try:
-        url = f"https://nubapi.com/api/verify?account_number={account_number}&bank_code={bank_code}&api_key={NUBAPI_KEY}"
-        res = requests.get(url, timeout=10)
-
-        if res.status_code != 200:
-            return jsonify({"status": "error", "message": f"NubAPI error {res.status_code}"}), 502
-
-        # 🔑 Safely parse JSON
+    nubapi_url = "https://nubapi.com/api/verify"
+    # helper: try to parse JSON safely
+    def try_parse_json(resp):
         try:
-            data = res.json()
+            return resp.json(), None
         except ValueError:
-            return jsonify({"status": "error", "message": "Invalid response from NubAPI"}), 502
+            # non-JSON: return None plus a short preview of text
+            text = resp.text or ""
+            preview = text[:3000]
+            return None, preview
 
-        if data.get("status") == "success" and data.get("account_name"):
-            return jsonify({
-                "status": "success",
-                "account_name": data["account_name"],
-                "account_number": account_number,
-                "bank_code": bank_code
-            }), 200
+    try:
+        # 1) Try header-based Bearer auth first (preferred)
+        headers = {
+            "Authorization": f"Bearer {NUBAPI_KEY}",
+            "Accept": "application/json",
+            "User-Agent": "PayMe/1.0"
+        }
+        params = {"account_number": account_number, "bank_code": bank_code}
+
+        res = requests.get(nubapi_url, headers=headers, params=params, timeout=12)
+        print("NubAPI (header) status:", res.status_code, flush=True)
+        print("NubAPI (header) headers:", dict(res.headers), flush=True)
+        # don't print full body to logs, but short preview for debugging
+        print("NubAPI (header) body preview:", (res.text or "")[:1000], flush=True)
+
+        # If we got 200, try parse JSON
+        if res.status_code == 200:
+            data, preview = try_parse_json(res)
+            if data:
+                # NubAPI returned JSON
+                if data.get("status") == "success" and data.get("account_name"):
+                    return jsonify({
+                        "status": "success",
+                        "account_name": data["account_name"],
+                        "account_number": account_number,
+                        "bank_code": bank_code
+                    }), 200
+                # JSON but unsuccessful
+                return jsonify({
+                    "status": "error",
+                    "message": data.get("message", "Unable to verify account"),
+                    "raw": data
+                }), 400
+            else:
+                # non-JSON body; fall through to query param fallback
+                header_preview = preview
+        else:
+            header_preview = (res.text or "")[:3000]
+
+        # 2) Fallback: try query param style with api_key in URL (older style)
+        url_with_key = f"{nubapi_url}?account_number={account_number}&bank_code={bank_code}&api_key={NUBAPI_KEY}"
+        res2 = requests.get(url_with_key, timeout=12, headers={"Accept": "application/json", "User-Agent": "PayMe/1.0"})
+        print("NubAPI (query) status:", res2.status_code, flush=True)
+        print("NubAPI (query) body preview:", (res2.text or "")[:1000], flush=True)
+
+        if res2.status_code == 200:
+            data2, preview2 = try_parse_json(res2)
+            if data2:
+                if data2.get("status") == "success" and data2.get("account_name"):
+                    return jsonify({
+                        "status": "success",
+                        "account_name": data2["account_name"],
+                        "account_number": account_number,
+                        "bank_code": bank_code
+                    }), 200
+                return jsonify({
+                    "status": "error",
+                    "message": data2.get("message", "Unable to verify account"),
+                    "raw": data2
+                }), 400
+            else:
+                query_preview = preview2
+        else:
+            query_preview = (res2.text or "")[:3000]
+
+        # If we get here, neither attempt returned JSON success. Return previews for diagnosis.
+        # Prefer to return the JSON preview if available; otherwise return the header/query previews.
+        nubapi_preview = None
+        if 'preview2' in locals() and preview2:
+            nubapi_preview = preview2
+        elif 'preview' in locals() and preview:
+            nubapi_preview = preview
+        else:
+            # fallback to combined short text
+            nubapi_preview = (header_preview if 'header_preview' in locals() else "") + "\n\n" + (query_preview if 'query_preview' in locals() else "")
+            nubapi_preview = nubapi_preview[:3000]
 
         return jsonify({
             "status": "error",
-            "message": data.get("message", "Unable to verify account")
-        }), 400
+            "message": "Invalid response from NubAPI",
+            "nubapi_preview": nubapi_preview
+        }), 502
 
+    except requests.exceptions.RequestException as re:
+        print("NubAPI request exception:", str(re), flush=True)
+        return jsonify({"status": "error", "message": f"Request failed: {str(re)}"}), 502
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Request failed: {str(e)}"}), 500
+        print("resolve_account unexpected exception:", str(e), flush=True)
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
 
 
 # -------------------------------------------------
