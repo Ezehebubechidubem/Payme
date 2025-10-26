@@ -61,6 +61,9 @@
       border-radius: 6px;
       margin-bottom: 12px;
     }
+    .error {
+      color: #d32f2f;
+    }
   </style>
 </head>
 <body>
@@ -76,9 +79,7 @@
       <label for="bankSelect">Select Bank</label>
       <select id="bankSelect">
         <option value="">--Choose Bank--</option>
-        <option value="044">Access Bank</option>
-        <option value="058">GTBank</option>
-        <option value="033">UBA</option>
+        <!-- options will be populated dynamically from backend; fallback list is provided in script -->
       </select>
     </div>
 
@@ -103,9 +104,8 @@
 
   <script>
     // ---------- CONFIG ----------
-    // Set this to your live backend URL (no trailing slash), e.g. "https://payme-update.onrender.com"
-    // If frontend is served from the same origin as backend, set BACKEND_URL = "" to use relative path.
-    const BACKEND_URL = "https://payme-update.onrender.com";
+    // YOUR backend on Render:
+    const BACKEND_URL = "https://payme-update.onrender.com"; // <- already provided by you
 
     // ---------- DOM ----------
     const accountInput = document.getElementById("accountNumber");
@@ -118,8 +118,66 @@
 
     let currentAccount = "";
 
+    // Fallback bank list (keeps behavior if backend bank list can't be loaded)
+    const FALLBACK_BANKS = {
+      "044": "Access Bank",
+      "058": "Guaranty Trust Bank (GTBank)",
+      "033": "United Bank for Africa (UBA)",
+      "011": "First Bank",
+      "232": "Sterling Bank",
+      "057": "Zenith Bank",
+      "076": "Polaris Bank",
+      "214": "FCMB",
+      "221": "Stanbic IBTC",
+      "050": "Ecobank"
+    };
+
+    // Populate bankSelect with an object {code: name}
+    function populateBanks(banksObj) {
+      // Clear existing (except first placeholder)
+      bankSelect.innerHTML = '<option value="">--Choose Bank--</option>';
+      for (const code in banksObj) {
+        const opt = document.createElement("option");
+        opt.value = code;
+        opt.textContent = `${banksObj[code]} (${code})`;
+        bankSelect.appendChild(opt);
+      }
+    }
+
+    // Try to fetch bank list from backend; fallback to FALLBACK_BANKS
+    async function loadBanks() {
+      const endpoints = [
+        `${BACKEND_URL}/banks`,
+        `${BACKEND_URL}/get_banks`,
+        `${BACKEND_URL}/bank`,
+        `${BACKEND_URL}/getbanks`
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, { method: "GET", credentials: "include" });
+          if (!res.ok) continue;
+          const data = await res.json();
+          // Expect data to be an object of code->name mapping
+          if (data && typeof data === "object" && !Array.isArray(data)) {
+            populateBanks(data);
+            return;
+          }
+        } catch (e) {
+          // try next endpoint
+        }
+      }
+
+      // If we get here, fallback:
+      populateBanks(FALLBACK_BANKS);
+    }
+
     // Step 1 → Show bank list when account number is complete
     accountInput.addEventListener("input", function() {
+      // ensure digits only
+      const val = this.value.replace(/\D/g, "");
+      if (this.value !== val) this.value = val;
+
       if (this.value.length === 10) {
         currentAccount = this.value;
         bankSection.classList.remove("hidden");
@@ -141,22 +199,30 @@
       }
 
       const bankCode = this.value;
-      // Build backend resolve endpoint (use relative path if BACKEND_URL is empty)
-      const base = BACKEND_URL ? BACKEND_URL : window.location.origin;
-      const url = `${base}/resolve_account?account_number=${encodeURIComponent(currentAccount)}&bank_code=${encodeURIComponent(bankCode)}`;
+
+      // Build backend resolve endpoint (GET with query params)
+      const url = `${BACKEND_URL}/resolve_account?account_number=${encodeURIComponent(currentAccount)}&bank_code=${encodeURIComponent(bankCode)}`;
 
       receiverName.textContent = "⏳ Looking up...";
       receiverSection.classList.remove("hidden");
 
       try {
         const res = await fetch(url, { method: "GET", credentials: "include" });
-        // handle non-JSON / non-OK responses
+
+        // If method is not allowed or other server error, show message
         if (!res.ok) {
+          // try to parse body for message
           let errMsg = `Server error ${res.status}`;
           try {
             const errJson = await res.json();
-            errMsg = errJson.message || errJson.error || errMsg;
-          } catch (e) { /* ignore JSON parse error */ }
+            if (errJson) {
+              if (errJson.message) errMsg = errJson.message;
+              else if (errJson.error) errMsg = errJson.error;
+              else if (errJson.status && errJson.status === "error") errMsg = errJson.message || errMsg;
+            }
+          } catch (parseErr) {
+            // ignore parse error
+          }
           receiverName.textContent = "❌ " + errMsg;
           amountSection.classList.add("hidden");
           sendSection.classList.add("hidden");
@@ -170,7 +236,9 @@
           amountSection.classList.remove("hidden");
           sendSection.classList.remove("hidden");
         } else {
-          receiverName.textContent = "❌ " + (data.message || "Account not found!");
+          // show message from backend if present
+          const msg = data.message || data.error || "Account not found!";
+          receiverName.textContent = "❌ " + msg;
           amountSection.classList.add("hidden");
           sendSection.classList.add("hidden");
         }
@@ -191,6 +259,9 @@
       }
       alert("✅ Transfer of ₦" + amount + " to " + receiverName.textContent + " successful!");
     }
+
+    // Load banks on page load
+    loadBanks();
   </script>
 </body>
 </html>
