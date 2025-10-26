@@ -512,50 +512,143 @@ if __name__ != "__main__":
 # BANKS: ~50 popular Nigerian banks/wallets (canonical keys as in your earlier list)
 
 
-# ✅ Bank List (50+ Nigerian Banks)
-BANKS = {
-    "033": "UNITED BANK FOR AFRICA",
-    "044": "ACCESS BANK",
-    "011": "FIRST BANK OF NIGERIA",
-    "058": "GUARANTY TRUST BANK",
-    "057": "ZENITH BANK",
-    "032": "UNION BANK",
-    "035": "WEMA BANK",
-    "215": "UNITY BANK",
-    "030": "HERITAGE BANK",
-    "214": "FIRST CITY MONUMENT BANK",
-    "221": "STANBIC IBTC BANK",
-    "232": "STERLING BANK",
-    "082": "KEYSTONE BANK",
-    "070": "FIDELITY BANK",
-    "050": "ECOBANK",
-    "023": "CITI BANK",
-    "301": "JAIZ BANK",
-    "303": "LOTUS BANK",
-    "105": "PREMIUM TRUST BANK",
-    "103": "GLOBUS BANK",
-    "302": "TAJ BANK",
-    "101": "PROVIDUS BANK",
-    "107": "OPTIMUS BANK",
-    "106": "SIGNATURE BANK",
-    "102": "TITAN TRUST BANK",
-    "50211": "KUDA MICROFINANCE BANK",
-    "035": "OPAY MFB",
-    "035": "PALMPAY",
-    "566": "VFD MICROFINANCE BANK",
-    "993": "MONIEPOINT MFB",
-    "": "RUBIES BANK",  # Confirm / fill code
-    "": "FAIRMONEY MFB",  # Confirm / fill code
-    "303": "LOTUS BANK",
-    "104": "PARALLEX BANK",
-    "": "STELLAS BANK",  # Confirm / fill code
-    "": "COUNTY FINANCE MFB",  # Confirm / fill code
-}
-    
-# ✅ 1. Get banks list
-@app.route("/banks", methods=["GET"])
+
+# Use your Flutterwave Secret Key (Sandbox or Live)
+FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "FLWSECK_TEST-8a4eef00cb4d458b83e859c2f6178351-X")
+
+@banks_bp.route("/banks", methods=["GET"])
 def get_banks():
-    return jsonify(BANKS), 200
+    try:
+        url = "https://api.flutterwave.com/v3/banks/NG"  # Nigeria bank list
+        headers = {
+            "Authorization": f"Bearer {FLW_SECRET_KEY}"
+        }
+        response = requests.get(url, headers=headers)
+
+        # If Flutterwave returns a successful response
+        if response.status_code == 200:
+            data = response.json()
+
+            # Return only the necessary info (bank name and code)
+            banks = [
+                {"name": bank["name"], "code": bank["code"]}
+                for bank in data.get("data", [])
+            ]
+
+            return jsonify({
+                "status": "success",
+                "message": "Bank list fetched from Flutterwave",
+                "banks": banks
+            }), 200
+
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Failed to fetch from Flutterwave",
+                "details": response.text
+            }), response.status_code
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": "Server Error",
+            "details": str(e)
+        }), 500
+
+# ---------- Flutterwave banks cache & helpers (paste above resolve_account) ----------
+import time
+
+_FLW_BANKS_CACHE = {"ts": 0, "data": None}
+_FLW_BANKS_TTL = 60 * 60  # cache for 1 hour
+
+def fetch_flutter_banks_from_api():
+    """
+    Fetch Flutterwave bank list for Nigeria using FLW_SECRET_KEY from env.
+    Returns dict code->name or (None, error_msg)
+    """
+    FLW_SECRET_KEY = os.environ.get("FLW_SECRET_KEY")
+    if not FLW_SECRET_KEY:
+        return None, "FLW_SECRET_KEY not set"
+
+    url = "https://api.flutterwave.com/v3/banks?country=NG"
+    headers = {"Authorization": f"Bearer {FLW_SECRET_KEY}", "User-Agent": "PayMe/1.0"}
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            return None, f"Flutterwave banks API returned {res.status_code}: {res.text[:400]}"
+        body = res.json()
+        data = {}
+        for item in body.get("data", []):
+            code = str(item.get("code") or "").strip()
+            name = (item.get("name") or "").strip()
+            if code and name:
+                data[code] = name
+        return data, None
+    except requests.RequestException as e:
+        return None, str(e)
+
+def get_flutter_banks(force_refresh=False):
+    """
+    Return cached flutter banks dict (code->name). Fetch if cache expired or forced.
+    Returns (data_dict_or_None, error_or_None)
+    """
+    global _FLW_BANKS_CACHE
+    now = int(time.time())
+    if not force_refresh and _FLW_BANKS_CACHE["data"] and (now - _FLW_BANKS_CACHE["ts"]) < _FLW_BANKS_TTL:
+        return _FLW_BANKS_CACHE["data"], None
+
+    data, err = fetch_flutter_banks_from_api()
+    if data is not None:
+        _FLW_BANKS_CACHE["data"] = data
+        _FLW_BANKS_CACHE["ts"] = now
+        return data, None
+    # fallback to stale cache if exists
+    if _FLW_BANKS_CACHE["data"]:
+        return _FLW_BANKS_CACHE["data"], f"Fetch failed, using stale cache: {err}"
+    return None, err
+
+def find_flutter_code(bank_code_or_internal):
+    """
+    Input:
+      - numeric code (e.g. '044') OR
+      - your internal key (e.g. '000004') OR
+      - bank name (partial)
+    Returns (flutter_code_or_None, error_or_None).
+    """
+    flw_banks, err = get_flutter_banks(force_refresh=False)
+    # 1) numeric input: accept if present in flutter list or accept anyway if no list
+    if bank_code_or_internal.isdigit():
+        if flw_banks and bank_code_or_internal in flw_banks:
+            return bank_code_or_internal, None
+        if not flw_banks:
+            return bank_code_or_internal, None
+        return None, f"Numeric bank code '{bank_code_or_internal}' not in Flutterwave list"
+
+    # 2) internal key mapping via BANKS names
+    internal_name = (BANKS.get(bank_code_or_internal) or "").strip()
+    if internal_name:
+        if flw_banks:
+            lname = internal_name.lower()
+            for code, fname in flw_banks.items():
+                f = fname.lower()
+                if f == lname or lname in f or f in lname:
+                    return code, None
+            return None, f"No Flutterwave match for '{internal_name}'"
+        else:
+            return None, f"Flutterwave bank list unavailable to match '{internal_name}': {err}"
+
+    # 3) fallback: try matching raw string against flutter names if list present
+    if flw_banks:
+        raw = bank_code_or_internal.lower()
+        for code, fname in flw_banks.items():
+            f = fname.lower()
+            if f == raw or raw in f or f in raw:
+                return code, None
+        return None, f"No Flutterwave match for '{bank_code_or_internal}'"
+
+    # 4) if no list and not numeric/internal, allow sandbox override by caller
+    return None, "Unable to determine Flutterwave bank code"
+# -------------------------------------------------------------------------------
 
 @app.route("/resolve-account", methods=["POST"])
 def resolve_account():
