@@ -506,123 +506,71 @@ if __name__ != "__main__":
     with app.app_context():
         init_db()
 
-# -------------------------
-# BANKS (full list you provided)
-# -------------------------
+ # ---------- Replace/insert this into your existing Flask app ----------
+# (Only replace the BANKS dict and the two routes; the rest of your app remains unchanged.)
+
+# BANKS: ~50 popular Nigerian banks/wallets (canonical keys as in your earlier list)
 BANKS = {
-    "000034":"SIGNATURE BANK","000036":"OPTIMUS BANK","000001":"STERLING BANK","000002":"KEYSTONE BANK",
-    "000003":"FIRST CITY MONUMENT BANK","000004":"UNITED BANK FOR AFRICA","000006":"JAIZ BANK","000007":"FIDELITY BANK",
-    "000008":"POLARIS BANK","000009":"CITI BANK","000010":"ECOBANK","000011":"UNITY BANK","000012":"STANBIC IBTC BANK",
-    "000013":"GTBANK PLC","000014":"ACCESS BANK","000015":"ZENITH BANK","000016":"FIRST BANK OF NIGERIA",
-    "000017":"WEMA BANK","000018":"UNION BANK","000019":"ENTERPRISE BANK","000021":"STANDARD CHARTERED BANK",
-    "000022":"SUNTRUST BANK","000023":"PROVIDUS BANK","060001":"CORONATION MERCHANT BANK","070001":"NPF MICROFINANCE BANK",
-    "070002":"FORTIS MICROFINANCE BANK","070008":"PAGE MFBANK","090001":"ASO SAVINGS","090003":"JUBILEE LIFE",
-    "090006":"SAFETRUST","090107":"FIRST TRUST MORTGAGE BANK PLC","090108":"NEW PRUDENTIAL BANK","100002":"PAGA",
-    "100003":"PARKWAY-READYCASH","100005":"CELLULANT","100006":"ETRANZACT","100007":"STANBIC IBTC @EASE WALLET",
-    "100008":"ECOBANK XPRESS ACCOUNT","100009":"GT MOBILE","100010":"TEASY MOBILE","090267":"KUDA MICROFINANCE BANK",
-    "100012":"VT NETWORKS","100036":"KEGOW(CHAMSMOBILE)","100039":"PAYSTACK-TITAN","100016":"FORTIS MOBILE",
-    "100017":"HEDONMARK","100018":"ZENITH MOBILE","100019":"FIDELITY MOBILE","100020":"MONEY BOX",
-    "100021":"EARTHOLEUM","100022":"STERLING MOBILE","100023":"TAGPAY","100024":"IMPERIAL HOMES MORTGAGE BANK",
-    "999999":"NIP VIRTUAL BANK","090111":"FINATRUST MICROFINANCE BANK","090112":"SEED CAPITAL MICROFINANCE BANK",
-    "090115":"IBANK MICROFINANCE BANK","090114":"EMPIRE TRUST MICROFINANCE BANK","090113":"MICROVIS MICROFINANCE BANK ",
-    "090116":"AMML MICROFINANCE BANK ","090117":"BOCTRUST MICROFINANCE BANK LIMITED","090120":"WETLAND  MICROFINANCE BANK",
-    "090118":"IBILE MICROFINANCE BANK","090125":"REGENT MICROFINANCE BANK","090128":"NDIORAH MICROFINANCE BANK",
-    "090127":"BC KASH MICROFINANCE BANK","090121":"HASAL MICROFINANCE BANK","060002":"FBNQUEST MERCHANT BANK",
-    "090132":"RICHWAY MICROFINANCE BANK","090135":"PERSONAL TRUST MICROFINANCE BANK","090136":"MICROCRED MICROFINANCE BANK",
-    "090122":"GOWANS MICROFINANCE BANK","000024":"RAND MERCHANT BANK","090142":"YES MICROFINANCE BANK",
-    "090140":"SAGAMU MICROFINANCE BANK","090129":"MONEY TRUST MICROFINANCE BANK","070012":"LAGOS BUILDING AND INVESTMENT COMPANY",
-    "070009":"GATEWAY MORTGAGE BANK","070010":"ABBEY MORTGAGE BANK","070014":"FIRST GENERATION MORTGAGE BANK",
-    "070013":"PLATINUM MORTGAGE BANK","070016":"INFINITY TRUST MORTGAGE BANK","090119":"OHAFIA MICROFINANCE BANK",
-    "090124":"XSLNCE MICROFINANCE BANK","090130":"CONSUMER MICROFINANCE BANK","090131":"ALLWORKERS MICROFINANCE BANK",
-    "090134":"ACCION MICROFINANCE BANK","090139":"VISA MICROFINANCE BANK","090141":"CHIKUM MICROFINANCE BANK",
-    "090143":"APEKS MICROFINANCE BANK","090144":"CIT MICROFINANCE BANK","090145":"FULLRANGE MICROFINANCE BANK","090153":"FFS MICROFINANCE BANK",
-    "090160":"ADDOSSER MICROFINANCE BANK","090126":"FIDFUND MICROFINANCE BANK","100028":"AG MORTGAGE BANK",
-    "090137":"PECANTRUST MICROFINANCE BANK","090148":"BOWEN MICROFINANCE BANK","090158":"FUTO MICROFINANCE BANK",
-    "070011":"REFUGE MORTGAGE BANK","070015":"BRENT MORTGAGE BANK","090138":"ROYAL EXCHANGE MICROFINANCE BANK",
-    "090147":"HACKMAN MICROFINANCE BANK","090146":"TRIDENT MICROFINANCE BANK","090157":"INFINITY MICROFINANCE BANK",
-    "090159":"CREDIT AFRIQUE MICROFINANCE BANK","090156":"E-BARCS MICROFINANCE BANK","090110":"VFD MFB","100030":"ECOMOBILE",
-    "100029":"INNOVECTIVES KESH","090097":"EKONDO MICROFINANCE BANK","090150":"VIRTUE MICROFINANCE BANK","090149":"IRL MICROFINANCE BANK",
-    "100031":"FCMB MOBILE","090151":"MUTUAL TRUST MICROFINANCE BANK","090161":"OKPOGA MICROFINANCE BANK","060003":"NOVA MERCHANT BANK",
-    "090154":"CEMCS MICROFINANCE BANK","090167":"DAYLIGHT MICROFINANCE BANK","070017":"HAGGAI MORTGAGE BANK LIMITED",
-    "090171":"MAINSTREET MICROFINANCE BANK","090178":"GREENBANK MICROFINANCE BANK","090179":"FAST MICROFINANCE BANK","090177":"LAPO MICROFINANCE BANK",
-    "000020":"HERITAGE BANK","090251":"UNIVERSITY OF NIGERIA, NSUKKA MICROFINANCE BANK","090196":"PENNYWISE MICROFINANCE BANK ",
-    "090197":"ABU MICROFINANCE BANK ","090194":"NIRSAL NATIONAL MICROFINANCE BANK","090176":"BOSAK MICROFINANCE BANK","090172":"ASTRAPOLARIS MICROFINANCE BANK",
-    "090261":"QUICKFUND MICROFINANCE BANK","090259":"ALEKUN MICROFINANCE BANK","090198":"RENMONEY MICROFINANCE BANK ","090262":"STELLAS MICROFINANCE BANK ",
-    "090205":"NEW DAWN MICROFINANCE BANK","090169":"ALPHA KAPITAL MICROFINANCE BANK ","090264":"AUCHI MICROFINANCE BANK ","090270":"AB MICROFINANCE BANK ",
-    "090263":"NIGERIAN NAVY MICROFINANCE BANK ","090258":"IMO STATE MICROFINANCE BANK","090276":"TRUSTFUND MICROFINANCE BANK ","090706":"UCEE MFB",
-    "090701":"ISUA MFB","090708":"TransPay MICROFINANCE BANK ","090445":"CAPSTONE MF BANK","090596":"DAL MICROFINANCE BANK ","000040":"UBA MONI",
-    "090710":"ILE-OLUJI MICROFINANCE BANK","090716":"TENN MICROFINANCE BANK","090725":"IHALA MICROFINANCE BANK","050019":"ZEDVANCE FINANCE LIMITED",
-    "090700":"OMAK MICROFINANCE BANK","090698":"AKALABO MICROFINANCE BANK ","090195":"GROOMING MICROFINANCE BANK","090714":"TOFA MICROFINANCE BANK",
-    "090712":"EMAAR MICROFINANCE BANK","090711":"THE MILLENNIUM MICROFINANCE BANK","090260":"ABOVE ONLY MICROFINANCE BANK ","090272":"OLABISI ONABANJO UNIVERSITY MICROFINANCE ",
-    "090268":"ADEYEMI COLLEGE STAFF MICROFINANCE BANK","090280":"MEGAPRAISE MICROFINANCE BANK","000026":"TAJ BANK","090282":"ARISE MICROFINANCE BANK",
-    "090274":"PRESTIGE MICROFINANCE BANK","090278":"GLORY MICROFINANCE BANK","090188":"BAINES CREDIT MICROFINANCE BANK","000005":"ACCESS(DIAMOND) BANK",
-    "090289":"PILLAR MICROFINANCE BANK","090286":"SAFE HAVEN MICROFINANCE BANK","090292":"AFEKHAFE MICROFINANCE BANK","000027":"GLOBUS BANK",
-    "090285":"FIRST OPTION MICROFINANCE BANK","090296":"POLYUNWANA MICROFINANCE BANK","090295":"OMIYE MICROFINANCE BANK","090287":"ASSETMATRIX MICROFINANCE BANK",
-    "000025":"TITAN TRUST BANK","090271":"LAVENDER MICROFINANCE BANK","090290":"FCT MICROFINANCE BANK","090279":"IKIRE MICROFINANCE BANK","090303":"PURPLEMONEY MICROFINANCE BANK",
-    "100052":"ACCESS YELLO & BETA","090123":"TRUSTBANC J6 MICROFINANCE BANK LIMITED","090305":"SULSPAP MICROFINANCE BANK","090166":"ESO-E MICROFINANCE BANK",
-    "090273":"EMERALD MICROFINANCE BANK","100013":"ACCESS MONEY","090297":"ALERT MICROFINANCE BANK","090308":"BRIGHTWAY MICROFINANCE BANK","100033":"PALMPAY",
-    "090325":"SPARKLE","090326":"BALOGUN GAMBARI MICROFINANCE BANK","090317":"PATRICKGOLD MICROFINANCE BANK","070019":"MAYFRESH MORTGAGE BANK",
-    "090327":"TRUST MICROFINANCE BANK","090133":"AL-BARAKAH MICROFINANCE BANK","090328":"EYOWO","090304":"EVANGEL MICROFINANCE BANK ","090332":"EVERGREEN MICROFINANCE BANK",
-    "090333":"OCHE MICROFINANCE BANK","090364":"NUTURE MICROFINANCE BANK","100014":"FIRSTMONIE WALLET","090329":"NEPTUNE MICROFINANCE BANK","090315":"U & C MICROFINANCE BANK",
-    "090331":"UNAAB MICROFINANCE BANK","090324":"IKENNE MICROFINANCE BANK","090321":"MAYFAIR MICROFINANCE BANK","090322":"REPHIDIM MICROFINANCE BANK",
-    "090299":"KONTAGORA MICROFINANCE BANK","090360":"CASHCONNECT MICROFINANCE BANK","090336":"BIPC MICROFINANCE BANK","090362":"MOLUSI MICROFINANCE BANK",
-    "090372":"LEGEND MICROFINANCE BANK","090369":"SEEDVEST MICROFINANCE BANK","090294":"EAGLE FLIGHT MICROFINANCE BANK","090373":"THINK FINANCE MICROFINANCE BANK",
-    "100001":"FETS","090374":"COASTLINE MICROFINANCE BANK","090281":"MINT-FINEX MFB","090363":"HEADWAY MICROFINANCE BANK","090377":"ISALEOYO MICROFINANCE BANK",
-    "090378":"NEW GOLDEN PASTURES MICROFINANCE BANK","400001":"FSDH","090365":"CORESTEP MICROFINANCE BANK","090298":"FEDPOLY NASARAWA MICROFINANCE BANK",
-    "090366":"FIRMUS MICROFINANCE BANK","090383":"MANNY MICROFINANCE BANK","090391":"DAVODANI  MICROFINANCE BANK","090389":"EK-RELIABLE MICROFINANCE BANK",
-    "090385":"GTI MICROFINANCE BANK","090252":"YOBE MICROFINANCE  BANK","120001":"9 PAYMENT SOLUTIONS BANK","100004":"OPAY","090175":"RUBIES MICROFINANCE BANK",
-    "090392":"MOZFIN MICROFINANCE BANK","090386":"INTERLAND MICROFINANCE BANK","090400":"FINCA MICROFINANCE BANK","100025":"KONGAPAY",
-    "090370":"ILISAN MICROFINANCE BANK","090399":"NWANNEGADI MICROFINANCE BANK","090186":"GIREI MICROFINANACE BANK","090396":"OSCOTECH MICROFINANCE BANK",
-    "090393":"BRIDGEWAY MICROFINANACE BANK","090380":"KREDI MONEY MICROFINANCE BANK ","090401":"SHERPERD TRUST MICROFINANCE BANK","100032":"NOWNOW DIGITAL SYSTEMS LIMITED",
-    "090394":"AMAC MICROFINANCE BANK","070007":"LIVINGTRUST MORTGAGE BANK PLC","100035":"M36","090283":"NNEW WOMEN MICROFINANCE BANK ","090408":"GMB MICROFINANCE BANK",
-    "090005":"TRUSTBOND MORTGAGE BANK","090152":"NAGARTA MICROFINANCE BANK","090155":"ADVANS LA FAYETTE  MICROFINANCE BANK","090162":"STANFORD MICROFINANCE BANK",
-    "090164":"FIRST ROYAL MICROFINANCE BANK","090165":"PETRA MICROFINANCE BANK","090168":"GASHUA MICROFINANCE BANK","090173":"RELIANCE MICROFINANCE BANK",
-    "090174":"MALACHY MICROFINANCE BANK","090180":"AMJU UNIQUE MICROFINANCE BANK","090189":"ESAN MICROFINANCE BANK","090190":"MUTUAL BENEFITS MICROFINANCE BANK",
-    "090191":"KCMB MICROFINANCE BANK","090192":"MIDLAND MICROFINANCE BANK","090193":"UNICAL MICROFINANCE BANK","090265":"LOVONUS MICROFINANCE BANK",
-    "090266":"UNIBEN MICROFINANCE BANK","090269":"GREENVILLE MICROFINANCE BANK","090277":"AL-HAYAT MICROFINANCE BANK","090293":"BRETHREN MICROFINANCE BANK",
-    "090310":"EDFIN MICROFINANCE BANK","090318":"FEDERAL UNIVERSITY DUTSE MICROFINANCE BANK","090320":"KADPOLY MICROFINANCE BANK","090323":"MAINLAND MICROFINANCE BANK",
-    "090376":"APPLE MICROFINANCE BANK","090395":"BORGU  MICROFINANCE BANK","090398":"FEDERAL POLYTECHNIC NEKEDE MICROFINANCE BANK","090404":"OLOWOLAGBA MICROFINANCE BANK",
-    "090406":"BUSINESS SUPPORT MICROFINANCE BANK","090202":"ACCELEREX NETWORK LIMITED","120002":"HOPEPSB","090316":"BAYERO UNIVERSITY MICROFINANCE BANK",
-    "090410":"MARITIME MICROFINANCE BANK","090371":"AGOSASA MICROFINANCE BANK","100034":"ZENITH EASY WALLET","070021":"COOP MORTGAGE BANK",
-    "100026":"CARBON","090435":"LINKS MICROFINANCE BANK","090433":"RIGO MICROFINANCE BANK","090402":"PEACE MICROFINANCE BANK","090436":"SPECTRUM MICROFINANCE BANK ",
-    "060004":"GREENWICH MERCHANT BANK","000029":"LOTUS BANK","090426":"TANGERINE MONEY","000030":"PARALLEX BANK","090448":"Moyofade MF Bank","000031":"PREMIUM TRUST  BANK",
-    "090449":"REX  Microfinance Bank","090450":"Kwasu MF Bank","090451":"ATBU  Microfinance Bank","090452":"UNILAG  Microfinance Bank","090453":"Uzondu MF Bank",
-    "090454":"Borstal Microfinance Bank","090471":"Oluchukwu Microfinance Bank","090472":"Caretaker Microfinance Bank","090473":"Assets Microfinance Bank","090709":"FOCUS MFB",
-    "090605":"MADOBI MFB","090474":"Verdant Microfinance Bank","090475":"Giant Stride Microfinance Bank","090476":"Anchorage Microfinance Bank","090477":"Light Microfinance Bank",
-    "090478":"Avuenegbe Microfinance Bank","090479":"First Heritage Microfinance Bank","090480":"KOLOMONI MICROFINANCE BANK","090481":"Prisco  Microfinance Bank",
-    "090483":"Ada Microfinance Bank","090484":"Garki Microfinance Bank","090485":"SAFEGATE MICROFINANCE BANK","090486":"Fortress Microfinance Bank","090487":"Kingdom College  Microfinance Bank",
-    "090488":"Ibu-Aje Microfinance","090489":"Alvana Microfinance Bank","090455":"MKOBO MICROFINANCE BANK LTD","090456":"Ospoly Microfinance Bank","090459":"Nice Microfinance Bank",
-    "090460":"Oluyole Microfinance Bank","090461":"Uniibadan Microfinance Bank","090462":"Monarch Microfinance Bank","090463":"Rehoboth Microfinance Bank","090464":"UNIMAID MICROFINANCE BANK",
-    "090465":"Maintrust Microfinance Bank","090466":"YCT MICROFINANCE BANK","090467":"Good Neighbours Microfinance Bank","090468":"Olofin Owena Microfinance Bank","090469":"Aniocha Microfinance Bank",
-    "090446":"SUPPORT MICROFINANCE BANK","000028":"CBN","090482":"CLEARPAY MICROFINANCE BANK","090470":"DOT MICROFINANCE BANK","090504":"ZIKORA MICROFINANCE BANK",
-    "090506":"SOLID ALLIANZE MICROFINANCE BANK","120004":"SMARTCASH PAYMENT SERVICE BANK","090405":"MONIEPOINT MICROFINANCE BANK","070024":"HOMEBASE MORTGAGE BANK","120003":"MOMO PAYMENT SERVICE BANK ",
-    "090490":"Chukwunenye  Microfinance Bank","090491":"Nsuk  Microfinance Bank","090492":"Oraukwu  Microfinance Bank","090493":"Iperu Microfinance Bank","090494":"Boji Boji Microfinance Bank",
-    "090495":"Prospa Capital MICROFINANCE BANK","090496":"Radalpha Microfinance Bank","090497":"Palmcoast Microfinance Bank","090498":"Catland Microfinance Bank","090499":"Pristine Divitis Microfinance Bank",
-    "050002":"FEWCHORE FINANCE COMPANY LIMITED","070006":"COVENANT MICROFINANCE BANK","090500":"Gwong Microfinance Bank","090501":"Boromu Microfinance Bank","090502":"Shalom Microfinance Bank",
-    "090503":"Projects Microfinance Bank","090505":"Nigeria Prisons Microfinance Bank","090507":"Fims Microfinance Bank","090508":"Borno Renaissance Microfinance Bank",
-    "090509":"Capitalmetriq Swift Microfinance Bank","090510":"Umunnachi Microfinance Bank","090511":"Cloverleaf  Microfinance Bank","090512":"Bubayero Microfinance Bank","090513":"Seap Microfinance Bank",
-    "090514":"Umuchinemere Procredit Microfinance Bank","090515":"Rima Growth Pathway Microfinance Bank ","090516":"Numo Microfinance Bank","090517":"Uhuru Microfinance Bank",
-    "090518":"Afemai Microfinance Bank","090519":"Ibom Fadama Microfinance Bank","090520":"IC Globalmicrofinance Bank","090521":"Foresight Microfinance Bank","090523":"Chase Microfinance Bank",
-    "090524":"Solidrock Microfinance Bank","090525":"Triple A Microfinance Bank","090526":"Crescent Microfinance Bank","090527":"Ojokoro Microfinance Bank","090528":"Mgbidi Microfinance Bank",
-    "090529":"Bankly Microfinance Bank","090530":"Confidence Microfinance Bank Ltd","090531":"Aku Microfinance Bank","090532":"Ibolo Micorfinance Bank Ltd","090534":"PolyIbadan Microfinance Bank",
-    "090535":"Nkpolu-Ust Microfinance","090536":"Ikoyi-Osun Microfinance Bank","090537":"Lobrem Microfinance Bank","090538":"Blue Investments Microfinance Bank",
-    "090539":"Enrich Microfinance Bank","090540":"Aztec Microfinance Bank","090541":"Excellent Microfinance Bank","090542":"Otuo Microfinance Bank Ltd","090543":"Iwoama Microfinance Bank",
-    "090544":"Aspire Microfinance Bank Ltd","090545":"Abulesoro Microfinance Bank Ltd","090546":"Ijebu-Ife Microfinance Bank Ltd","090547":"Rockshield Microfinance Bank",
-    "090548":"Ally Microfinance Bank","090549":"Kc Microfinance Bank","090550":"Green Energy Microfinance Bank Ltd","090551":"Fairmoney Microfinance Bank Ltd","090552":"Ekimogun Microfinance Bank","090553":"Consistent Trust Microfinance Bank Ltd","090554":"Kayvee Microfinance Bank","090555":"Bishopgate Microfinance Bank","090556":"Egwafin Microfinance Bank Ltd","090557":"Lifegate Microfinance Bank Ltd","090558":"Shongom Microfinance Bank Ltd","090559":"Shield Microfinance Bank Ltd","090560":"TANADI MFB (CRUST)","090561":"Akuchukwu Microfinance Bank Ltd","090562":"Cedar Microfinance Bank Ltd","090563":"Balera Microfinance Bank Ltd","090564":"Supreme Microfinance Bank Ltd","090565":"Oke-Aro Oredegbe Microfinance Bank Ltd","090566":"Okuku Microfinance Bank Ltd","090567":"Orokam Microfinance Bank Ltd","090568":"Broadview Microfinance Bank Ltd","090569":"Qube Microfinance Bank Ltd","090570":"Iyamoye Microfinance Bank Ltd","090571":"Ilaro Poly Microfinance Bank Ltd","090572":"Ewt Microfinance Bank","090573":"Snow Microfinance Bank","090574":"GOLDMAN MICROFINANCE BANK","090575":"Firstmidas Microfinance Bank Ltd","090576":"Octopus Microfinance Bank Ltd","090578":"Iwade Microfinance Bank Ltd","090579":"Gbede Microfinance Bank","090580":"Otech Microfinance Bank Ltd","090581":"BANC CORP MICROFINANCE BANK","090583":"STATESIDE MFB","090584":"Island MFB","090586":"GOMBE MICROFINANCE BANK LTD","090587":"Microbiz Microfinance Bank","090588":"Orisun MFB","090589":"Mercury MFB","090590":"WAYA MICROFINANCE BANK LTD","090591":"Gabsyn Microfinance Bank","090592":"KANO POLY MFB","090593":"TASUED MICROFINANCE BANK LTD","090598":"IBA MFB ","090599":"Greenacres MFB","090600":"AVE MARIA MICROFINANCE BANK LTD","090602":"KENECHUKWU MICROFINANCE BANK","090603":"Macrod MFB","090606":"KKU Microfinance Bank","090608":"Akpo Microfinance Bank","090609":"Ummah Microfinance Bank ","090610":"AMOYE MICROFINANCE BANK","090611":"Creditville Microfinance Bank","090612":"Medef Microfinance Bank","090613":"Total Trust Microfinance Bank","090614":"AELLA MFB","090615":"Beststar Microfinance Bank","090616":"RAYYAN Microfinance Bank","090620":"Iyin Ekiti MFB","090621":"GIDAUNIYAR ALHERI MICROFINANCE BANK","090623":"Mab Allianz MFB","090649":"CASHRITE MICROFINANCE BANK","090657":"PYRAMID MICROFINANCE BANK","090659":"MICHAEL OKPARA UNIAGRIC MICROFINANCE BANK","090424":"ABUCOOP  MICROFINANCE BANK","070025":"AKWA SAVINGS & LOANS LIMITED","000037":"ALTERNATIVE BANK LIMITED","090307":"ARAMOKO MICROFINANCE BANK","090181":"BALOGUN FULANI  MICROFINANCE BANK","090425":"BANEX MICROFINANCE BANK","090413":"BENYSTA MICROFINANCE BANK","090431":"BLUEWHALES  MICROFINANCE BANK","090444":"BOI MF BANK","090319":"BONGHE MICROFINANCE BANK","050006":"Branch International Finance Company Limited","090415":"CALABAR MICROFINANCE BANK","999001":"CBN_TSA","090397":"CHANELLE BANK","090440":"CHERISH MICROFINANCE BANK","090416":"CHIBUEZE MICROFINANCE BANK","090343":"CITIZEN TRUST MICROFINANCE BANK LTD","090254":"COALCAMP MICROFINANCE BANK","050001":"COUNTY FINANCE LTD","090429":"CROSSRIVER  MICROFINANCE BANK","090414":"CRUTECH  MICROFINANCE BANK","070023":"DELTA TRUST MORTGAGE BANK","050013":"DIGNITY FINANCE","090427":"EBSU MICROFINANCE BANK","000033":"ENAIRA","050012":"ENCO FINANCE","090330":"FAME MICROFINANCE BANK","050009":"FAST CREDIT","090409":"FCMB MICROFINANCE BANK","070026":"FHA MORTGAGE BANK LTD","090163":"FIRST MULTIPLE MICROFINANCE BANK","050010":"FUNDQUEST FINANCIAL SERVICES LTD","090438":"FUTMINNA MICROFINANCE BANK","090411":"GIGINYA MICROFINANCE BANK","090441":"GIWA MICROFINANCE BANK","090335":"GRANT MF BANK","090291":"HALACREDIT MICROFINANCE BANK","090418":"HIGHLAND MICROFINANCE BANK","050005":"AAA FINANCE","090439":"IBETO  MICROFINANCE BANK","090350":"ILLORIN MICROFINANCE BANK","090430":"ILORA MICROFINANCE BANK","090417":"IMOWO MICROFINANCE BANK","090434":"INSIGHT MICROFINANCE BANK","090428":"ISHIE  MICROFINANCE BANK","090353":"ISUOFIA MICROFINANCE BANK","090211":"ITEX INTEGRATED SERVICES LIMITED","090337":"IYERU OKIN MICROFINANCE BANK LTD","090421":"IZON MICROFINANCE BANK","090352":"JESSEFIELD MICROFINANCE BANK","090422":"LANDGOLD  MICROFINANCE BANK","090420":"LETSHEGO MFB","090423":"MAUTECH MICROFINANCE BANK","090432":"MEMPHIS MICROFINANCE BANK","090275":"MERIDIAN MICROFINANCE BANK","090349":"NASARAWA MICROFINANCE BANK","050004":"NEWEDGE FINANCE LTD","090676":"NUGGETS MFB","090437":"OAKLAND MICROFINANCE BANK","090345":"OAU MICROFINANCE BANK LTD","090390":"PARKWAY MF BANK","090004":"PARRALEX MICROFINANCE BANK","090379":"PENIEL MICORFINANCE BANK LTD","090412":"PREEMINENT MICROFINANCE BANK","090170":"RAHAMA MICROFINANCE BANK","090443":"RIMA MICROFINANCE BANK","050003":"SAGEGREY FINANCE LIMITED","050008":"SIMPLE FINANCE LIMITED","090182":"STANDARD MICROFINANCE BANK","100015":"KEGOW","100040":"XPRESS WALLET","070022":"STB MORTGAGE BANK","090340":"STOCKCORP  MICROFINANCE BANK","090302":"SUNBEAM MICROFINANCE BANK","080002":"TAJWALLET","050007":"TEKLA FINANCE LTD","050014":"TRINITY FINANCIAL SERVICES LIMITED","090403":"UDA MICROFINANCE BANK","090341":"UNILORIN MICROFINANCE BANK","090338":"UNIUYO MICROFINANCE BANK","050020":"VALE FINANCE LIMITED","090419":"WINVIEW BANK"}
-
- 
-    # 👉 Add the full NubAPI list you have here (or leave as-is if you prefer)
+    "000013": "GTBANK PLC",
+    "000014": "ACCESS BANK",
+    "000015": "ZENITH BANK",
+    "000016": "FIRST BANK OF NIGERIA",
+    "000004": "UNITED BANK FOR AFRICA",
+    "000005": "ACCESS(DIAMOND) BANK",
+    "000001": "STERLING BANK",
+    "000017": "WEMA BANK",
+    "000018": "UNION BANK",
+    "000020": "HERITAGE BANK",
+    "000025": "TITAN TRUST BANK",
+    "000026": "TAJ BANK",
+    "000027": "GLOBUS BANK",
+    "000029": "LOTUS BANK",
+    "000030": "PARALLEX BANK",
+    "000033": "ENAIRA",
+    "000040": "UBA MONI",
+    "000010": "ECOBANK",
+    "000011": "UNITY BANK",
+    "000012": "STANBIC IBTC BANK",
+    "000021": "STANDARD CHARTERED BANK",
+    "000024": "RAND MERCHANT BANK",
+    "000028": "CBN",
+    "000031": "PREMIUM TRUST  BANK",
+    "000034": "SIGNATURE BANK",
+    "000036": "OPTIMUS BANK",
+    "060001": "CORONATION MERCHANT BANK",
+    "100004": "OPAY",
+    "100033": "PALMPAY",
+    "100014": "FIRSTMONIE WALLET",
+    "100009": "GT MOBILE",
+    "100008": "ECOBANK XPRESS ACCOUNT",
+    "100031": "FCMB MOBILE",
+    "100025": "KONGAPAY",
+    "100012": "VT NETWORKS",
+    "090110": "VFD MFB",
+    "090267": "KUDA MICROFINANCE BANK",
+    "090111": "FINATRUST MICROFINANCE BANK",
+    "090151": "MUTUAL TRUST MICROFINANCE BANK",
+    "090260": "ABOVE ONLY MICROFINANCE BANK",
+    "090145": "FULLRANGE MICROFINANCE BANK",
+    "090140": "SAGAMU MICROFINANCE BANK",
+    "090123": "TRUSTBANC J6 MICROFINANCE BANK LIMITED",
+    "090110": "VFD MFB",
+    "000006": "JAIZ BANK",
+    "000007": "FIDELITY BANK",
+    "000008": "POLARIS BANK",
+    "000009": "CITI BANK",
+    "000019": "ENTERPRISE BANK"
 }
+# (This gives you a balanced list across mainstream banks, merchant banks, and wallets.)
 
-# GET /banks (unchanged)
+# GET /banks
 @app.route("/banks", methods=["GET"])
 def get_banks():
+    """Return available banks (code -> name)."""
     return jsonify(BANKS), 200
 
 
-# -------------------------
-# helper: normalize bank code
-# -------------------------
+# Helper: normalize bank code input
 def normalize_bank_code(input_code_or_name: str):
     """
     Accepts:
@@ -639,25 +587,23 @@ def normalize_bank_code(input_code_or_name: str):
     if s in BANKS:
         return s
 
-    # 2) same numeric removing leading zeros -> match keys after removing leading zeros
+    # 2) numeric match after removing leading zeros
     s_num = s.lstrip("0")
-    if s_num:
+    if s_num.isdigit():
         for k in BANKS:
             if k.lstrip("0") == s_num:
                 return k
 
-    # 3) try by bank name substring (case-insensitive)
+    # 3) match by name fragment (case-insensitive)
     s_up = s.upper()
     for k, v in BANKS.items():
         if s_up in v.upper() or v.upper() in s_up:
             return k
 
     return None
- 
 
-# -------------------------
+
 # Resolve Account (GET + POST)
-# -------------------------
 @app.route("/resolve_account", methods=["GET", "POST"])
 def resolve_account():
     """
@@ -669,40 +615,43 @@ def resolve_account():
       - success: {status:"success", account_name: "...", account_number: "...", bank_code: "..."}
       - error: {status:"error", message: "...", nubapi_preview?: "..."}
     """
-
-    # Input handling (GET or POST)
+    # Input handling
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         account_number = str(data.get("account_number", "")).strip()
-        bank_code = str(data.get("bank_code", "")).strip()
+        bank_code_in = str(data.get("bank_code", "")).strip()
     else:
         account_number = str(request.args.get("account_number", "")).strip()
-        bank_code = str(request.args.get("bank_code", "")).strip()
+        bank_code_in = str(request.args.get("bank_code", "")).strip()
 
-    # Basic validation
+    # Basic validation: account number
     if not account_number.isdigit() or len(account_number) != 10:
         return jsonify({"status": "error", "message": "Invalid account number"}), 400
-    if bank_code not in BANKS:
-        return jsonify({"status": "error", "message": "Unknown bank code"}), 400
 
-    # Read key from env (try multiple names in case)
+    # Normalize/resolve bank code
+    resolved_code = normalize_bank_code(bank_code_in)
+    if not resolved_code:
+        return jsonify({"status": "error", "message": f"Unknown bank code ({bank_code_in})"}), 400
+
+    bank_code = resolved_code  # canonical code from BANKS
+
+    # Get API key from env (try common names)
     NUBAPI_KEY = os.environ.get("NUBAPI_KEY") or os.environ.get("NUBAPI_API") or os.environ.get("NUPABI_API")
     if not NUBAPI_KEY:
         return jsonify({"status": "error", "message": "NUBAPI_KEY not set"}), 500
 
     nubapi_url = "https://nubapi.com/api/verify"
-    # helper: try to parse JSON safely
+
+    # Safe JSON parse helper
     def try_parse_json(resp):
         try:
             return resp.json(), None
         except ValueError:
-            # non-JSON: return None plus a short preview of text
             text = resp.text or ""
-            preview = text[:3000]
-            return None, preview
+            return None, text[:3000]
 
     try:
-        # 1) Try header-based Bearer auth first (preferred)
+        # Attempt 1: Bearer token in headers (modern pattern)
         headers = {
             "Authorization": f"Bearer {NUBAPI_KEY}",
             "Accept": "application/json",
@@ -712,15 +661,12 @@ def resolve_account():
 
         res = requests.get(nubapi_url, headers=headers, params=params, timeout=12)
         print("NubAPI (header) status:", res.status_code, flush=True)
-        print("NubAPI (header) headers:", dict(res.headers), flush=True)
-        # don't print full body to logs, but short preview for debugging
-        print("NubAPI (header) body preview:", (res.text or "")[:1000], flush=True)
+        print("NubAPI (header) preview:", (res.text or "")[:1000], flush=True)
 
-        # If we got 200, try parse JSON
         if res.status_code == 200:
             data, preview = try_parse_json(res)
             if data:
-                # NubAPI returned JSON
+                # JSON returned
                 if data.get("status") == "success" and data.get("account_name"):
                     return jsonify({
                         "status": "success",
@@ -728,23 +674,23 @@ def resolve_account():
                         "account_number": account_number,
                         "bank_code": bank_code
                     }), 200
-                # JSON but unsuccessful
+                # JSON but indicates failure
                 return jsonify({
                     "status": "error",
                     "message": data.get("message", "Unable to verify account"),
                     "raw": data
                 }), 400
             else:
-                # non-JSON body; fall through to query param fallback
+                # non-JSON returned; continue to fallback
                 header_preview = preview
         else:
             header_preview = (res.text or "")[:3000]
 
-        # 2) Fallback: try query param style with api_key in URL (older style)
+        # Attempt 2: query param style with api_key in URL (legacy)
         url_with_key = f"{nubapi_url}?account_number={account_number}&bank_code={bank_code}&api_key={NUBAPI_KEY}"
         res2 = requests.get(url_with_key, timeout=12, headers={"Accept": "application/json", "User-Agent": "PayMe/1.0"})
         print("NubAPI (query) status:", res2.status_code, flush=True)
-        print("NubAPI (query) body preview:", (res2.text or "")[:1000], flush=True)
+        print("NubAPI (query) preview:", (res2.text or "")[:1000], flush=True)
 
         if res2.status_code == 200:
             data2, preview2 = try_parse_json(res2)
@@ -766,15 +712,13 @@ def resolve_account():
         else:
             query_preview = (res2.text or "")[:3000]
 
-        # If we get here, neither attempt returned JSON success. Return previews for diagnosis.
-        # Prefer to return the JSON preview if available; otherwise return the header/query previews.
+        # Nothing returned valid JSON success — surface previews for debugging
         nubapi_preview = None
         if 'preview2' in locals() and preview2:
             nubapi_preview = preview2
         elif 'preview' in locals() and preview:
             nubapi_preview = preview
         else:
-            # fallback to combined short text
             nubapi_preview = (header_preview if 'header_preview' in locals() else "") + "\n\n" + (query_preview if 'query_preview' in locals() else "")
             nubapi_preview = nubapi_preview[:3000]
 
@@ -792,6 +736,7 @@ def resolve_account():
         traceback.print_exc()
         return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
 
+# ---------- End of replacement code ----------
 
 # -------------------------------------------------
 # Savings (added, routes match your front-end)
