@@ -509,160 +509,77 @@ if __name__ != "__main__":
 
 @app.route("/banks", methods=["GET"])
 def get_banks():
-    FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "FLWSECK_TEST-8a4eef00cb4d458b83e859c2f6178351-X")
-    url = "https://api.flutterwave.com/v3/banks/NG"
-
-    headers = {
-        "Authorization": f"Bearer {FLW_SECRET_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    fallback_banks = {
-        "011": "FIRST BANK OF NIGERIA",
-        "032": "UNION BANK",
-        "044": "ACCESS BANK",
-        "057": "ZENITH BANK",
-        "058": "GUARANTY TRUST BANK"
-    }
-
+    """
+    Return live Flutterwave banks only. Requires FLW_SECRET_KEY in env.
+    Returns 200 + {"status":"success","banks": {code: name, ...}} on success.
+    Returns 4xx/5xx with a clear error message when Flutterwave can't be used.
+    """
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-
-        # If Flutterwave API failed
-        if response.status_code != 200:
+        flw_key = os.environ.get("FLW_SECRET_KEY")
+        if not flw_key:
             return jsonify({
                 "status": "error",
-                "message": "Failed to load banks from Flutterwave",
-                "banks": fallback_banks
-            }), response.status_code
+                "message": "FLW_SECRET_KEY not configured on server. Set FLW_SECRET_KEY to fetch Flutterwave banks."
+            }), 400
 
-        data = response.json()
+        # Prefer cached helper if available
+        try:
+            banks_map, err = get_flutter_banks(force_refresh=False)
+            if banks_map:
+                return jsonify({"status": "success", "message": "Banks fetched from Flutterwave (cache)", "banks": banks_map}), 200
+            # if helper returned err or None, fall through to direct fetch
+        except NameError:
+            # get_flutter_banks not defined — will fetch directly below
+            pass
 
-        banks = {
-            bank["code"]: bank["name"]
-            for bank in data.get("data", [])
-        }
+        # Direct fetch as fallback (or if helper returned no data)
+        url = "https://api.flutterwave.com/v3/banks?country=NG"
+        headers = {"Authorization": f"Bearer {flw_key}", "User-Agent": "PayMe/1.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
 
-        return jsonify({
-            "status": "success",
-            "message": "Banks fetched successfully",
-            "banks": banks
-        }), 200
+        # Surface exact Flutterwave error if any
+        if resp.status_code != 200:
+            body_text = resp.text or ""
+            # Try to parse JSON body if possible
+            try:
+                body_json = resp.json()
+            except Exception:
+                body_json = body_text
+            return jsonify({
+                "status": "error",
+                "message": "Flutterwave returned non-200 for /banks",
+                "fw_status": resp.status_code,
+                "fw_response": body_json
+            }), resp.status_code
 
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": "Internal server error while fetching banks; returning fallback.",
-            "details": str(e),
-            "banks": fallback_banks
-        }), 500
-
-       
- 
-
-# ---------- Flutterwave banks cache & helpers ----------
-_FLW_BANKS_CACHE = {"ts": 0, "data": None}
-_FLW_BANKS_TTL = 60 * 60  # 1 hour cache TTL
-
-
-def fetch_flutter_banks_from_api():
-    """
-    Fetch Flutterwave bank list for Nigeria using FLW_SECRET_KEY from env.
-    Returns dict code->name or (None, error_msg)
-    """
-    flw_key = os.environ.get("FLW_SECRET_KEY") or FLW_SECRET_KEY
-    if not flw_key:
-        return None, "FLW_SECRET_KEY not set"
-
-    url = "https://api.flutterwave.com/v3/banks?country=NG"
-    headers = {"Authorization": f"Bearer {flw_key}", "User-Agent": "PayMe/1.0"}
-    try:
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code != 200:
-            return None, f"Flutterwave banks API returned {res.status_code}: {res.text[:400]}"
-        body = res.json()
-        data = {}
-        for item in body.get("data", []):
+        data = resp.json()
+        banks = {}
+        for item in data.get("data", []):
             code = str(item.get("code") or "").strip()
             name = (item.get("name") or "").strip()
             if code and name:
-                data[code] = name
-        return data, None
-    except requests.RequestException as e:
-        return None, str(e)
+                banks[code] = name
 
+        return jsonify({"status": "success", "message": "Banks fetched from Flutterwave", "banks": banks}), 200
 
-def get_flutter_banks(force_refresh=False):
-    """
-    Return cached flutter banks dict (code->name). Fetch if cache expired or forced.
-    Returns (data_dict_or_None, error_or_None)
-    """
-    global _FLW_BANKS_CACHE
-    now = int(time.time())
-    if not force_refresh and _FLW_BANKS_CACHE["data"] and (now - _FLW_BANKS_CACHE["ts"]) < _FLW_BANKS_TTL:
-        return _FLW_BANKS_CACHE["data"], None
-
-    data, err = fetch_flutter_banks_from_api()
-    if data is not None:
-        _FLW_BANKS_CACHE["data"] = data
-        _FLW_BANKS_CACHE["ts"] = now
-        return data, None
-
-    # fallback to stale cache if exists
-    if _FLW_BANKS_CACHE["data"]:
-        return _FLW_BANKS_CACHE["data"], f"Fetch failed, using stale cache: {err}"
-    return None, err
-
-
-def find_flutter_code(bank_code_or_internal):
-    """
-    Input:
-      - numeric code (e.g. '044') OR
-      - your internal key (e.g. '000004') OR
-      - bank name (partial)
-    Returns (flutter_code_or_None, error_or_None).
-    """
-    flw_banks, err = get_flutter_banks(force_refresh=False)
-
-    # 1) numeric input: accept if present in flutter list or accept anyway if no list
-    if bank_code_or_internal.isdigit():
-        if flw_banks and bank_code_or_internal in flw_banks:
-            return bank_code_or_internal, None
-        if not flw_banks:
-            return bank_code_or_internal, None
-        return None, f"Numeric bank code '{bank_code_or_internal}' not in Flutterwave list"
-
-    # 2) internal key mapping via BANKS names
-    internal_name = (globals().get("BANKS", {}).get(bank_code_or_internal) or "").strip()
-    if internal_name:
-        if flw_banks:
-            lname = internal_name.lower()
-            for code, fname in flw_banks.items():
-                f = fname.lower()
-                if f == lname or lname in f or f in lname:
-                    return code, None
-            return None, f"No Flutterwave match for '{internal_name}'"
-        else:
-            return None, f"Flutterwave bank list unavailable to match '{internal_name}': {err}"
-
-    # 3) fallback: try matching raw string against flutter names if list present
-    if flw_banks:
-        raw = bank_code_or_internal.lower()
-        for code, fname in flw_banks.items():
-            f = fname.lower()
-            if f == raw or raw in f or f in raw:
-                return code, None
-        return None, f"No Flutterwave match for '{bank_code_or_internal}'"
-
-    # 4) if no list and not numeric/internal, return None
-    return None, "Unable to determine Flutterwave bank code"
-
-
-# ---------- /resolve-account (updated, keeps original fallbacks & messaging) ----------
+    except requests.exceptions.RequestException as e:
+        # network / timeout
+        return jsonify({
+            "status": "error",
+            "message": "Network error when contacting Flutterwave /banks",
+            "details": str(e)
+        }), 502
+    except Exception as e:
+        # catch-all
+        return jsonify({
+            "status": "error",
+            "message": "Internal error while fetching banks from Flutterwave",
+            "details": str(e)
+        }), 500
 @app.route("/resolve-account", methods=["POST"])
 def resolve_account():
     """
-    Resolve account_number + bank_code using Flutterwave (preferred) or NubAPI (fallback).
+    Resolve account_number + bank_code using Flutterwave only.
     Expects JSON body: { "account_number": "2198579728", "bank_code": "000004" }
     """
     try:
@@ -670,15 +587,11 @@ def resolve_account():
         account_number = str(data.get("account_number", "")).strip()
         bank_code = str(data.get("bank_code", "")).strip()
 
+        # Basic validation
         if not account_number.isdigit() or len(account_number) != 10:
             return jsonify({"status": "error", "message": "Invalid account number"}), 400
 
-        try:
-            if 'BANKS' in globals() and bank_code not in BANKS:
-                return jsonify({"status": "error", "message": "Unknown bank code"}), 400
-        except Exception:
-            pass
-
+        # Helper to safely parse JSON from requests responses
         def try_parse_json(resp):
             try:
                 return resp.json(), None
@@ -686,146 +599,107 @@ def resolve_account():
                 text = resp.text or ""
                 return None, text[:3000]
 
-        # -----------------------------
-        # (2) Determine flutter-compatible bank code
-        # -----------------------------
+        # Get FLW secret
+        flw_key = os.environ.get("FLW_SECRET_KEY")
+        if not flw_key:
+            return jsonify({"status": "error", "message": "FLW_SECRET_KEY not configured on server"}), 500
+
+        # Resolve the numeric code to send to Flutterwave
         account_bank = None
         mapping_error = None
-        flw_key = os.environ.get("FLW_SECRET_KEY") or FLW_SECRET_KEY
-
-        if flw_key:
+        try:
+            # Prefer helper if available
             try:
                 account_bank, mapping_error = find_flutter_code(bank_code)
-            except Exception as err:
-                # If helper fails for any reason, record the error and continue to fallback
-                account_bank = None
-                mapping_error = str(err)
-
-            # Sandbox override: Flutterwave sandbox only supports Access Bank (044) for account resolve
-            if not account_bank and "test" in flw_key.lower():
-                account_bank = "044"
-                mapping_error = None
-                print("Sandbox detected, forcing account_bank -> 044", flush=True)
-
-        if flw_key and not account_bank:
-            print("Skipping Flutterwave: could not map bank:", mapping_error, "input:", bank_code, flush=True)
-
-        # -----------------------------
-        # 1) Try Flutterwave first (only if we have a secret key and a numeric account_bank)
-        # -----------------------------
-        if flw_key and account_bank:
-            try:
-                flw_url = "https://api.flutterwave.com/v3/accounts/resolve"
-                payload = {"account_number": account_number, "account_bank": account_bank}
-                headers = {
-                    "Authorization": f"Bearer {flw_key}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "PayMe/1.0"
-                }
-
-                flw_res = requests.post(flw_url, headers=headers, json=payload, timeout=12)
-                flw_status = flw_res.status_code
-                flw_json, flw_preview = try_parse_json(flw_res)
-
-                print("Flutterwave status:", flw_status, flush=True)
-                print("Flutterwave preview:", (flw_res.text or "")[:1000], flush=True)
-
-                if flw_json and flw_json.get("status") == "success" and isinstance(flw_json.get("data"), dict):
-                    acct_name = flw_json["data"].get("account_name")
-                    if acct_name:
-                        return jsonify({
-                            "status": "success",
-                            "provider": "flutterwave",
-                            "account_name": acct_name,
-                            "account_number": account_number,
-                            "bank_code": account_bank,
-                            "raw": flw_json
-                        }), 200
-                    else:
-                        return jsonify({
-                            "status": "error",
-                            "provider": "flutterwave",
-                            "message": "Flutterwave returned no account_name",
-                            "raw": flw_json
-                        }), 400
+            except NameError:
+                # No helper: accept numeric codes only
+                if bank_code.isdigit() and len(bank_code) in (3, 5):
+                    account_bank = bank_code
                 else:
-                    msg = flw_json.get("message") if flw_json else "Flutterwave unresolved"
-                    return jsonify({
-                        "status": "error",
-                        "provider": "flutterwave",
-                        "message": msg,
-                        "raw": flw_json
-                    }), 400
+                    account_bank = None
+                    mapping_error = "No helper available and bank_code not numeric"
+        except Exception as e:
+            account_bank = None
+            mapping_error = str(e)
 
-            except requests.exceptions.RequestException as e:
-                print("Flutterwave request exception:", str(e), flush=True)
+        # Sandbox limitation: force Access Bank (044) in test mode
+        if not account_bank and "test" in flw_key.lower():
+            account_bank = "044"
+            mapping_error = None
 
-        # -----------------------------
-        # 3) Fallback: NubAPI (unchanged behavior)
-        # -----------------------------
-        NUBAPI_KEY = os.environ.get("NUBAPI_KEY")
-        if not NUBAPI_KEY:
-            return jsonify({"status": "error", "message": "No verification provider configured (set FLW_SECRET_KEY or NUBAPI_KEY)"}), 500
+        if not account_bank:
+            return jsonify({
+                "status": "error",
+                "message": "Could not determine Flutterwave numeric bank code",
+                "details": mapping_error
+            }), 400
 
+        # Call Flutterwave resolve API
         try:
-            nubapi_url = "https://nubapi.com/api/verify"
-            headers = {"Accept": "application/json", "User-Agent": "PayMe/1.0"}
-            params = {"account_number": account_number, "bank_code": bank_code, "api_key": NUBAPI_KEY}
+            flw_url = "https://api.flutterwave.com/v3/accounts/resolve"
+            payload = {"account_number": account_number, "account_bank": account_bank}
+            headers = {
+                "Authorization": f"Bearer {flw_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "PayMe/1.0"
+            }
 
-            nub_res = requests.get(nubapi_url, headers=headers, params=params, timeout=12)
-            nub_status = nub_res.status_code
-            nub_json, nub_preview = try_parse_json(nub_res)
+            flw_res = requests.post(flw_url, headers=headers, json=payload, timeout=12)
+            flw_status = flw_res.status_code
+            flw_json, flw_preview = try_parse_json(flw_res)
 
-            print("NubAPI status:", nub_status, flush=True)
-            print("NubAPI preview:", (nub_res.text or "")[:1000], flush=True)
+            # Log minimal info to stdout for server logs (helpful for debugging)
+            print("Flutterwave resolve status:", flw_status, flush=True)
+            print("Flutterwave resolve preview:", (flw_res.text or "")[:1000], flush=True)
 
-            if nub_json:
-                if nub_json.get("status") == "success" and nub_json.get("account_name"):
+            # Expecting Flutterwave success shape: { status: "success", data: { account_name: ... } }
+            if flw_json and (flw_json.get("status") == "success" or str(flw_status).startswith("2")):
+                # Try to extract account name
+                acct_name = None
+                if isinstance(flw_json.get("data"), dict):
+                    acct_name = flw_json["data"].get("account_name") or flw_json["data"].get("accountName")
+                # Some flutterwave returns may contain nested stuff -- also check top-level
+                if not acct_name:
+                    acct_name = flw_json.get("account_name") or flw_json.get("data", {}).get("account_name")
+
+                if acct_name:
                     return jsonify({
                         "status": "success",
-                        "provider": "nubapi",
-                        "account_name": nub_json["account_name"],
+                        "provider": "flutterwave",
+                        "account_name": acct_name,
                         "account_number": account_number,
-                        "bank_code": bank_code,
-                        "raw": nub_json
+                        "bank_code": account_bank,
+                        "raw": flw_json
                     }), 200
-                return jsonify({
-                    "status": "error",
-                    "provider": "nubapi",
-                    "message": nub_json.get("message", "Unable to verify account"),
-                    "raw": nub_json
-                }), 400
-            else:
-                return jsonify({
-                    "status": "error",
-                    "provider": "nubapi",
-                    "message": "Invalid response from NubAPI",
-                    "nubapi_status": nub_status,
-                    "nubapi_preview": nub_preview
-                }), 502
 
-        except requests.exceptions.RequestException as re:
-            print("NubAPI request exception:", str(re), flush=True)
-            return jsonify({"status": "error", "message": f"Request failed: {str(re)}"}), 502
+                # success status but no name
+                return jsonify({
+                    "status": "error",
+                    "provider": "flutterwave",
+                    "message": "Flutterwave returned success but no account_name",
+                    "raw": flw_json
+                }), 400
+
+            # Non-success: surface provider message if available
+            if flw_json:
+                msg = flw_json.get("message") or flw_json.get("error") or "Flutterwave unresolved"
+            else:
+                msg = "Flutterwave did not return valid JSON"
+            return jsonify({
+                "status": "error",
+                "provider": "flutterwave",
+                "message": msg,
+                "raw": flw_json if flw_json is not None else flw_preview
+            }), flw_status if isinstance(flw_status, int) and flw_status >= 400 else 400
+
+        except requests.exceptions.RequestException as e:
+            print("Flutterwave request exception:", str(e), flush=True)
+            return jsonify({"status": "error", "message": f"Network error contacting Flutterwave: {str(e)}"}), 502
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
-
-
-# -----------------------------
-# Optional: endpoint to force refresh Flutterwave banks cache
-# -----------------------------
-@app.route("/_refresh_flutter_banks", methods=["POST"])
-def _refresh_flutter_banks():
-    flw_secret = os.environ.get("FLW_SECRET_KEY") or FLW_SECRET_KEY
-    if not flw_secret:
-        return jsonify({"status": "error", "message": "FLW_SECRET_KEY not configured"}), 400
-    data, err = get_flutter_banks(force_refresh=True)
-    if data:
-        return jsonify({"status": "success", "count": len(data)}), 200
-    return jsonify({"status": "error", "message": err}), 500
                     
 
 # Savings (added, routes match your front-end)
