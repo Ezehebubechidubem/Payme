@@ -557,8 +557,7 @@ BANKS = {
 def get_banks():
     return jsonify(BANKS), 200
 
-
-        @app.route("/resolve-account", methods=["POST"])
+@app.route("/resolve-account", methods=["POST"])
 def resolve_account():
     """
     Resolve account_number + bank_code using Flutterwave (preferred) or NubAPI (fallback).
