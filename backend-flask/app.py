@@ -511,50 +511,53 @@ if __name__ != "__main__":
 FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "FLWSECK_TEST-8a4eef00cb4d458b83e859c2f6178351-X")
 
 # ---------- /banks route (fetch from Flutterwave) ----------
-# ✅ Flutterwave Secret
-FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY", None)
-
-@app.route("/banks", methods=["GET"])
+# ✅ Flutterwave Secret@app.route("/banks", methods=["GET"])
 def get_banks():
     try:
+        # ✅ Check if FLW_SECRET_KEY exists first
         if not FLW_SECRET_KEY:
             return jsonify({
                 "status": "error",
-                "message": "FLW_SECRET_KEY not configured in server."
-            }), 500
+                "message": "FLW_SECRET_KEY missing from server"
+            }), 400
 
         url = "https://api.flutterwave.com/v3/banks/NG"
         headers = {
             "Authorization": f"Bearer {FLW_SECRET_KEY}",
             "Content-Type": "application/json"
         }
+
         response = requests.get(url, headers=headers, timeout=10)
+
+        print("FLW /banks status:", response.status_code)
+        print("FLW /banks response:", response.text[:500], flush=True)
 
         if response.status_code != 200:
             return jsonify({
                 "status": "error",
-                "message": f"Flutterwave API failed with status {response.status_code}",
-                "details": response.text
+                "message": "Flutterwave responded with error",
+                "details": response.json() if response.text else {}
             }), response.status_code
 
-        body = response.json()
+        data = response.json()
         banks = [
             {"name": bank["name"], "code": bank["code"]}
-            for bank in body.get("data", [])
+            for bank in data.get("data", [])
         ]
 
         return jsonify({
             "status": "success",
-            "message": "Bank list fetched successfully",
             "banks": banks
         }), 200
 
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": "Server crashed while loading banks",
+            "message": "Internal server error",
             "details": str(e)
         }), 500
+
+ 
 
 # ---------- Flutterwave banks cache & helpers ----------
 _FLW_BANKS_CACHE = {"ts": 0, "data": None}
