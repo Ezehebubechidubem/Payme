@@ -508,53 +508,99 @@ if __name__ != "__main__":
         init_db()
 
 
-FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "FLWSECK_TEST-8a4eef00cb4d458b83e859c2f6178351-X")
-
-# ---------- /banks route (fetch from Flutterwave) ----------
-# ✅ Flutterwave Secret@app.route("/banks", methods=["GET"])
+@app.route("/banks", methods=["GET"])
 def get_banks():
+    """
+    Robust banks route:
+    - If FLW_SECRET_KEY exists, attempt to fetch from Flutterwave and return structured banks.
+    - If FLW_SECRET_KEY missing or Flutterwave call fails, return a clear error + fallback list.
+    """
     try:
-        # ✅ Check if FLW_SECRET_KEY exists first
-        if not FLW_SECRET_KEY:
+        flw_key = os.environ.get("FLW_SECRET_KEY")
+        # 1) if no FLW key set, return clear error (HTTP 400) and include fallback list
+        if not flw_key:
+            fallback = {
+                "044": "ACCESS BANK",
+                "011": "FIRST BANK OF NIGERIA",
+                "058": "GUARANTY TRUST BANK",
+                "057": "ZENITH BANK",
+                "032": "UNION BANK"
+            }
+            print("GET /banks: FLW_SECRET_KEY not set; returning fallback list", flush=True)
             return jsonify({
                 "status": "error",
-                "message": "FLW_SECRET_KEY missing from server"
+                "message": "FLW_SECRET_KEY not configured on server. Set FLW_SECRET_KEY to fetch live Flutterwave banks.",
+                "banks": fallback
             }), 400
 
-        url = "https://api.flutterwave.com/v3/banks/NG"
-        headers = {
-            "Authorization": f"Bearer {FLW_SECRET_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.get(url, headers=headers, timeout=10)
-
-        print("FLW /banks status:", response.status_code)
-        print("FLW /banks response:", response.text[:500], flush=True)
-
-        if response.status_code != 200:
+        # 2) Try to fetch from Flutterwave
+        url = "https://api.flutterwave.com/v3/banks?country=NG"
+        headers = {"Authorization": f"Bearer {flw_key}", "User-Agent": "PayMe/1.0"}
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+        except requests.RequestException as e:
+            print("GET /banks: network error calling Flutterwave:", str(e), flush=True)
+            # return fallback but with explicit message
+            fallback = {
+                "044": "ACCESS BANK",
+                "011": "FIRST BANK OF NIGERIA",
+                "058": "GUARANTY TRUST BANK",
+                "057": "ZENITH BANK",
+                "032": "UNION BANK"
+            }
             return jsonify({
                 "status": "error",
-                "message": "Flutterwave responded with error",
-                "details": response.json() if response.text else {}
-            }), response.status_code
+                "message": "Network error fetching banks from Flutterwave; returning fallback.",
+                "details": str(e),
+                "banks": fallback
+            }), 502
 
-        data = response.json()
-        banks = [
-            {"name": bank["name"], "code": bank["code"]}
-            for bank in data.get("data", [])
-        ]
+        # 3) Flutterwave responded — if not 200, log and return body for debugging
+        print("GET /banks: Flutterwave status:", resp.status_code, "body:", (resp.text or "")[:800], flush=True)
+        if resp.status_code != 200:
+            # try to parse JSON body, else return text
+            try:
+                body = resp.json()
+            except Exception:
+                body = resp.text
+            return jsonify({
+                "status": "error",
+                "message": "Flutterwave returned non-200 status for /banks",
+                "fw_status": resp.status_code,
+                "fw_response": body
+            }),  resp.status_code
+
+        # 4) Success: build normalized list and return
+        body = resp.json()
+        banks = []
+        for item in body.get("data", []):
+            code = str(item.get("code") or "").strip()
+            name = item.get("name") or item.get("bank") or ""
+            if not code or not name:
+                continue
+            banks.append({"code": code, "name": name, "slug": item.get("slug", "")})
 
         return jsonify({
             "status": "success",
+            "message": "Bank list fetched from Flutterwave",
             "banks": banks
         }), 200
 
-    except Exception as e:
+    except Exception as exc:
+        # Catch-all with trace for logs; return fallback minimal list
+        print("GET /banks: unexpected error:", repr(exc), flush=True)
+        fallback = {
+            "044": "ACCESS BANK",
+            "011": "FIRST BANK OF NIGERIA",
+            "058": "GUARANTY TRUST BANK",
+            "057": "ZENITH BANK",
+            "032": "UNION BANK"
+        }
         return jsonify({
             "status": "error",
-            "message": "Internal server error",
-            "details": str(e)
+            "message": "Internal server error while fetching banks; returning fallback.",
+            "details": str(exc),
+            "banks": fallback
         }), 500
 
  
