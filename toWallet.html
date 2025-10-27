@@ -124,6 +124,9 @@
     .popup-error .popup-icon { background: #e53935 }
     .popup-info .popup-icon { background: #1976d2 }
 
+    /* Cancel (second) button style - red */
+    .popup-cancel { background: #e53935 !important; border:0; color:#fff; }
+
     @media(min-width:700px){
       .bank-modal { left:25%; right:25%; top:10%; bottom:10%; }
     }
@@ -137,7 +140,7 @@
     <input id="accountNumber" type="text" maxlength="10" placeholder="Enter 10-digit account" />
 
     <div id="bankSection" class="hidden">
-      <label for="bankSelect">Select Bank</label>
+      <label id="bankLabel" for="bankSelect">Select Bank</label>
 
       <!-- Visible horizontal search input with delete button -->
       <div class="search-inline">
@@ -200,6 +203,7 @@
     const bankToggle = document.getElementById("bankToggle");
     const bankSelect = document.getElementById("bankSelect"); // hidden input
     const bankNote = document.getElementById("bankNote");
+    const bankLabel = document.getElementById("bankLabel");
     const receiverSection = document.getElementById("receiverSection");
     const receiverName = document.getElementById("receiverName");
     const receiverMeta = document.getElementById("receiverMeta");
@@ -219,6 +223,7 @@
     let currentAccount = "";
     let fullBankList = []; // canonical [{code,name}]
     let receiverUsername = ""; // name from resolve
+    let loadedFromBackend = false; // flag used to change label & display
     // current user read from localStorage (unchanged)
     const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user"));
 
@@ -230,8 +235,8 @@
      * opts:
      *  - type: 'info' | 'success' | 'error' (controls icon color)
      *  - title: string
-     *  - actions: [{ label, className, onClick, autoClose (bool) }]  (if omitted, OK button shown)
-     *  - autoClose / duration for default OK behavior (keeps backward compat)
+     *  - actions: [{ label, className, onClick }]  (if omitted, OK button shown)
+     *  - autoClose / duration for default OK behavior
      *
      * returns a Promise that resolves with { actionIndex } when closed.
      */
@@ -254,7 +259,6 @@
       const icon = document.createElement('div');
       icon.className = 'popup-icon';
       icon.textContent = (type === 'success') ? '✓' : (type === 'error') ? '!' : 'i';
-      // style icon color by type via classes
       if (type === 'success') box.classList.add('popup-success');
       else if (type === 'error') box.classList.add('popup-error');
       else box.classList.add('popup-info');
@@ -357,12 +361,18 @@
         left.style.alignItems = "center";
         const title = document.createElement("div");
         title.className = "name";
-        title.textContent = name;
+        // show only name when loadedFromBackend flag is true
+        title.textContent = loadedFromBackend ? name : `${name}`;
         const sub = document.createElement("div");
         sub.className = "code";
-        sub.textContent = `(${code})`;
-        left.appendChild(title);
-        left.appendChild(sub);
+        // show code only when not loadedFromBackend
+        sub.textContent = loadedFromBackend ? "" : `(${code})`;
+        if (!loadedFromBackend) {
+          left.appendChild(title);
+          left.appendChild(sub);
+        } else {
+          left.appendChild(title);
+        }
 
         const radio = document.createElement("div");
         radio.className = "radio";
@@ -372,7 +382,8 @@
         row.appendChild(radio);
 
         row.addEventListener("click", () => {
-          bankToggle.textContent = `${name} (${code})`;
+          // when displaying only names, show only the name on the toggle
+          bankToggle.textContent = loadedFromBackend ? name : `${name} (${code})`;
           bankSelect.value = code;
           const prev = bankList.querySelector(".radio.selected");
           if (prev) prev.classList.remove("selected");
@@ -416,7 +427,6 @@
     bankToggle.addEventListener("click", () => openBankModal());
     bankModalClose.addEventListener("click", () => closeBankModal());
     bankModal.addEventListener("click", (e) => { if (e.target === bankModal) closeBankModal(); });
-
     // keep main and modal search in sync
     bankSearch.addEventListener("input", () => {
       bankSearchMain.value = bankSearch.value;
@@ -457,6 +467,7 @@
         const data = await res.json();
 
         const normalized = [];
+        let isFromBackend = false;
 
         if (data && Array.isArray(data.banks)) {
           data.banks.forEach(b => {
@@ -465,12 +476,14 @@
             if (!code) return;
             normalized.push({ code, name });
           });
+          isFromBackend = true;
         } else if (data && data.banks && typeof data.banks === "object" && !Array.isArray(data.banks)) {
           const mapping = data.banks;
           Object.keys(mapping).forEach(code => {
             const name = mapping[code] || "";
             normalized.push({ code: String(code).trim(), name: String(name).trim() });
           });
+          isFromBackend = true;
         } else if (data && typeof data === "object" && !Array.isArray(data) && !data.banks) {
           const keys = Object.keys(data);
           const isMapping = keys.length > 0 && keys.every(k => typeof data[k] === "string");
@@ -478,6 +491,7 @@
             keys.forEach(code => {
               normalized.push({ code: String(code).trim(), name: String(data[code]).trim() });
             });
+            isFromBackend = true;
           }
         } else if (data && data.data && Array.isArray(data.data)) {
           data.data.forEach(b => {
@@ -486,6 +500,7 @@
             if (!code) return;
             normalized.push({ code, name });
           });
+          isFromBackend = true;
         }
 
         if (normalized.length === 0) throw new Error("Invalid banks payload");
@@ -494,6 +509,14 @@
         normalized.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
 
         fullBankList = normalized;
+        // If banks came from backend (not fallback), set display flag
+        loadedFromBackend = isFromBackend;
+        // if backend loaded, change label to "Receive Name:"
+       if (loadedFromBackend) {
+          bankLabel.textContent = "Receive Name:";
+        } else {
+          bankLabel.textContent = "Select Bank";
+        }
         renderBankItems(fullBankList);
         bankNote.textContent = "Banks loaded from backend.";
       } catch (err) {
@@ -505,6 +528,9 @@
           "000012":"FIRST BANK OF NIGERIA"
         };
         fullBankList = Object.keys(fallback).map(code => ({ code: String(code).trim(), name: fallback[code] }));
+        // fallback is NOT "loaded from backend"
+        loadedFromBackend = false;
+        bankLabel.textContent = "Select Bank";
         renderBankItems(fullBankList);
         bankNote.textContent = "Using fallback bank list (backend unreachable).";
       }
@@ -512,7 +538,7 @@
 
     loadBanks();
 
-        // sanitize account input to digits only and show banks when length==10
+    // sanitize account input to digits only and show banks when length==10
     accountInput.addEventListener("input", function(){
       const digits = this.value.replace(/\D/g,'');
       if (this.value !== digits) this.value = digits;
@@ -576,7 +602,7 @@
       return null;
     }
 
-    // On bank selection attempt resolve (unchanged behavior)
+// On bank selection attempt resolve (unchanged behavior aside from removed self-check)
     bankSelect.addEventListener("change", async function(){
       const bankCode = this.value;
       receiverSection.classList.remove("hidden");
@@ -614,6 +640,7 @@
         // Extract name robustly
         const acctName = extractAccountName(payload) || extractAccountName(payload.data) || extractAccountName(payload.raw);
         receiverUsername = acctName || "";
+        // show only the name (per your request)
         receiverName.textContent = acctName || "Name not provided";
         receiverMeta.textContent = `Account: ${currentAccount} • Bank: ${bankCode}`;
         amountSection.classList.remove("hidden");
@@ -636,16 +663,6 @@
 
       // handle common failure patterns (friendly message)
       let msg = "Account not found or verification failed";
-      if (payload && payload.status === "warning" && payload.can_proceed) {
-        // special warning response (our updated server may return this)
-        receiverName.textContent = "⚠️ Name lookup unavailable — proceed with caution";
-        receiverMeta.textContent = `Account: ${currentAccount} • Bank: ${bankCode}`;
-        amountSection.classList.remove("hidden");
-        sendSection.classList.remove("hidden");
-        receiverUsername = "";
-        return;
-      }
-
       if (payload && payload.message) msg = payload.message;
       else if (payload && payload.error) msg = payload.error;
       else if (payload && payload.details) msg = payload.details;
@@ -697,12 +714,7 @@
         return;
       }
 
-      // Prevent sending to yourself if possible
-      const userAcc = (currentUser && (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber)) || null;
-      if (userAcc && acct === String(userAcc)) {
-        await showPopup("You cannot send money to your own account!", { type: "error", title: "Invalid transfer" });
-        return;
-      }
+      // self-send check removed intentionally (per your request)
 
       const balance = await fetchBalance();
       if (amount > balance) {
@@ -746,7 +758,7 @@
           });
           localStorage.setItem("transactions", JSON.stringify(transactions));
 
-          // Show success popup with two actions: View Transactions (redirect) & Cancel (just close)
+          // Show success popup with two actions: View Transactions (redirect) & Cancel (red)
           await showPopup((body && (body.message || body.msg)) ? (body.message || body.msg) : "Transfer completed successfully.", {
             type: "success",
             title: "Transfer Completed",
@@ -757,6 +769,7 @@
               },
               {
                 label: "Cancel",
+                className: "popup-cancel",
                 onClick: () => { /* just close */ }
               }
             ],
