@@ -577,6 +577,8 @@ def get_banks():
             "message": "Internal error while fetching banks from Flutterwave",
             "details": str(e)
         }), 500
+
+
 @app.route("/resolve-account", methods=["POST"])
 def resolve_account():
     """
@@ -586,7 +588,7 @@ def resolve_account():
     try:
         data = request.get_json(silent=True) or {}
         account_number = str(data.get("account_number", "")).strip()
-        bank_code = str(data.get("bank_code", "")).strip()
+        bank_code = data.get("bank_code", "")  # keep original type for flexible handling
 
         # Basic validation
         if not account_number.isdigit() or len(account_number) != 10:
@@ -605,29 +607,57 @@ def resolve_account():
         if not flw_key:
             return jsonify({"status": "error", "message": "FLW_SECRET_KEY not configured on server"}), 500
 
-        # Resolve the numeric code to send to Flutterwave
+        # ---- Resolve the numeric code to send to Flutterwave (robust) ----
         account_bank = None
         mapping_error = None
+
         try:
-            # Prefer helper if available
+            # Normalize incoming bank_code into a string (guard against ints, None etc.)
+            bank_code_raw = "" if bank_code is None else str(bank_code)
+
+            # Trim whitespace and remove non-digit characters (hidden/formatting chars)
+            bank_code_clean = ''.join(ch for ch in bank_code_raw if ch.isdigit()).strip()
+
+            # If a helper exists, prefer it (maintains backward compatibility if implementer added it)
             try:
-                account_bank, mapping_error = find_flutter_code(bank_code)
+                # find_flutter_code should return (numeric_code, optional_error)
+                account_bank, mapping_error = find_flutter_code(bank_code_raw)
+                # ensure returned account_bank is a clean numeric string
+                if isinstance(account_bank, (int, float)):
+                    account_bank = str(account_bank)
+                if account_bank:
+                    account_bank = ''.join(ch for ch in str(account_bank) if ch.isdigit())
             except NameError:
-                # No helper: accept numeric codes only
-                if bank_code.isdigit() and len(bank_code) in (3, 5):
-                    account_bank = bank_code
-                else:
-                    account_bank = None
+                # No helper present — fall back to cleaned numeric code
+                account_bank = bank_code_clean if bank_code_clean else None
+                if not account_bank:
                     mapping_error = "No helper available and bank_code not numeric"
+            except Exception as e:
+                account_bank = None
+                mapping_error = f"Helper error: {str(e)}"
+
+            # Accept common flutterwave code lengths (3..6 digits). Fintech codes are typically 5-6 digits.
+            if account_bank and not (3 <= len(account_bank) <= 6):
+                mapping_error = f"bank_code numeric but invalid length ({len(account_bank)})"
+                account_bank = None
+
         except Exception as e:
             account_bank = None
-            mapping_error = str(e)
+            mapping_error = f"Normalization error: {str(e)}"
 
-        # Sandbox limitation: force Access Bank (044) in test mode
+        # Sandbox limitation: force Access Bank (044) in test mode (preserve original behavior)
         if not account_bank and "test" in flw_key.lower():
             account_bank = "044"
             mapping_error = None
 
+        # Debug log: raw + cleaned inputs
+        try:
+            print("🧾 resolve-account inputs -> account_number:", account_number,
+                  "bank_code_raw:", repr(bank_code), "bank_code_clean:", account_bank, flush=True)
+        except Exception:
+            pass
+
+        # If still no numeric account_bank, return error (same shape as before)
         if not account_bank:
             return jsonify({
                 "status": "error",
@@ -651,17 +681,17 @@ def resolve_account():
 
             # Log minimal info to stdout for server logs (helpful for debugging)
             print("Flutterwave resolve status:", flw_status, flush=True)
-            print("Flutterwave resolve preview:", (flw_res.text or "")[:1000], flush=True)
+            # print truncated preview to avoid giant logs
+            print("Flutterwave resolve preview:", (flw_res.text or "")[:1200], flush=True)
 
-            # Expecting Flutterwave success shape: { status: "success", data: { account_name: ... } }
+            # If Flutterwave returned JSON and success-ish status, try extract account_name
             if flw_json and (flw_json.get("status") == "success" or str(flw_status).startswith("2")):
-                # Try to extract account name
+                # Try to extract account name from common locations
                 acct_name = None
                 if isinstance(flw_json.get("data"), dict):
-                    acct_name = flw_json["data"].get("account_name") or flw_json["data"].get("accountName")
-                # Some flutterwave returns may contain nested stuff -- also check top-level
+                    acct_name = flw_json["data"].get("account_name") or flw_json["data"].get("accountName") or flw_json["data"].get("accountname")
                 if not acct_name:
-                    acct_name = flw_json.get("account_name") or flw_json.get("data", {}).get("account_name")
+                    acct_name = flw_json.get("account_name") or (flw_json.get("data") or {}).get("account_name")
 
                 if acct_name:
                     return jsonify({
@@ -673,7 +703,7 @@ def resolve_account():
                         "raw": flw_json
                     }), 200
 
-                # success status but no name
+                # success status but no name (preserve original behavior)
                 return jsonify({
                     "status": "error",
                     "provider": "flutterwave",
@@ -681,16 +711,45 @@ def resolve_account():
                     "raw": flw_json
                 }), 400
 
-            # Non-success: surface provider message if available
+            # If Flutterwave returned a non-success JSON, check for helper-related messages
             if flw_json:
                 msg = flw_json.get("message") or flw_json.get("error") or "Flutterwave unresolved"
+                details = flw_json
             else:
                 msg = "Flutterwave did not return valid JSON"
+                details = flw_preview
+
+            # Special-case: if Flutterwave explicitly says helper unavailable, allow frontend to proceed with warning
+            helper_unavail_texts = [
+                "No helper available",
+                "bank_code not numeric",
+                "Could not determine Flutterwave numeric bank code",
+                "No route to resolve"
+            ]
+            helper_issue = False
+            if isinstance(msg, str):
+                for token in helper_unavail_texts:
+                    if token.lower() in msg.lower():
+                        helper_issue = True
+                        break
+
+            if helper_issue:
+                # Return a 200-ish warning with can_proceed:true so frontend can allow a manual proceed
+                return jsonify({
+                    "status": "warning",
+                    "provider": "flutterwave",
+                    "message": "Name lookup not available for this bank via Flutterwave. Proceed with caution.",
+                    "can_proceed": True,
+                    "bank_code": account_bank,
+                    "raw": flw_json if flw_json is not None else flw_preview
+                }), 200
+
+            # Otherwise surface provider message and HTTP status
             return jsonify({
                 "status": "error",
                 "provider": "flutterwave",
                 "message": msg,
-                "raw": flw_json if flw_json is not None else flw_preview
+                "raw": details
             }), flw_status if isinstance(flw_status, int) and flw_status >= 400 else 400
 
         except requests.exceptions.RequestException as e:
