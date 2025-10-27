@@ -49,20 +49,42 @@
     .bank-modal-close { background:none;border:none;font-size:18px; cursor:pointer; padding:6px 10px; border-radius:8px; }
     .bank-list { overflow:auto; padding:6px 0; flex:1; background: #fff7f5; }
     .bank-item {
-      padding:16px 18px;
+      padding:12px 18px;
       display:flex;
       align-items:center;
       justify-content:space-between;
       border-bottom:1px solid rgba(0,0,0,0.05);
       cursor:pointer;
     }
-    .bank-item .name { font-size:16px; color:#111; }
-    .bank-item .code { color:#666; font-size:14px; margin-left:8px; }
+    .bank-item .name { font-size:15px; color:#111; }
+    .bank-item .code { color:#666; font-size:13px; margin-left:8px; }
     .radio {
-      width:22px;height:22px;border-radius:50%;border:2px solid #ccc;display:inline-block;flex-shrink:0;
+      width:18px;height:18px;border-radius:50%;border:2px solid #ccc;display:inline-block;flex-shrink:0;
       background:white;
     }
     .radio.selected { border-color:#00c853; background:#00c853; box-shadow:0 0 0 4px rgba(0,200,83,0.08); }
+
+    /* bankToggle styled like a select */
+    #bankToggle {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      width:100%;
+      padding:10px 12px;
+      border-radius:8px;
+      border:1px solid #cfcfcf;
+      background:#fff;
+      text-align:left;
+      font-size:14px;
+      color:#333;
+      cursor:pointer;
+    }
+    #bankToggle::after{
+      content: "▾";
+      font-size:14px;
+      color:#666;
+    }
 
     /* Popup implementation used across page */
     .popup-overlay {
@@ -150,9 +172,9 @@
 
   <!-- Bank modal -->
   <div id="bankModal" class="hidden" aria-hidden="true">
-    <div class="bank-modal">
+    <div class="bank-modal" role="dialog" aria-modal="true" aria-labelledby="bankModalTitle">
       <div class="bank-modal-header">
-        
+        <div id="bankModalTitle" class="bank-modal-title">--Choose Bank--</div>
         <button id="bankModalClose" class="bank-modal-close" aria-label="Close">✕</button>
       </div>
 
@@ -163,7 +185,7 @@
           <button id="bankDeleteModalBtn" class="del-btn" title="Delete last character">⌫</button>
         </div>
       </div>
-<div class="bank-modal-title">--Choose Bank--</div>
+
       <div id="bankList" class="bank-list" role="listbox" tabindex="0"></div>
     </div>
   </div>
@@ -203,12 +225,22 @@
     // lightweight no-op dbg
     function dbg(){}
 
-    // Popup function (same as earlier showPopup, kept for ToWallet uses)
+    /**
+     * Generic popup builder that supports custom action buttons.
+     * opts:
+     *  - type: 'info' | 'success' | 'error' (controls icon color)
+     *  - title: string
+     *  - actions: [{ label, className, onClick, autoClose (bool) }]  (if omitted, OK button shown)
+     *  - autoClose / duration for default OK behavior (keeps backward compat)
+     *
+     * returns a Promise that resolves with { actionIndex } when closed.
+     */
     function showPopup(message, opts = {}) {
       const type = opts.type || 'info';
       const title = opts.title || (type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Notice');
       const autoClose = opts.hasOwnProperty('autoClose') ? !!opts.autoClose : (type !== 'error');
       const duration = opts.duration || 3500;
+      const actions = Array.isArray(opts.actions) ? opts.actions : null;
 
       const overlay = document.createElement('div');
       overlay.className = 'popup-overlay';
@@ -222,6 +254,10 @@
       const icon = document.createElement('div');
       icon.className = 'popup-icon';
       icon.textContent = (type === 'success') ? '✓' : (type === 'error') ? '!' : 'i';
+      // style icon color by type via classes
+      if (type === 'success') box.classList.add('popup-success');
+      else if (type === 'error') box.classList.add('popup-error');
+      else box.classList.add('popup-info');
 
       const content = document.createElement('div');
       content.className = 'popup-content';
@@ -238,34 +274,60 @@
       body.appendChild(content);
       box.appendChild(body);
 
-      const actions = document.createElement('div');
-      actions.className = 'popup-actions';
+      const actionsEl = document.createElement('div');
+      actionsEl.className = 'popup-actions';
 
-      const ok = document.createElement('button');
-      ok.className = 'popup-ok';
-      ok.textContent = 'OK';
+      // default OK action when no custom actions provided
+      if (!actions) {
+        const ok = document.createElement('button');
+        ok.className = 'popup-ok';
+        ok.textContent = 'OK';
+        ok.addEventListener('click', () => {
+          cleanup();
+          resolvePromise({ actionIndex: 0 });
+        });
+        actionsEl.appendChild(ok);
+      } else {
+        // create custom actions (preserve order)
+        actions.forEach((act, idx) => {
+          const btn = document.createElement('button');
+          btn.className = 'popup-ok';
+          if (act.className) btn.className += ' ' + act.className;
+          btn.textContent = act.label || ('Action ' + (idx+1));
+          btn.addEventListener('click', () => {
+            try { if (typeof act.onClick === 'function') act.onClick(); } catch(e){ console.warn(e); }
+            cleanup();
+            resolvePromise({ actionIndex: idx });
+          });
+          actionsEl.appendChild(btn);
+        });
+      }
 
-      actions.appendChild(ok);
-      box.appendChild(actions);
+      box.appendChild(actionsEl);
       overlay.appendChild(box);
       document.body.appendChild(overlay);
 
+      let closed = false;
       function cleanup() {
+        if (closed) return;
+        closed = true;
         if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
       }
-      ok.addEventListener('click', cleanup);
 
-      if (autoClose) {
-        const tmr = setTimeout(() => {
+      // auto-close support for default behavior (no custom actions)
+      let tmr;
+      if (autoClose && !actions) {
+        tmr = setTimeout(() => {
           cleanup();
-          clearTimeout(tmr);
+          resolvePromise({ actionIndex: 0 });
         }, duration);
       }
 
-      return new Promise(resolve => {
-        ok.addEventListener('click', () => resolve());
-        if (autoClose) setTimeout(() => resolve(), duration + 50);
-      });
+      let resolver;
+      function resolvePromise(val){ if (resolver) resolver(val); }
+      const promise = new Promise((resolve) => { resolver = resolve; });
+
+      return promise;
     }
 
     // render bank list items
@@ -341,6 +403,9 @@
     function openBankModal(){
       bankModal.classList.remove("hidden");
       bankModal.setAttribute("aria-hidden","false");
+      // sync title
+      const titleEl = document.getElementById("bankModalTitle");
+      titleEl.textContent = "--Choose Bank--";
       setTimeout(()=>bankSearch.focus(), 120);
     }
     function closeBankModal(){
@@ -425,6 +490,9 @@
 
         if (normalized.length === 0) throw new Error("Invalid banks payload");
 
+        // Sort alphabetically for cleaner UX
+        normalized.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+
         fullBankList = normalized;
         renderBankItems(fullBankList);
         bankNote.textContent = "Banks loaded from backend.";
@@ -444,7 +512,7 @@
 
     loadBanks();
 
-    // sanitize account input to digits only and show banks when length==10
+        // sanitize account input to digits only and show banks when length==10
     accountInput.addEventListener("input", function(){
       const digits = this.value.replace(/\D/g,'');
       if (this.value !== digits) this.value = digits;
@@ -507,7 +575,8 @@
       }
       return null;
     }
-// On bank selection attempt resolve (unchanged behavior)
+
+    // On bank selection attempt resolve (unchanged behavior)
     bankSelect.addEventListener("change", async function(){
       const bankCode = this.value;
       receiverSection.classList.remove("hidden");
@@ -567,6 +636,16 @@
 
       // handle common failure patterns (friendly message)
       let msg = "Account not found or verification failed";
+      if (payload && payload.status === "warning" && payload.can_proceed) {
+        // special warning response (our updated server may return this)
+        receiverName.textContent = "⚠️ Name lookup unavailable — proceed with caution";
+        receiverMeta.textContent = `Account: ${currentAccount} • Bank: ${bankCode}`;
+        amountSection.classList.remove("hidden");
+        sendSection.classList.remove("hidden");
+        receiverUsername = "";
+        return;
+      }
+
       if (payload && payload.message) msg = payload.message;
       else if (payload && payload.error) msg = payload.error;
       else if (payload && payload.details) msg = payload.details;
@@ -606,28 +685,28 @@
       const acct = currentAccount;
 
       if (!acct || acct.length !== 10) {
-        await showPopup("Enter a valid 10-digit receiver account first", { type: "error", title: "Invalid account", autoClose: false });
+        await showPopup("Enter a valid 10-digit receiver account first", { type: "error", title: "Invalid account" });
         return;
       }
       if (!bankCode) {
-        await showPopup("Please select a bank.", { type: "error", title: "Bank required", autoClose: false });
+        await showPopup("Please select a bank.", { type: "error", title: "Bank required" });
         return;
       }
       if (!amount || Number.isNaN(amount) || amount <= 0) {
-        await showPopup("Enter a valid amount", { type: "error", title: "Invalid amount", autoClose: false });
+        await showPopup("Enter a valid amount", { type: "error", title: "Invalid amount" });
         return;
       }
 
       // Prevent sending to yourself if possible
       const userAcc = (currentUser && (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber)) || null;
       if (userAcc && acct === String(userAcc)) {
-        await showPopup("You cannot send money to your own account!", { type: "error", title: "Invalid transfer", autoClose: false });
+        await showPopup("You cannot send money to your own account!", { type: "error", title: "Invalid transfer" });
         return;
       }
 
       const balance = await fetchBalance();
       if (amount > balance) {
-        await showPopup("Insufficient funds.", { type: "error", title: "Insufficient balance", autoClose: false });
+        await showPopup("Insufficient funds.", { type: "error", title: "Insufficient balance" });
         return;
       }
 
@@ -667,18 +746,33 @@
           });
           localStorage.setItem("transactions", JSON.stringify(transactions));
 
-          await showPopup("✅ " + (body && (body.message || body.msg) ? (body.message || body.msg) : "Transfer completed successfully."), { type: "success", title: "Transfer Completed", autoClose: true, duration: 3000 });
+          // Show success popup with two actions: View Transactions (redirect) & Cancel (just close)
+          await showPopup((body && (body.message || body.msg)) ? (body.message || body.msg) : "Transfer completed successfully.", {
+            type: "success",
+            title: "Transfer Completed",
+            actions: [
+              {
+                label: "View Transactions",
+                onClick: () => { window.location.href = "transactions.html"; }
+              },
+              {
+                label: "Cancel",
+                onClick: () => { /* just close */ }
+              }
+            ],
+            autoClose: false
+          });
 
-          // keep UI consistent: maybe clear amount (but leave other fields per your instructions)
+          // keep UI consistent: clear amount (but leave other fields per your instructions)
           amountEl.value = "";
 
         } else {
           const msg = (body && (body.message || body.error || body.msg)) ? (body.message || body.error || body.msg) : "Transfer failed.";
-          await showPopup(msg, { type: "error", title: "Transfer failed", autoClose: false });
+          await showPopup(msg, { type: "error", title: "Transfer failed" });
         }
       } catch (err) {
         dbg("send error", err);
-        await showPopup("Error connecting to server.", { type: "error", title: "Network error", autoClose: false });
+        await showPopup("Error connecting to server.", { type: "error", title: "Network error" });
       }
     });
 
