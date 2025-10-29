@@ -86,8 +86,8 @@
     #bankToggle::after{ content: "▾"; font-size:14px; color:#666; }
 
     /* large result popup (success/failure) */
-    .result-overlay{ position: fixed; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,0.35); z-index:12000; }
-    .result-card{ width:min(96%,720px); max-width:700px; background:#fff; border-radius:12px; padding:22px; box-shadow:0 18px 40px rgba(0,0,0,0.18); }
+    .result-overlay{ position: fixed; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,0.35); z-index:12000; padding:20px; }
+    .result-card{ width:min(96%,720px); max-width:700px; background:#fff; border-radius:12px; padding:18px; box-shadow:0 18px 40px rgba(0,0,0,0.18); max-height:90vh; overflow:auto; }
     .result-header{ display:flex; align-items:center; gap:14px; justify-content:center; flex-direction:column; text-align:center }
     .badge { width:74px; height:74px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:36px; font-weight:800; }
     .badge.success{ background: linear-gradient(135deg,#00c853,#43a047) }
@@ -97,10 +97,10 @@
     .status-success{ background:#dff7e7; color:#007a33; padding:6px 10px; border-radius:8px; }
     .status-fail{ background:#fdeaea; color:#b00020; padding:6px 10px; border-radius:8px; }
 
-    .result-details{ margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:10px; color:#333; }
+    .result-details{ margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px; color:#333; }
     .detail-row{ padding:12px; background:#fafafa; border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:14px }
     .detail-label{ color:#888; font-size:13px; margin-right:8px }
-    .detail-value{ font-weight:700; text-align:right; }
+    .detail-value{ font-weight:700; text-align:right }
 
     .result-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:18px }
     .btn-outline{ background:#fff; border:1px solid #ddd; color:#333; padding:10px 14px; border-radius:8px; cursor:pointer }
@@ -168,7 +168,7 @@
     </div>
   </div>
 
-  <!-- result popup (success or fail) inserted dynamically -->
+  <!-- result popup root -->
   <div id="resultRoot"></div>
 
   <script>
@@ -188,7 +188,6 @@
     const sendSection = document.getElementById("sendSection");
     const sendBtn = document.getElementById("sendBtn");
 
-    // modal/search elements
     const bankModal = document.getElementById("bankModal");
     const bankModalClose = document.getElementById("bankModalClose");
     const bankList = document.getElementById("bankList");
@@ -205,6 +204,14 @@
     const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user"));
 
     function dbg(){}
+
+    // helper: get bank name for a code
+    function getBankName(code){
+      if (!code) return '';
+      const found = fullBankList.find(b => String(b.code || '') === String(code));
+      if (found && found.name) return found.name;
+      return '';
+    }
 
     // Render bank items
     function renderBankItems(list){
@@ -233,7 +240,7 @@
         left.style.alignItems = "center";
         const title = document.createElement("div");
         title.className = "name";
-        title.textContent = name; // show name only (we'll hide codes for backend-sourced)
+        title.textContent = name; // show name only when backend-sourced
         const sub = document.createElement("div");
         sub.className = "code";
         sub.textContent = loadedFromBackend ? "" : `(${code})`;
@@ -474,9 +481,9 @@
       if (result.httpStatus === 200 && payload.status === "success") {
         const acctName = extractAccountName(payload) || extractAccountName(payload.data) || extractAccountName(payload.raw);
         receiverUsername = acctName || "";
-        // show only the name when backend-provided banks loaded
+                // show only the name when backend-sourced banks loaded
         receiverName.textContent = acctName || "Name not provided";
-      // hide receiverMeta if banks loaded from backend (per your request)
+        // hide receiverMeta if banks loaded from backend (per your request)
         if (loadedFromBackend) receiverMeta.style.display = 'none';
         else {
           receiverMeta.style.display = 'block';
@@ -583,7 +590,12 @@
       addDetail('Date/Time', details.date || new Date().toLocaleString());
       addDetail('Sender', (details.sender || (currentUser && (currentUser.name || currentUser.username || currentUser.fullname))) || '-');
       addDetail('Sender Account', details.sender_account || (currentUser && (currentUser.account_number || currentUser.acc_number || currentUser.phone)) || '-');
-      addDetail('Bank Name', details.bank_name || '-');
+
+      // Bank name: prefer name from bank list
+      const bankNameFromList = getBankName(details.bank_code || details.bank_name || '');
+      const bankDisplayName = bankNameFromList || details.bank_name || details.bank_code || '-';
+      addDetail('Bank Name', bankDisplayName);
+
       addDetail('Recipient', details.recipient || (receiverUsername || currentAccount) || '-');
       addDetail('Recipient Account', details.recipient_account || currentAccount || '-');
       addDetail('Transaction NO.', details.transaction_no || (details.txn || details.transaction_id) || '-');
@@ -640,7 +652,7 @@
         return;
       }
 
-      // self-send check removed per your request
+      // self-send check removed per prior request
 
       const balance = await fetchBalance();
       if (amount > balance) {
@@ -662,7 +674,13 @@
         const body = await res.json().catch(()=>null);
 
         if (res.ok && body && (body.status === "success" || body.success === true)) {
-          // update local balance
+
+          // Decide whether chosen bank is internal (PayMe) by checking loaded bank name
+          const chosenBankName = getBankName(bankCode) || (body && body.bank_name) || '';
+          const isInternalBank = /payme/i.test(String(chosenBankName)); // tweak if your internal bank name differs
+
+          // If bank is NOT internal, we treat this as external transfer even if receiver acc equals currentUser.account_number.
+          // Update local balance by subtracting amount
           let user = JSON.parse(localStorage.getItem("loggedInUser"));
           if (!user) user = JSON.parse(localStorage.getItem("user")) || {};
           try { user.balance = parseFloat(balance) - parseFloat(amount); } catch(e){ user.balance = user.balance ? (user.balance - amount) : null; }
@@ -674,7 +692,7 @@
           transactions.push({
             type: "Transfer Out",
             amount: amount,
-            description: "Transfer to " + (receiverUsername || acct) + " (" + bankCode + ")",
+            description: "Transfer to " + (receiverUsername || acct) + " (" + (chosenBankName || bankCode) + ")",
             date: new Date().toLocaleString(),
             backend_id: body.transaction_id || body.txn || null
           });
@@ -689,7 +707,7 @@
               date: new Date().toLocaleString(),
               sender: body.sender_name || (currentUser && (currentUser.name || currentUser.username)) || '',
               sender_account: body.sender_account || (currentUser && (currentUser.account_number || currentUser.acc_number || currentUser.phone)) || '',
-              bank_name: body.bank_name || bankCode,
+              bank_name: chosenBankName || bankCode,
               recipient: body.recipient_name || receiverUsername || '',
               recipient_account: body.recipient_account || acct,
               transaction_no: body.transaction_id || body.txn || null
@@ -697,8 +715,8 @@
           });
 
           amountEl.value = "";
+
         } else {
-          // show failure modal with backend message if available
           const msg = (body && (body.message || body.error || body.msg)) ? (body.message || body.error || body.msg) : "Transfer failed.";
           showResultModal({
             success: false,
@@ -706,7 +724,7 @@
             message: msg,
             details: {
               date: new Date().toLocaleString(),
-              bank_name: bankCode,
+              bank_name: getBankName(bankCode) || bankCode,
               recipient: receiverUsername || acct,
               recipient_account: acct,
               transaction_no: body && (body.transaction_id || body.txn) || null
