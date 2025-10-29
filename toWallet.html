@@ -85,7 +85,7 @@
     }
     #bankToggle::after{ content: "▾"; font-size:14px; color:#666; }
 
-    /* large result popup (success/failure) */
+    /* large result popup (success/fail) */
     .result-overlay{ position: fixed; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,0.35); z-index:12000; padding:20px; }
     .result-card{ width:min(96%,720px); max-width:700px; background:#fff; border-radius:12px; padding:18px; box-shadow:0 18px 40px rgba(0,0,0,0.18); max-height:90vh; overflow:auto; }
     .result-header{ display:flex; align-items:center; gap:14px; justify-content:center; flex-direction:column; text-align:center }
@@ -240,7 +240,7 @@
         left.style.alignItems = "center";
         const title = document.createElement("div");
         title.className = "name";
-        title.textContent = name; // show name only when backend-sourced
+        title.textContent = name;
         const sub = document.createElement("div");
         sub.className = "code";
         sub.textContent = loadedFromBackend ? "" : `(${code})`;
@@ -481,7 +481,7 @@
       if (result.httpStatus === 200 && payload.status === "success") {
         const acctName = extractAccountName(payload) || extractAccountName(payload.data) || extractAccountName(payload.raw);
         receiverUsername = acctName || "";
-                // show only the name when backend-sourced banks loaded
+        // show only the name when backend-sourced banks loaded
         receiverName.textContent = acctName || "Name not provided";
         // hide receiverMeta if banks loaded from backend (per your request)
         if (loadedFromBackend) receiverMeta.style.display = 'none';
@@ -534,7 +534,7 @@
 
     // show result modal (success or fail). details object may contain fields returned by backend.
     function showResultModal(opts){
-      // opts: { success: true|false, amount, message, details: {date,sender, sender_account, bank_name, recipient, recipient_account, transaction_no} }
+      // opts: { success: true|false, amount, message, details: {date,sender, sender_account, bank_name, recipient, recipient_account, transaction_no, bank_code} }
       resultRoot.innerHTML = "";
       const overlay = document.createElement('div');
       overlay.className = 'result-overlay';
@@ -585,7 +585,7 @@
         grid.appendChild(row);
       }
 
-      // compose rows. Mirror your screenshot fields
+      // compose rows
       addDetail('Order amount', (opts.amount !== undefined) ? formatCurrency(opts.amount) : '-');
       addDetail('Date/Time', details.date || new Date().toLocaleString());
       addDetail('Sender', (details.sender || (currentUser && (currentUser.name || currentUser.username || currentUser.fullname))) || '-');
@@ -621,7 +621,6 @@
 
       overlay.appendChild(card);
       resultRoot.appendChild(overlay);
-      // focus on viewBtn for accessibility
       viewBtn.focus();
     }
 
@@ -652,8 +651,6 @@
         return;
       }
 
-      // self-send check removed per prior request
-
       const balance = await fetchBalance();
       if (amount > balance) {
         showResultModal({ success:false, amount: amount, message: "Insufficient funds", details:{} });
@@ -675,12 +672,12 @@
 
         if (res.ok && body && (body.status === "success" || body.success === true)) {
 
-          // Decide whether chosen bank is internal (PayMe) by checking loaded bank name
+          // Decide internal PayMe bank by code "00023"
           const chosenBankName = getBankName(bankCode) || (body && body.bank_name) || '';
-          const isInternalBank = /payme/i.test(String(chosenBankName)); // tweak if your internal bank name differs
+          const INTERNAL_BANK_CODE = '00023';
+          const isInternalBank = String(bankCode) === INTERNAL_BANK_CODE;
 
-          // If bank is NOT internal, we treat this as external transfer even if receiver acc equals currentUser.account_number.
-          // Update local balance by subtracting amount
+          // Update local user balance (subtract sender's amount regardless)
           let user = JSON.parse(localStorage.getItem("loggedInUser"));
           if (!user) user = JSON.parse(localStorage.getItem("user")) || {};
           try { user.balance = parseFloat(balance) - parseFloat(amount); } catch(e){ user.balance = user.balance ? (user.balance - amount) : null; }
@@ -710,7 +707,8 @@
               bank_name: chosenBankName || bankCode,
               recipient: body.recipient_name || receiverUsername || '',
               recipient_account: body.recipient_account || acct,
-              transaction_no: body.transaction_id || body.txn || null
+              transaction_no: body.transaction_id || body.txn || null,
+              bank_code: bankCode
             }
           });
 
@@ -727,7 +725,8 @@
               bank_name: getBankName(bankCode) || bankCode,
               recipient: receiverUsername || acct,
               recipient_account: acct,
-              transaction_no: body && (body.transaction_id || body.txn) || null
+              transaction_no: body && (body.transaction_id || body.txn) || null,
+              bank_code: bankCode
             }
           });
         }
