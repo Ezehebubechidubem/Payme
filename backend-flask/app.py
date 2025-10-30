@@ -307,20 +307,133 @@ def register():
         elif "phone" in str(ie).lower():
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
+# ----- PIN status endpoint (client uses this before showing modal) -----
+@app.route('/api/pin/status', methods=['GET'])
+@login_required
+def api_pin_status():
+    user = g.current_user
+    locked, until = is_locked(user)
+    return jsonify({
+        'hasPin': bool(user.payment_pin),
+        'locked': locked,
+        'lockedUntil': until.isoformat() if until else None,
+        'failedAttempts': user.failed_attempts
+    })
 
-@app.route('/api/pin/setup', methods=['POST'])
-def setup_pin():
-    data = request.get_json()
-    pin = data.get('pin')
-    if not pin or len(pin) != 4 or not pin.isdigit():
-        return jsonify({'success': False, 'message': 'Invalid PIN'}), 400
-    
-    # Example: save hashed PIN (never save plain PIN!)
-    hashed_pin = generate_password_hash(pin)
-    user_id = session.get('user_id')
-    db.execute("UPDATE users SET payment_pin=? WHERE id=?", (hashed_pin, user_id))
-    db.commit()
-    return jsonify({'success': True})
+# ----- PIN verify endpoint (called when user enters PIN before transaction) -----
+@app.route('/api/pin/verify', methods=['POST'])
+@login_required
+@limiter.limit("30 per hour")
+def api_pin_verify():
+    data = request.get_json() or {}
+    pin = data.get('pin', '')
+    user = g.current_user
+
+    if not user.payment_pin:
+        return jsonify({'success': False, 'message': 'No payment PIN set'}), 400
+
+    # If currently locked
+    locked, until = is_locked(user)
+    if locked:
+        return jsonify({'success': False, 'message': 'Account locked', 'locked': True, 'lockedUntil': until.isoformat()}), 423
+
+    if not pin or len(pin) != PIN_LENGTH or not pin.isdigit():
+        return jsonify({'success': False, 'message': 'Invalid PIN format'}), 400
+
+    ok = check_password_hash(user.payment_pin, pin)
+    if ok:
+        # reset failures
+        user.failed_attempts = 0
+        user.locked_until = None
+        db.session.add(user)
+        db.session.commit()
+        audit_event(user, 'PIN_VERIFY_SUCCESS', meta={'time': datetime.datetime.utcnow().isoformat()})
+        return jsonify({'success': True})
+    else:
+        user.failed_attempts = (user.failed_attempts or 0) + 1
+        attempts_left = max(0, LOCK_THRESHOLD - user.failed_attempts)
+        db.session.add(user)
+        db.session.commit()
+        audit_event(user, 'PIN_VERIFY_FAIL', meta={'attempts': user.failed_attempts, 'time': datetime.datetime.utcnow().isoformat()})
+
+        if user.failed_attempts >= LOCK_THRESHOLD:
+            lock_user(user)
+            return jsonify({'success': False, 'message': 'Too many attempts. Locked.', 'locked': True, 'lockedUntil': user.locked_until.isoformat()}), 423
+
+        return jsonify({'success': False, 'message': 'Incorrect PIN', 'attemptsLeft': attempts_left}), 401
+
+# ----- Atomic transaction endpoint (verify + do transaction) -----
+@app.route('/api/transaction/execute', methods=['POST'])
+@login_required
+@limiter.limit("30 per hour")
+def api_transaction_execute():
+    """
+    Expected body:
+    {
+      "pin": "1234",
+      "to_account": "1234567890",
+      "amount": "100.50"
+    }
+    This endpoint verifies PIN and executes transaction in one DB transaction (atomic).
+    """
+    data = request.get_json() or {}
+    pin = data.get('pin', '')
+    to_account = data.get('to_account')
+    try:
+        amount = float(data.get('amount', 0))
+    except Exception:
+        return jsonify({'success': False, 'message': 'Invalid amount'}), 400
+
+    user = g.current_user
+
+    # 1) Lock check
+    locked, until = is_locked(user)
+    if locked:
+        return jsonify({'success': False, 'message': 'Account locked', 'locked': True, 'lockedUntil': until.isoformat()}), 423
+
+    # 2) PIN verify
+    if not user.payment_pin or not check_password_hash(user.payment_pin, pin):
+        # use same failure increment logic as verify endpoint
+        user.failed_attempts = (user.failed_attempts or 0) + 1
+        db.session.add(user)
+        db.session.commit()
+        audit_event(user, 'PIN_VERIFY_FAIL', meta={'attempts': user.failed_attempts, 'via': 'transaction_execute', 'time': datetime.datetime.utcnow().isoformat()})
+        if user.failed_attempts >= LOCK_THRESHOLD:
+            lock_user(user)
+            return jsonify({'success': False, 'message': 'Too many attempts. Locked', 'locked': True, 'lockedUntil': user.locked_until.isoformat()}), 423
+        return jsonify({'success': False, 'message': 'Incorrect PIN', 'attemptsLeft': max(0, LOCK_THRESHOLD - user.failed_attempts)}), 401
+
+    # 3) Perform transaction atomically
+    # Example for simple balance transfer inside same DB (adapt for real payment rails)
+    if amount <= 0:
+        return jsonify({'success': False, 'message': 'Amount must be positive'}), 400
+
+    if float(user.balance) < amount:
+        return jsonify({'success': False, 'message': 'Insufficient funds'}), 400
+
+    try:
+        # start atomic block
+        with db.session.begin_nested():
+            # debit sender
+            user.balance = float(user.balance) - amount
+            db.session.add(user)
+            # create transaction row
+            tx = Transaction(from_user=user.id, to_account=to_account, amount=amount, status='COMPLETED')
+            db.session.add(tx)
+            # NOTE: in real integration, call external bank/payment API here and mark status accordingly.
+        db.session.commit()
+        audit_event(user, 'TRANSACTION_EXECUTE', meta={'to': to_account, 'amount': amount, 'tx_id': tx.id})
+        # reset failed attempts on success
+        user.failed_attempts = 0
+        user.locked_until = None
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({'success': True, 'tx_id': tx.id})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Transaction failed")
+        return jsonify({'success': False, 'message': 'Transaction failed'}), 500
+//end of pin
 
 @app.route("/login", methods=["POST"])
 def login():
