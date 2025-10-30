@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Payme — Create Payment PIN</title>
+  <style>
+    :root {
+      --bg:#fafafa; --card:#fff; --accent:#00a884;
+      --danger:#d9534f; --muted:#7a7a7a;
+    }
+    html,body {
+      height:100%; margin:0;
+      font-family:system-ui,Arial;
+      background:var(--bg);
+    }
+    /* full screen look */
+    .sheet {
+      position:fixed; left:0; right:0; bottom:0; top:0;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:flex-end;
+    }
+    .card {
+      width:100%; max-width:540px; background:var(--card);
+      border-top-left-radius:18px; border-top-right-radius:18px;
+      box-shadow:0 -12px 40px rgba(0,0,0,0.12);
+      padding:18px 16px 28px; margin:0 auto;
+      display:flex; flex-direction:column; align-items:center;
+    }
+    .grab { width:48px; height:4px; background:#eee; border-radius:2px; margin-bottom:8px; }
+    .title { font-weight:700; font-size:18px; margin-top:6px; }
+    .desc { color:var(--muted); font-size:13px; margin-top:6px; text-align:center; }
+    .pin-dots { display:flex; gap:12px; margin:18px 0; }
+    .dot {
+      width:62px; height:62px; border-radius:10px;
+      border:2px solid #f2f2f2;
+      display:flex; align-items:center; justify-content:center;
+      font-size:28px;
+    }
+    .dot.filled { border-color:var(--accent); background:#f6fffb; }
+    .keypad {
+      width:100%; display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:12px; margin-top:8px;
+    }
+    .key {
+      background:#fff; border-radius:10px; height:72px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:22px;
+      box-shadow:0 0 0 1px #f2f2f2 inset;
+      cursor:pointer; user-select:none;
+    }
+    .key:active { transform:scale(.995); }
+    .muted { color:var(--muted); font-size:13px; margin-top:6px; }
+    .danger { color:var(--danger); font-weight:600; margin-top:6px; }
+    .hidden { display:none; }
+
+    /* confirm button */
+    .confirm-btn {
+      background:var(--accent); color:#fff;
+      border:none; border-radius:10px;
+      width:100%; max-width:300px;
+      padding:14px 0; font-size:16px;
+      font-weight:600; margin-top:20px;
+      cursor:pointer; display:none;
+    }
+    .confirm-btn:active { opacity:0.9; }
+  </style>
+</head>
+<body>
+
+<div class="sheet" role="dialog" aria-modal="true" aria-label="Create Payment PIN">
+  <div class="card">
+    <div class="grab"></div>
+    <div class="title" id="headerTitle">Create your 4-digit payment PIN</div>
+    <div class="desc" id="headerDesc">You will use this PIN to confirm payments and transactions.</div>
+
+    <div class="pin-dots" id="pinDots">
+      <div class="dot" data-index="0"></div>
+      <div class="dot" data-index="1"></div>
+      <div class="dot" data-index="2"></div>
+      <div class="dot" data-index="3"></div>
+    </div>
+
+    <div id="message" class="muted">Type a 4-digit PIN</div>
+    <div id="error" class="danger hidden"></div>
+
+    <div class="keypad" id="keypad">
+      <div class="key">1</div><div class="key">2</div><div class="key">3</div>
+      <div class="key">4</div><div class="key">5</div><div class="key">6</div>
+      <div class="key">7</div><div class="key">8</div><div class="key">9</div>
+      <div class="key" id="blank"></div><div class="key">0</div><div class="key" id="back">⌫</div>
+    </div>
+
+    <button class="confirm-btn" id="confirmBtn">Confirm PIN</button>
+  </div>
+</div>
+
+<script>
+/* ==== Configuration ==== */
+const API_BASE = 'https://payme-update.onrender.com'; // <- your backend base URL
+
+const headerTitle = document.getElementById('headerTitle');
+const headerDesc = document.getElementById('headerDesc');
+const pinDots = document.querySelectorAll('.dot');
+const message = document.getElementById('message');
+const errorEl = document.getElementById('error');
+const keypad = document.getElementById('keypad');
+const confirmBtn = document.getElementById('confirmBtn');
+
+let mode = 'create';
+let firstPin = null;
+let current = '';
+
+function refreshDots() {
+  pinDots.forEach((d,i)=>{
+    d.classList.toggle('filled', !!current[i]);
+    d.textContent = current[i] ? '•' : '';
+  });
+  // show confirm button only in confirm mode & when 4 digits filled
+  confirmBtn.style.display = (mode === 'confirm' && current.length === 4) ? 'block' : 'none';
+}
+
+function showError(t){ errorEl.textContent = t; errorEl.classList.remove('hidden'); }
+function clearError(){ errorEl.textContent=''; errorEl.classList.add('hidden'); }
+
+keypad.addEventListener('click', ev=>{
+  const k = ev.target;
+  if (!k.classList.contains('key')) return;
+  if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
+  if (k.id === 'blank') return;
+  if (current.length >= 4) return;
+  current += k.textContent.trim();
+  refreshDots();
+
+  if (current.length === 4 && mode === 'create') {
+    firstPin = current;
+    current = '';
+    mode = 'confirm';
+    headerTitle.textContent = 'Confirm your PIN';
+    headerDesc.textContent = 'Re-enter the 4-digit PIN to confirm';
+    message.textContent = 'Confirm PIN';
+    refreshDots();
+  } else if (mode === 'confirm') {
+    refreshDots(); // just update UI and wait for button press
+  }
+});
+
+confirmBtn.addEventListener('click', async ()=>{
+  if (current !== firstPin) {
+    showError('PINs do not match. Try again.');
+    mode='create'; firstPin=null; current=''; refreshDots();
+    headerTitle.textContent='Create your 4-digit payment PIN';
+    headerDesc.textContent='You will use this PIN to confirm payments and transactions.';
+    message.textContent='Type a 4-digit PIN';
+    return;
+  }
+
+  message.textContent='Saving PIN...';
+  confirmBtn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/pin/setup`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ pin: current })
+    });
+    const j = await res.json().catch(()=>({ success:false }));
+    if (res.ok && j.success) {
+      message.textContent='PIN created successfully. Redirecting...';
+      clearError();
+      // redirect to Paymelogin.html as requested
+      setTimeout(()=> window.location.href='Paymelogin.html', 1000);
+    } else {
+      showError(j.message || 'Failed to save PIN');
+      confirmBtn.disabled=false;
+    }
+  } catch(e) {
+    showError('Network error, please try again.');
+    confirmBtn.disabled=false;
+  }
+});
+</script>
+</body>
+</html>
