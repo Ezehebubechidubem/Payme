@@ -8,11 +8,11 @@ import traceback
 import requests
 import math
 import time
+# ----------------- BEGIN: towallet endpoints (paste into app.py) -----------------
+import uuid
+
 from services.flutterwave_service import FlutterwaveService
 
-# ✅ Step 1: Create the Flask app
-app = Flask(__name__)
-CORS(app)
 
 
 # register towallet blueprint
@@ -44,6 +44,9 @@ CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=Tru
 
 DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
 
+# Helper: safe now iso
+def _now_iso():
+    return datetime.now().isoformat()
 
 # -------------------------------------------------
 # DB helpers
@@ -516,6 +519,253 @@ def update_user():
 if __name__ != "__main__":
     with app.app_context():
         init_db()
+
+
+# GET balance for towallet (alias; uses existing get_conn)
+@app.route("/towallet/balance/<phone>", methods=["GET"])
+def towallet_balance(phone):
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT balance FROM users WHERE phone = ?", (phone,))
+            row = cur.fetchone()
+        bal = float(row["balance"]) if row else 0.0
+        return jsonify({"status":"success","balance": bal}), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status":"error","message": str(e)}), 500
+
+# GET transactions for towallet user (convenience)
+@app.route("/towallet/transactions/<phone>", methods=["GET"])
+def towallet_transactions(phone):
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT t.id, t.type, t.amount, t.other_party, t.date "
+                "FROM transactions t JOIN users u ON t.user_id = u.id WHERE u.phone = ? ORDER BY t.id DESC",
+                (phone,)
+            )
+            rows = cur.fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                "id": r["id"],
+                "type": r["type"],
+                "amount": r["amount"],
+                "other_party": r["other_party"],
+                "date": r["date"]
+            })
+        return jsonify({"status":"success","transactions": out}), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status":"error","message": str(e)}), 500
+
+# POST towallet resolve-account (separate from global /resolve-account)
+@app.route("/towallet/resolve-account", methods=["POST"])
+def towallet_resolve_account():
+    """
+    POST { account_number, bank_code }
+    - bank_code == "00023" -> always resolve as internal (PayMe bypass)
+    - otherwise, if FLW_SECRET_KEY present -> call Flutterwave resolve
+    - if flutterwave returns helper-unavailable style message -> return warning with can_proceed:true
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        account_number = str(data.get("account_number","")).strip()
+        bank_code_raw = data.get("bank_code", "")
+
+        if not account_number.isdigit() or len(account_number) != 10:
+            return jsonify({"status":"error","message":"Invalid account number"}), 400
+
+        # PayMe internal bypass
+        if str(bank_code_raw) == "00023":
+            # Try to show local username if present
+            with get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT username FROM users WHERE account_number = ?", (account_number,))
+                r = cur.fetchone()
+            acct_name = (r["username"] if r else "PayMe user")
+            return jsonify({
+                "status":"success",
+                "provider":"payme",
+                "account_name": acct_name,
+                "account_number": account_number,
+                "bank_code": "00023"
+            }), 200
+
+        # Normalize bank code into digits only if possible
+        bank_code_clean = "".join([c for c in ("" if bank_code_raw is None else str(bank_code_raw)) if c.isdigit()]).strip()
+        account_bank = bank_code_clean if bank_code_clean else None
+
+        flw_key = os.environ.get("FLW_SECRET_KEY")
+        if not flw_key:
+            return jsonify({"status":"error","message":"FLW_SECRET_KEY not configured on server"}), 500
+
+        if not account_bank:
+            return jsonify({"status":"error","message":"Could not determine Flutterwave numeric bank code", "details":"bank_code not numeric"}), 400
+
+        # Call Flutterwave resolve
+        try:
+            flw_url = "https://api.flutterwave.com/v3/accounts/resolve"
+            payload = {"account_number": account_number, "account_bank": account_bank}
+            headers = {"Authorization": f"Bearer {flw_key}", "Content-Type": "application/json", "User-Agent":"PayMe/1.0"}
+            flw_res = requests.post(flw_url, headers=headers, json=payload, timeout=12)
+            flw_status = flw_res.status_code
+            try:
+                flw_json = flw_res.json()
+            except Exception:
+                flw_json = None
+                flw_preview = (flw_res.text or "")[:2000]
+
+            # Success-ish from Flutterwave
+            if flw_json and (flw_json.get("status") == "success" or str(flw_status).startswith("2")):
+                acct_name = None
+                if isinstance(flw_json.get("data"), dict):
+                    acct_name = flw_json["data"].get("account_name") or flw_json["data"].get("accountName")
+                acct_name = acct_name or flw_json.get("account_name") or (flw_json.get("data") or {}).get("account_name")
+                if acct_name:
+                    return jsonify({
+                        "status":"success",
+                        "provider":"flutterwave",
+                        "account_name": acct_name,
+                        "account_number": account_number,
+                        "bank_code": account_bank,
+                        "raw": flw_json
+                    }), 200
+                return jsonify({"status":"error","provider":"flutterwave","message":"Flutterwave returned success but no account_name","raw":flw_json}), 400
+
+            # Non-success from Flutterwave
+            msg = (flw_json.get("message") if flw_json else "Flutterwave did not return valid JSON")
+            # If message indicates helper/unavailable, return warning so frontend can proceed
+            helper_tokens = ["no helper", "bank_code not numeric", "could not determine flutterwave numeric", "helper unavailable"]
+            if isinstance(msg, str) and any(tok in msg.lower() for tok in helper_tokens):
+                return jsonify({
+                    "status":"warning",
+                    "provider":"flutterwave",
+                    "message":"Name lookup not available for this bank via Flutterwave. Proceed with caution.",
+                    "can_proceed": True,
+                    "bank_code": account_bank,
+                    "raw": flw_json if flw_json is not None else flw_preview if 'flw_preview' in locals() else None
+                }), 200
+
+            return jsonify({"status":"error","provider":"flutterwave","message": msg, "raw": flw_json if flw_json is not None else flw_preview if 'flw_preview' in locals() else None}), flw_status if isinstance(flw_status,int) and flw_status>=400 else 400
+
+        except requests.RequestException as ex:
+            return jsonify({"status":"error","message": f"Network error contacting Flutterwave: {str(ex)}"}), 502
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status":"error","message": f"Internal error: {str(e)}"}), 500
+
+# POST towallet send_money
+@app.route("/towallet/send_money", methods=["POST"])
+def towallet_send_money():
+    """
+    POST { sender_phone, receiver_acc, amount, receiver_bank }
+    - Deducts from sender balance (must exist & sufficient).
+    - If receiver_bank == '00023' => internal: credit recipient if local user exists (by account_number).
+      otherwise treat as external (do not credit recipient).
+    - Records transactions in transactions table for the sender and recipient (if credited).
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        sender_phone = str(data.get("sender_phone","")).strip()
+        receiver_acc = str(data.get("receiver_acc","")).strip()
+        receiver_bank = str(data.get("receiver_bank","")).strip()
+        try:
+            amount = float(data.get("amount", 0) or 0)
+        except Exception:
+            return jsonify({"status":"error","message":"Invalid amount"}), 400
+
+        if not sender_phone:
+            return jsonify({"status":"error","message":"Missing sender_phone"}), 400
+        if not (receiver_acc.isdigit() and len(receiver_acc) == 10):
+            return jsonify({"status":"error","message":"Invalid receiver_acc"}), 400
+        if amount <= 0:
+            return jsonify({"status":"error","message":"Invalid amount"}), 400
+
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # find sender
+            cur.execute("SELECT id, balance, account_number FROM users WHERE phone = ?", (sender_phone,))
+            srow = cur.fetchone()
+            if not srow:
+                return jsonify({"status":"error","message":"Sender not found"}), 404
+            sender_id = srow["id"]
+            sender_bal = float(srow["balance"])
+            if sender_bal < amount:
+                return jsonify({"status":"error","message":"Insufficient funds"}), 400
+
+            # deduct sender
+            cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, sender_id))
+            # record sender transaction
+            if DATABASE_URL:
+                cur.execute(
+                    "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
+                    (sender_id, "Transfer Out", amount, receiver_acc + "|" + receiver_bank, _now_iso())
+                )
+                tx_row = cur.fetchone()
+                tid_out = tx_row["id"] if tx_row and "id" in tx_row else None
+            else:
+                cur.execute(
+                    "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                    (sender_id, "Transfer Out", amount, receiver_acc + "|" + receiver_bank, _now_iso())
+                )
+                tid_out = cur.lastrowid
+
+            # default response meta
+            meta = {"transaction_out_id": tid_out}
+
+            # If internal PayMe code -> attempt to credit recipient if exists by account_number
+            if receiver_bank == "00023":
+                cur.execute("SELECT id, phone, balance FROM users WHERE account_number = ?", (receiver_acc,))
+                rrow = cur.fetchone()
+                if rrow:
+                    recv_id = rrow["id"]
+                    recv_phone = rrow["phone"]
+                    # credit recipient
+                    cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, recv_id))
+                    if DATABASE_URL:
+                        cur.execute(
+                            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
+                            (recv_id, "Transfer In", amount, sender_phone, _now_iso())
+                        )
+                        rr = cur.fetchone()
+                        tid_in = rr["id"] if rr and "id" in rr else None
+                    else:
+                        cur.execute(
+                            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                            (recv_id, "Transfer In", amount, sender_phone, _now_iso())
+                        )
+                        tid_in = cur.lastrowid
+                    meta.update({
+                        "internal": True,
+                        "recipient_found": True,
+                        "recipient_id": recv_id,
+                        "recipient_phone": recv_phone,
+                        "transaction_in_id": tid_in
+                    })
+                else:
+                    # internal code provided but recipient not found locally -> treat as external
+                    meta.update({"internal": True, "recipient_found": False, "note":"internal code but no local recipient; money treated external"})
+            else:
+                # external transfer: do not credit recipient even if account exists locally
+                meta.update({"external": True, "recipient_found": False})
+
+            # get updated sender balance
+            cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
+            newbal_row = cur.fetchone()
+            new_bal = float(newbal_row["balance"]) if newbal_row else None
+            meta["sender_balance"] = new_bal
+
+        return jsonify({"status":"success","message": f"Transfer of ₦{amount} processed", "meta": meta}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status":"error","message": f"Internal error: {str(e)}"}), 500
+
+# ----------------- END: towallet endpoints -----------------
 
 @app.route("/banks", methods=["GET"])
 def get_banks():
