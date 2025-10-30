@@ -10,6 +10,9 @@ import math
 import time
 from services.flutterwave_service import FlutterwaveService
 
+def create_app():
+    app = Flask(__name__)
+
 # register towallet blueprint
 from towallet_backend import towallet_bp
 app.register_blueprint(towallet_bp, url_prefix="/towallet")
