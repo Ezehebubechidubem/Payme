@@ -305,6 +305,19 @@ def register():
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
 
+@app.route('/api/pin/setup', methods=['POST'])
+def setup_pin():
+    data = request.get_json()
+    pin = data.get('pin')
+    if not pin or len(pin) != 4 or not pin.isdigit():
+        return jsonify({'success': False, 'message': 'Invalid PIN'}), 400
+    
+    # Example: save hashed PIN (never save plain PIN!)
+    hashed_pin = generate_password_hash(pin)
+    user_id = session.get('user_id')
+    db.execute("UPDATE users SET payment_pin=? WHERE id=?", (hashed_pin, user_id))
+    db.commit()
+    return jsonify({'success': True})
 
 @app.route("/login", methods=["POST"])
 def login():
