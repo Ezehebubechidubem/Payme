@@ -10,6 +10,9 @@ import math
 import time
 from services.flutterwave_service import FlutterwaveService
 
+# ✅ Step 1: Create the Flask app
+app = Flask(__name__)
+CORS(app)
 
 
 # register towallet blueprint
