@@ -8,6 +8,7 @@ import traceback
 import requests
 import math
 import time
+from werkzeug.security import generate_password_hash
 # ----------------- BEGIN: towallet endpoints (paste into app.py) -----------------
 import uuid
 
