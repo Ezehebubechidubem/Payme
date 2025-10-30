@@ -3,16 +3,14 @@ import threading
 import time
 import uuid
 
-# Simple thread-safe in-memory store for demo. Replace with DB in production.
 _data_lock = threading.Lock()
 
 # users: phone -> user dict
 _users = {
-    # example:
-    # "08010000000": {"phone":"08010000000", "account_number":"0123456789", "username":"joe", "balance":10000.0}
+    # "08010000000": {"phone":"08010000000", "account_number":"8167542829", "username":"dubem", "balance":10000.0}
 }
 
-# transactions: list of dicts
+# transactions list (chronological)
 _transactions = []
 
 def get_user_by_phone(phone):
@@ -45,10 +43,6 @@ def update_balance(phone, delta):
         phone = str(phone)
         user = _users.setdefault(phone, {"phone": phone, "account_number": None, "username": None, "balance": 0.0})
         user["balance"] = float(user.get("balance", 0.0)) + float(delta)
-        # avoid negative balances here if desired: uncomment to prevent negative
-        # if user["balance"] < 0:
-        #     user["balance"] -= float(delta)  # revert
-        #     raise ValueError("Insufficient funds")
         return user["balance"]
 
 def register_user(phone, account_number, username, initial_balance=0.0):
@@ -63,7 +57,7 @@ def register_user(phone, account_number, username, initial_balance=0.0):
 
 def create_transaction(payload):
     """
-    payload: dict with keys like type, sender_phone, receiver_acc, receiver_bank, amount, metadata
+    payload: dict containing type, sender_phone, receiver_acc, receiver_bank, amount, status, metadata
     returns transaction_id
     """
     tx = {}
@@ -74,6 +68,25 @@ def create_transaction(payload):
         _transactions.append(tx)
     return tx["id"]
 
-def list_transactions(limit=50):
+def log_transaction(sender, receiver, amount, status, bank_code, message=""):
+    """
+    Human readable history log (also stored in transactions list)
+    """
+    payload = {
+        "type": "history",
+        "sender_phone": sender,
+        "receiver_acc": receiver,
+        "amount": amount,
+        "bank_code": bank_code,
+        "status": status,
+        "message": message
+    }
+    return create_transaction(payload)
+
+def list_transactions(limit=100):
     with _data_lock:
         return list(_transactions[-limit:])
+
+def get_transactions_for_phone(phone):
+    with _data_lock:
+        return [tx for tx in _transactions if tx.get("sender_phone") == str(phone) or tx.get("receiver_phone") == str(phone)]
