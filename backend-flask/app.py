@@ -31,6 +31,8 @@ if DATABASE_URL:
 
 NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
 
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY")  # required, will be None if not set
 
 # -------------------------------------------------
 # App & CORS
