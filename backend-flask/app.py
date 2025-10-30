@@ -9,6 +9,10 @@ import requests
 import math
 import time
 from services.flutterwave_service import FlutterwaveService
+
+# register towallet blueprint
+from towallet_backend import towallet_bp
+app.register_blueprint(towallet_bp, url_prefix="/towallet")
 # -------------------------------------------------
 # Postgres Support
 # -------------------------------------------------
