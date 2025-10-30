@@ -433,7 +433,7 @@ def api_transaction_execute():
         db.session.rollback()
         app.logger.exception("Transaction failed")
         return jsonify({'success': False, 'message': 'Transaction failed'}), 500
-//end of pin
+#end of pin
 
 @app.route("/login", methods=["POST"])
 def login():
