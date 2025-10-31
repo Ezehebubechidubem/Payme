@@ -121,8 +121,14 @@ function refreshDots() {
   confirmBtn.style.display = (mode === 'confirm' && current.length === 4) ? 'block' : 'none';
 }
 
-function showError(t){ errorEl.textContent = t; errorEl.classList.remove('hidden'); }
-function clearError(){ errorEl.textContent=''; errorEl.classList.add('hidden'); }
+function showError(t){ 
+  errorEl.textContent = t; 
+  errorEl.classList.remove('hidden'); 
+}
+function clearError(){ 
+  errorEl.textContent=''; 
+  errorEl.classList.add('hidden'); 
+}
 
 keypad.addEventListener('click', ev=>{
   const k = ev.target;
@@ -162,19 +168,29 @@ confirmBtn.addEventListener('click', async ()=>{
     const res = await fetch(`${API_BASE}/api/pin/setup`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
+      credentials: 'include',               // <<-- send register session cookie
       body:JSON.stringify({ pin: current })
     });
+
+    // If no session (backend returns 401), inform user and redirect to register
+    if (res.status === 401) {
+      showError('You are not registered / session expired. Redirecting to registration...');
+      setTimeout(()=> window.location.href = 'paymeregister.html', 1200);
+      return;
+    }
+
     const j = await res.json().catch(()=>({ success:false }));
     if (res.ok && j.success) {
       message.textContent='PIN created successfully. Redirecting...';
       clearError();
-      // redirect to index.html as requested
+      // redirect to paymelogin.html as requested
       setTimeout(()=> window.location.href='paymelogin.html', 1000);
     } else {
       showError(j.message || 'Failed to save PIN');
       confirmBtn.disabled=false;
     }
   } catch(e) {
+    console.error('PIN setup error', e);
     showError('Network error, please try again.');
     confirmBtn.disabled=false;
   }
