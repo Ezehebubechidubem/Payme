@@ -350,21 +350,19 @@ def lock_user(user: User):
 def audit_event(user: User, event_type: str, meta: dict = None):
     DB.session.add(PinAudit(user_id=user.id, event_type=event_type, meta=meta))
     DB.session.commit()
-#login_required
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         user_id = session.get('user_id')
         if not user_id:
             return jsonify({'success': False, 'message': 'User not logged in'}), 401
-        
-        # Fetch the user from DB — works for both Postgres and SQLite
-        with get_conn() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM users WHERE id=?", (user_id,))
-            user = cur.fetchone()
-        
+
+        # Use SQLAlchemy (DB) rather than raw sqlite cursor so g.current_user has attributes
+        user = User.query.get(user_id)
         if not user:
+            # session might be stale: clear it
+            session.pop('user_id', None)
             return jsonify({'success': False, 'message': 'User not found'}), 404
 
         g.current_user = user
