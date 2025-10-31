@@ -553,171 +553,141 @@ def register():
 
 
 
-# GET /api/pin/status
-@app.route('/api/pin/status', methods=['GET'])
-def api_pin_status():
-    """
-    Returns PIN status for current user.
-    Accepts either:
-      - Authorization: Bearer <JWT token>
-      - session['user_id'] (legacy)
-    """
-    user = None
 
-    # Try JWT first (if token present/valid)
+        @app.route('/api/pin/request-code', methods=['POST'])
+def request_pin_code():
+    """
+    Dev/testing endpoint (would be replaced by SMS in production).
+    Body: { "account_number": "1234567890" }
+    Returns: { success: true, code: "123456" }  (in production you would not return code)
+    """
+    data = request.get_json() or {}
+    acct = (data.get('account_number') or '').strip()
+    if not acct or not acct.isdigit() or len(acct) not in (10, 11):
+        return jsonify({'success': False, 'message': 'Invalid account_number'}), 400
+
+    # For consistency with your account numbering, allow 10-digit account numbers.
+    # TTL + generate code
+    code = f"{random.randint(0, 999999):06d}"
+    expires_at = (datetime.utcnow() + timedelta(seconds=CODE_TTL_SECONDS)).isoformat()
+
     try:
-        # verify_jwt_in_request(optional=True) will validate if a token exists.
-        # If missing or invalid, it raises — we'll catch and fallback to session.
-        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
-        verify_jwt_in_request(optional=True)
-        identity = get_jwt_identity()
-        if identity:
-            try:
-                user = User.query.get(int(identity))
-            except Exception:
-                user = None
-    except Exception:
-        user = None
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # Delete existing codes for this account to prevent multiple active codes
+            cur.execute("DELETE FROM pin_codes WHERE account_number = ?", (acct,))
+            cur.execute(
+                "INSERT INTO pin_codes (account_number, code, expires_at) VALUES (?, ?, ?)",
+                (acct, code, expires_at)
+            )
+        # NOTE: in real production do NOT return code; send via SMS/Email. This is for dev/testing.
+        return jsonify({'success': True, 'message': 'Code generated', 'code': code, 'expires_at': expires_at}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': 'Failed to generate code'}), 500
 
-    # Fallback to session-based auth
-    if not user:
-        user_id = session.get('user_id')
-        if user_id:
-            try:
-                user = User.query.get(int(user_id))
-            except Exception:
-                user = None
 
-    if not user:
-        return jsonify({'success': False, 'message': 'User not logged in'}), 401
-
+@app.route('/api/pin/status', methods=['GET'])
+# keep this auth-aware wrapper you already had; if you removed it earlier, re-add login_required
+@login_required
+def api_pin_status():
+    user = g.current_user
     locked, until = is_locked(user)
     return jsonify({
         'hasPin': bool(user.payment_pin),
         'locked': locked,
         'lockedUntil': until.isoformat() if until else None,
         'failedAttempts': user.failed_attempts
-    }), 200
+    })
 
-
-# POST /api/pin/setup
-@app.route('/api/pin/setup', methods=['POST'])
-def setup_pin():
-    """
-    Save a 4-digit PIN for the authenticated user.
-    Accepts:
-      - JSON body: { "pin": "1234" }
-      - Auth via Authorization: Bearer <JWT> OR session['user_id']
-    Returns JSON { success: True } on success or { success: False, message: "..." } on error.
-    """
-    user = None
-
-    # Try JWT first
-    try:
-        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
-        verify_jwt_in_request(optional=True)
-        identity = get_jwt_identity()
-        if identity:
-            try:
-                user = User.query.get(int(identity))
-            except Exception:
-                user = None
-    except Exception:
-        user = None
-
-    # Fallback to session
-    if not user:
-        user_id = session.get('user_id')
-        if user_id:
-            try:
-                user = User.query.get(int(user_id))
-            except Exception:
-                user = None
-
-    if not user:
-        return jsonify({'success': False, 'message': 'User not logged in'}), 401
-
-    data = request.get_json(silent=True) or {}
-    pin = (data.get('pin') or '').strip()
-
-    # Validate
-    if not pin or len(pin) != PIN_LENGTH or not pin.isdigit():
-        return jsonify({'success': False, 'message': 'Invalid PIN'}), 400
-
-    # Hash and save
-    try:
-        hashed_pin = generate_password_hash(pin)
-        user.payment_pin = hashed_pin
-        user.failed_attempts = 0
-        user.locked_until = None
-
-        DB.session.add(user)
-        DB.session.commit()
-
-        # audit
-        try:
-            audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat()})
-        except Exception:
-            # audit failure shouldn't block main flow
-            app.logger.exception("Pin audit failed")
-
-        return jsonify({'success': True, 'message': 'PIN saved successfully'}), 200
-    except Exception as e:
-        app.logger.exception("Failed to save PIN")
-        return jsonify({'success': False, 'message': 'Server error saving PIN'}), 500
 
 @app.route('/api/pin/associate', methods=['POST'])
-def api_pin_associate():
+def pin_associate():
     """
-    Associate a previously-created 4-digit PIN with an account number.
-    Expected JSON:
-      { "account_number": "0123456789", "code": "123456", "pin": "1234" }
+    This endpoint matches your front-end:
+    Body: { account_number: "1234567890", code: "123456", pin: "1234" }
 
-    NOTE: This endpoint is intentionally simple right now — it does not validate
-    the 6-digit 'code' against an OTP system because none exists yet. If you
-    have an OTP service, insert validation here before saving the PIN.
+    Behavior:
+      - Validate inputs
+      - Check account exists (by account_number)
+      - Verify a matching, not-expired code exists in pin_codes table
+      - Hash the 4-digit pin and store it in users.payment_pin, reset failed_attempts/locked_until
+      - Remove the used code row (single-use)
+      - Add audit_event(PIN_SETUP)
     """
     data = request.get_json() or {}
     account_number = (data.get('account_number') or '').strip()
     code = (data.get('code') or '').strip()
     pin = (data.get('pin') or '').strip()
 
-    # Basic validation
-    if not account_number or not account_number.isdigit() or len(account_number) not in (10,):
-        return jsonify({'success': False, 'message': 'Invalid account_number (10 digits required)'}), 400
+    # basic validation
+    if not account_number or not account_number.isdigit() or len(account_number) not in (10, 11):
+        return jsonify({'success': False, 'message': 'Invalid account_number'}), 400
     if not code or not code.isdigit() or len(code) != 6:
-        return jsonify({'success': False, 'message': 'Invalid code (6 digits required)'}), 400
+        return jsonify({'success': False, 'message': 'Invalid code'}), 400
     if not pin or not pin.isdigit() or len(pin) != PIN_LENGTH:
-        return jsonify({'success': False, 'message': 'Invalid PIN (4 digits required)'}), 400
+        return jsonify({'success': False, 'message': 'Invalid PIN (must be 4 digits)'}), 400
 
-    # Find user by account_number
-    user = User.query.filter_by(account_number=str(account_number)).first()
-    if not user:
-        return jsonify({'success': False, 'message': 'Account not found'}), 404
-
-    # Prevent overwriting an existing PIN (safety)
-    if user.payment_pin:
-        return jsonify({'success': False, 'message': 'Account already has a PIN'}), 409
-
-    # OPTIONAL: If you have an OTP verification system, validate `code` here.
-    # e.g. if not verify_otp(account_number, code): return 403
-    # For now we accept the provided 6-digit code but **log** it for audit.
-    # Save hashed PIN
     try:
-        hashed_pin = generate_password_hash(pin)
-        user.payment_pin = hashed_pin
-        user.failed_attempts = 0
-        user.locked_until = None
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # Find user by account_number
+            cur.execute("SELECT id, phone FROM users WHERE account_number = ? LIMIT 1", (account_number,))
+            user_row = cur.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'message': 'Account not found'}), 404
 
-        DB.session.add(user)
+            # Check code
+            cur.execute("SELECT id, code, expires_at FROM pin_codes WHERE account_number = ? AND code = ? LIMIT 1",
+                        (account_number, code))
+            code_row = cur.fetchone()
+            if not code_row:
+                return jsonify({'success': False, 'message': 'Invalid or expired code'}), 400
+
+            # Check expiration
+            expires_at = None
+            try:
+                # code_row could be dict-like or tuple
+                expires_at = code_row['expires_at'] if isinstance(code_row, dict) else code_row[2]
+                expires_dt = datetime.fromisoformat(expires_at)
+            except Exception:
+                # If parsing fails, treat as invalid/expired
+                expires_dt = datetime.utcnow() - timedelta(seconds=1)
+
+            if expires_dt < datetime.utcnow():
+                # remove expired
+                cur.execute("DELETE FROM pin_codes WHERE id = ?", (code_row['id'] if isinstance(code_row, dict) else code_row[0],))
+                return jsonify({'success': False, 'message': 'Code expired'}), 400
+
+            # All good: set the user's payment_pin (we'll use SQLAlchemy DB model to keep things consistent)
+            # Because we used get_conn raw cursor, commit to persist before SQLAlchemy update to avoid mismatch.
+            # First remove code (single-use)
+            cur_id = code_row['id'] if isinstance(code_row, dict) else code_row[0]
+            cur.execute("DELETE FROM pin_codes WHERE id = ?", (cur_id,))
+
+        # Now update user via SQLAlchemy model (so your other logic/audit_event works)
+        # reload user
+        user_obj = User.query.filter_by(account_number=account_number).first()
+        if not user_obj:
+            # Shouldn't happen, but safe-guard
+            return jsonify({'success': False, 'message': 'Account not found (race)'}), 404
+
+        # Save hashed PIN
+        hashed_pin = generate_password_hash(pin)
+        user_obj.payment_pin = hashed_pin
+        user_obj.failed_attempts = 0
+        user_obj.locked_until = None
+        DB.session.add(user_obj)
         DB.session.commit()
 
-        audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat(), 'method': 'associate', 'provided_code': code})
-        return jsonify({'success': True, 'message': 'PIN associated to account successfully'}), 200
+        # audit
+        audit_event(user_obj, 'PIN_SETUP', meta={'method': 'associate', 'time': datetime.utcnow().isoformat()})
+
+        return jsonify({'success': True, 'message': 'PIN attached to account successfully'}), 200
+
     except Exception as e:
-        DB.session.rollback()
+        # Log / inspect exception server-side
         traceback.print_exc()
-        return jsonify({'success': False, 'message': 'Server error while saving PIN'}), 500
+        return jsonify({'success': False, 'message': 'Server error'}), 500
 
 # ----- PIN verify endpoint (called when user enters PIN before transaction) -----
 @app.route('/api/pin/verify', methods=['POST'])
