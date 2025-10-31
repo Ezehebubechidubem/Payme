@@ -249,6 +249,7 @@
           const res = await fetch(API, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: 'include', // allow server to set session cookie if it does
             body: JSON.stringify({ login, password })
           });
 
@@ -256,7 +257,13 @@
           let data = null;
           try { data = await res.json(); } catch (err) { data = null; }
 
-          if (data && data.status === "success" && data.user) {
+          if (res.status === 401 || (data && data.success === false)) {
+            const msg = (data && data.message) ? data.message : 'Invalid credentials';
+            showError("❌ " + msg);
+            return;
+          }
+
+          if (data && (data.status === "success" || data.success === true) && data.user) {
             // preserve exact fields as before (id, username, phone, accountNumber, password)
             const user = {
               id: data.user.id,
@@ -268,6 +275,12 @@
             // Store in both keys for compatibility
             localStorage.setItem("user", JSON.stringify(user));
             localStorage.setItem("loggedInUser", JSON.stringify(user));
+
+            // If server returned a JWT token, save it so PIN page can use it
+            const token = data.token || data.access_token || null;
+            if (token) {
+              try { localStorage.setItem('token', token); } catch (e) { console.warn('Could not store token', e); }
+            }
 
             // show modal; redirect only after user presses Continue (keeps UX similar to alert->redirect)
             showSuccess("✅ Login successful!", () => {
