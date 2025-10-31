@@ -272,7 +272,7 @@ def options(_any=None):
 # ------ Constants (business rules) ------
 PIN_LENGTH = 4
 LOCK_THRESHOLD = 4             # on 4th wrong attempt -> lock
-LOCK_DURATION = datetime.timedelta(hours=4)  # lock duration
+LOCK_DURATION = timedelta(hours=4)  # lock duration
 
 # ----- Models -----
 class PinAudit(db.Model):
