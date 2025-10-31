@@ -8,6 +8,11 @@ import traceback
 import requests
 import math
 import time
+# ----------------- BEGIN: towallet endpoints (paste into app.py) -----------------
+import uuid
+
+
+
 from services.flutterwave_service import FlutterwaveService
 
 # ✅ Step 1: Create the Flask app
@@ -218,6 +223,9 @@ def init_db():
                 )
             """)
 
+# Helper: safe now iso
+def _now_iso():
+    return datetime.now().isoformat()
 
 # -------------------------------------------------
 # Utilities
