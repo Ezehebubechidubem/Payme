@@ -148,7 +148,7 @@
       return /^\d{11}$/.test(p);
     }
 
-    // AFTER register: auto-login to create server session (so PIN endpoints can use session)
+    // AFTER register: auto-login to create server session (fallback)
     async function autoLogin({ username, phone, password }){
       // Decide to send phone if it's 11 digits, else username
       const payload = password ? { password } : { password: '' };
@@ -159,7 +159,7 @@
         const res = await fetch(LOGIN_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', // <- IMPORTANT: allow server to set session cookie
+          credentials: 'include', // <- attempt to let server set session cookie
           body: JSON.stringify(payload),
         });
         const j = await res.json().catch(() => null);
@@ -208,14 +208,33 @@
         const data = await res.json().catch(()=>({ status:'error', message: 'Invalid server response' }));
 
         if (data && data.status === 'success') {
-          // Try to auto-login so we have a server session for saving PIN
+          // If backend returned a token (JWT), store it and go to create-pin
+          if (data.token) {
+            try { localStorage.setItem('token', data.token); } catch(e){ console.warn('could not store token', e); }
+            // store safe user info (no password)
+            const safeUser = {
+              username: username || (data && data.user && data.user.username) || null,
+              phone: phone || (data && data.user && data.user.phone) || null,
+              accountNumber: data.account_number || (data && data.user && data.user.account_number) || null,
+              id: (data && data.user && data.user.id) || null
+            };
+            localStorage.setItem('user', JSON.stringify(safeUser));
+            localStorage.setItem('loggedInUser', JSON.stringify(safeUser));
+
+            showSuccess('✅ Registration successful. You are now logged in.', function(){
+              window.location.href = CREATE_PIN_PAGE;
+            });
+            setLoading(false);
+            return;
+          }
+
+          // Otherwise fallback to session-based auto-login (keeps backward compatibility)
           const loginResult = await autoLogin({ username, phone, password });
 
           if (loginResult.ok) {
             // Success: show modal, then redirect to create-pin page
             showSuccess('✅ Registration successful. You are now logged in.', function(){
-              // navigate to the PIN creation page (your PIN UI uses session to save pin)
-              window.locatin.href = CREATE_PIN_PAGE;
+              window.location.href = CREATE_PIN_PAGE;
             });
           } else {
             // registration succeeded but login failed; still show message and direct user to login
