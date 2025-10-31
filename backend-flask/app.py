@@ -15,9 +15,7 @@ app = Flask(__name__)
 CORS(app)
 
 
-# register towallet blueprint
-from towallet_backend import towallet_bp
-app.register_blueprint(towallet_bp, url_prefix="/towallet")
+
 # -------------------------------------------------
 # Postgres Support
 # -------------------------------------------------
