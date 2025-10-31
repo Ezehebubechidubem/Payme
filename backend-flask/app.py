@@ -442,21 +442,24 @@ def api_pin_status():
 @app.route('/api/pin/setup', methods=['POST'])
 @login_required
 def setup_pin():
-    data = request.get_json()
-    pin = data.get('pin')
+    data = request.get_json() or {}
+    pin = (data.get('pin') or '').strip()
 
-    if not pin or len(pin) != 4 or not pin.isdigit():
+    if not pin or len(pin) != PIN_LENGTH or not pin.isdigit():
         return jsonify({'success': False, 'message': 'Invalid PIN'}), 400
 
-    # Hash the PIN for security
     hashed_pin = generate_password_hash(pin)
-
     user = g.current_user
     user.payment_pin = hashed_pin
-    db.session.add(user)
-    db.session.commit()
+    user.failed_attempts = 0
+    user.locked_until = None
 
-    return jsonify({'success': True, 'message': 'PIN saved successfully'})
+    DB.session.add(user)
+    DB.session.commit()
+
+    audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat()})
+    return jsonify({'success': True, 'message': 'PIN saved successfully'}), 200
+
 
 # ----- PIN verify endpoint (called when user enters PIN before transaction) -----
 @app.route('/api/pin/verify', methods=['POST'])
