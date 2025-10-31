@@ -3,126 +3,78 @@
     
 
  
-# app.py (fixed DB wiring + SQLAlchemy integration)
 
+                    # app.py (clean — no PIN logic)
 from flask import Flask, request, jsonify, make_response, session, redirect, url_for, g
 from flask_cors import CORS
 import sqlite3
-from datetime import datetime, timedelta  # + timedelta added to support savings durations
+from datetime import datetime
 import os
 import sys
 import traceback
-import requests
-import math
-import time
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-
-# JWT support (added)
-from flask_jwt_extended import (
-    JWTManager,
-    create_access_token,
-    verify_jwt_in_request,
-    get_jwt_identity,
-)
-
-# ----------------- BEGIN: towallet endpoints (paste into app.py) -----------------
-
-import uuid
-
-from services.flutterwave_service import FlutterwaveService
 
 # load .env in development
 load_dotenv()
 
-# -------------------------------------------------
-# Postgres Support
-# -------------------------------------------------
-DATABASE_URL = os.environ.get("DATABASE_URL")  # ✅ only use DATABASE_URL
+# -----------------------
+# Postgres support check
+# -----------------------
+DATABASE_URL = os.environ.get("DATABASE_URL")  # prefer DATABASE_URL if present
 if DATABASE_URL:
     try:
         import psycopg2
         import psycopg2.extras
-    except Exception as e:
-        # If psycopg2 isn't installed, we'll raise an informative error later when trying to use Postgres.
+    except Exception:
         psycopg2 = None
         psycopg2_extras = None
 
-NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
-
-# ---------- App init (single instance) ----------
+# ---------- App init ----------
 app = Flask(__name__)
-# ensure SECRET_KEY exists; provide a dev fallback but require a proper secret in production
 app.secret_key = os.environ.get("SECRET_KEY") or "dev-secret-change-me"
 
-# Initialize JWT with the same secret key (per your request)
-app.config['JWT_SECRET_KEY'] = app.secret_key
-jwt = JWTManager(app)
-
-# -------------------------------------------------
-# App & CORS
-# -------------------------------------------------
-# Read origins from env; if not set or set to "*", default to localhost dev origin.
+# CORS configuration (allow origins from env or default local dev)
 cors_origins_env = os.environ.get("CORS_ORIGINS", "")
 if cors_origins_env and cors_origins_env.strip() != "*":
-    # allow comma-separated origins in env var
     cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 else:
-    # default for local development — change this to your actual frontend origin in production
     cors_origins = ["http://localhost:5500"]
-
 CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
 
-# Set session cookie attributes depending on environment (use ENV=production in prod)
+# Session cookie config
 if os.environ.get("ENV", "").lower() == "production":
     app.config.update({
         "SESSION_COOKIE_SAMESITE": "None",
         "SESSION_COOKIE_SECURE": True,
     })
 else:
-    # local development defaults (HTTP)
     app.config.update({
         "SESSION_COOKIE_SAMESITE": "Lax",
         "SESSION_COOKIE_SECURE": False,
     })
 
-# ----- Rate limiter (optional) -----
-limiter = Limiter(
-    key_func=get_remote_address,
-)
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
 
-# Keep your sqlite path variable but rename to avoid conflict with SQLAlchemy instance
+# sqlite path
 SQLITE_DB_PATH = os.environ.get("SQLITE_DB_PATH", "payme.db")
 
-# -------------------------------------------------
-# SQLAlchemy setup (so your DB.Model-based models work)
-# -------------------------------------------------
+# SQLAlchemy (kept so existing models can be used elsewhere)
 from flask_sqlalchemy import SQLAlchemy
-
-# configure SQLAlchemy URI: prefer DATABASE_URL (postgres), otherwise sqlite file
 if DATABASE_URL:
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 else:
-    # use absolute path to sqlite file for safety
     sqlite_abs = os.path.abspath(SQLITE_DB_PATH)
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{sqlite_abs}"
-
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# This is the SQLAlchemy instance used by your DB.Model classes below
 DB = SQLAlchemy(app)
 
-# Helper: safe now iso
-def _now_iso():
-    return datetime.now().isoformat()
-
-# -------------------------------------------------
-# DB helpers (raw connection helpers retained)
-# -------------------------------------------------
+# -------- raw DB helpers (works with both Postgres & SQLite) --------
 class PGCursorWrapper:
     """Wrap a psycopg2 cursor and convert ? -> %s in SQL automatically."""
     def __init__(self, cur):
@@ -131,7 +83,6 @@ class PGCursorWrapper:
     def execute(self, sql, params=None):
         if params is None:
             return self._cur.execute(sql)
-        # Replace ? placeholders with %s for psycopg2
         safe_sql = sql.replace("?", "%s")
         return self._cur.execute(safe_sql, params)
 
@@ -148,7 +99,6 @@ class PGCursorWrapper:
     def __getattr__(self, name):
         return getattr(self._cur, name)
 
-
 class PGConnectionContext:
     def __init__(self, dsn):
         self.dsn = dsn
@@ -157,15 +107,11 @@ class PGConnectionContext:
     def __enter__(self):
         if psycopg2 is None:
             raise RuntimeError("psycopg2 not installed; cannot use PostgreSQL. Install psycopg2-binary.")
-        # connect using the provided DATABASE_URL/DSN
-        # allow connection parameters in URL form
         self.conn = psycopg2.connect(self.dsn)
-        # We'll use transactions and commit at the end of the context
         self.conn.autocommit = False
         return self
 
     def cursor(self):
-        # Return a wrapped cursor that converts placeholders
         raw_cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         return PGCursorWrapper(raw_cur)
 
@@ -185,7 +131,7 @@ class PGConnectionContext:
                 pass
 
     def __exit__(self, exc_type, exc, tb):
-        if exc:
+        if exc_type:
             try:
                 self.conn.rollback()
             except:
@@ -200,8 +146,13 @@ class PGConnectionContext:
         except:
             pass
 
-
 def get_conn():
+    """
+    Returns:
+      - PGConnectionContext(DATABASE_URL) when DATABASE_URL is set (Postgres)
+      - sqlite3.Connection when not (SQLite fallback)
+    Note: sqlite connection is returned directly (not as context manager) — callers should manage it appropriately.
+    """
     if DATABASE_URL:
         print("✅ Using Postgres", flush=True)
         return PGConnectionContext(DATABASE_URL)
@@ -214,8 +165,8 @@ def get_conn():
             conn.execute("PRAGMA foreign_keys=ON;")
         return conn
 
-
 def init_db():
+    """Create base tables used by the app (users, transactions, savings). No PIN tables here."""
     if DATABASE_URL:
         with get_conn() as conn:
             cur = conn.cursor()
@@ -291,32 +242,7 @@ def init_db():
                 )
             """)
 
-CODE_TTL_SECONDS = 10 * 60  # 10 minutes for the 6-digit code
-
-def _ensure_pin_codes_table():
-    """
-    Create a simple pin_codes table used to store ephemeral 6-digit codes for account_number.
-    Works for both SQLite and Postgres via get_conn() wrapper.
-    """
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS pin_codes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_number TEXT NOT NULL,
-                code TEXT NOT NULL,
-                expires_at TEXT NOT NULL
-            )
-        """)
-
-try:
-    _ensure_pin_codes_table()
-except Exception:
-    pass
-
-# -------------------------------------------------
-# Utilities
-# -------------------------------------------------
+# -------- Utilities --------
 def json_required(keys):
     if not request.is_json:
         return None, jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
@@ -326,20 +252,15 @@ def json_required(keys):
         return None, jsonify({"status": "error", "message": f"Missing fields: {', '.join(missing)}"}), 400
     return data, None, None
 
-
-# -------------------------------------------------
-# Global error & logging
-# -------------------------------------------------
+# -------- Logging & error handling --------
 @app.before_request
 def _log_request():
     print(f"> {request.method} {request.path}", file=sys.stdout, flush=True)
-
 
 @app.errorhandler(Exception)
 def _handle_exception(e):
     traceback.print_exc()
     return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @app.after_request
 def _security_headers(resp):
@@ -348,21 +269,12 @@ def _security_headers(resp):
     resp.headers["X-XSS-Protection"] = "1; mode=block"
     return resp
 
-
 @app.route("/", methods=["OPTIONS"])
 @app.route("/<path:_any>", methods=["OPTIONS"])
 def options(_any=None):
     return make_response(("", 204))
 
-# ------ Constants (business rules) ------
-PIN_LENGTH = 4
-LOCK_THRESHOLD = 4             # on 4th wrong attempt -> lock
-LOCK_DURATION = timedelta(hours=4)  # lock duration
-
-# ----- Models (SQLAlchemy) -----
-# NOTE: your code used DB.Model in places; keep that naming (DB) to match your models below.
-# I added a minimal User model because helpers reference it. If you already have a User model elsewhere,
-# remove/replace this one to avoid duplicate class names.
+# -------- Models (SQLAlchemy) - minimal --------
 class User(DB.Model):
     __tablename__ = 'users'
     id = DB.Column(DB.Integer, primary_key=True)
@@ -371,119 +283,66 @@ class User(DB.Model):
     password = DB.Column(DB.String(255), nullable=True)
     account_number = DB.Column(DB.String(255), unique=True, nullable=True)
     balance = DB.Column(DB.Numeric, default=0)
-    # fields for pin handling
-    payment_pin = DB.Column(DB.String(255), nullable=True)
-    failed_attempts = DB.Column(DB.Integer, default=0)
-    locked_until = DB.Column(DB.DateTime, nullable=True)
 
-class PinAudit(DB.Model):
-    __tablename__ = 'pin_audit'
-    id = DB.Column(DB.Integer, primary_key=True)
-    user_id = DB.Column(DB.Integer, DB.ForeignKey('users.id'), nullable=False)
-    event_type = DB.Column(DB.String(50), nullable=False)  # PIN_SETUP, PIN_VERIFY_SUCCESS, PIN_VERIFY_FAIL, PIN_LOCK
-    meta = DB.Column(DB.JSON, nullable=True)
-    created_at = DB.Column(DB.DateTime, default=datetime.utcnow)
-
-class Transaction(DB.Model):
-    __tablename__ = 'transactions'
-    id = DB.Column(DB.Integer, primary_key=True)
-    from_user = DB.Column(DB.Integer, DB.ForeignKey('users.id'), nullable=False)
-    to_account = DB.Column(DB.String(255), nullable=False)  # destination account/identifier
-    amount = DB.Column(DB.Numeric, nullable=False)
-    status = DB.Column(DB.String(50), default='PENDING')
-    created_at = DB.Column(DB.DateTime, default=datetime.utcnow)
-
-
-# ----- Utility helpers -----
-def is_locked(user: User):
-    if user.locked_until and user.locked_until > datetime.utcnow():
-        return True, user.locked_until
-    return False, None
-
-def lock_user(user: User):
-    user.locked_until = datetime.utcnow() + LOCK_DURATION
-    user.failed_attempts = 0  # reset attempts (optional)
-    DB.session.add(user)
-    DB.session.commit()
-    DB.session.flush()
-    DB.session.add(PinAudit(user_id=user.id, event_type='PIN_LOCK', meta={'locked_until': user.locked_until.isoformat()}))
-    DB.session.commit()
-
-def audit_event(user: User, event_type: str, meta: dict = None):
-    DB.session.add(PinAudit(user_id=user.id, event_type=event_type, meta=meta))
-    DB.session.commit()
-
+# -------- Auth helpers --------
 def login_required(fn):
-    """
-    Accept either:
-      - Authorization: Bearer <JWT token>  (preferred)
-    OR
-      - session['user_id'] (legacy session support)
-
-    On success sets g.current_user to the SQLAlchemy User model.
-    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        user = None
-
-        # 1) Try JWT from Authorization header (preferred)
-        try:
-            # verify_jwt_in_request(optional=True) will attempt to validate a token if present.
-            # If the token is missing or invalid, we simply fallback to session below.
-            verify_jwt_in_request(optional=True)
-            identity = get_jwt_identity()
-            if identity:
-                try:
-                    user = User.query.get(int(identity))
-                except Exception:
-                    user = None
-        except Exception:
-            # any JWT parsing/validation error -> ignore here and fallback to session
-            user = None
-
-        # 2) Fallback to session-based auth for backwards compatibility
-        if not user:
-            user_id = session.get('user_id')
-            if user_id:
-                try:
-                    user = User.query.get(int(user_id))
-                except Exception:
-                    user = None
-
-        if not user:
+        user_id = session.get('user_id')
+        if not user_id:
             return jsonify({'success': False, 'message': 'User not logged in'}), 401
+        # fetch user via raw connection (lightweight) so g.current_user has fields
+        try:
+            with get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id, username, phone, account_number, balance FROM users WHERE id = ? LIMIT 1", (int(user_id),))
+                row = cur.fetchone()
+                if not row:
+                    session.pop('user_id', None)
+                    return jsonify({'success': False, 'message': 'User not found'}), 404
+                # normalize row -> dict-like
+                try:
+                    user = {
+                        'id': row['id'],
+                        'username': row['username'],
+                        'phone': row['phone'],
+                        'account_number': row['account_number'],
+                        'balance': row['balance']
+                    }
+                except Exception:
+                    user = {
+                        'id': row[0],
+                        'username': row[1],
+                        'phone': row[2],
+                        'account_number': row[4],
+                        'balance': row[5] if len(row) > 5 else None
+                    }
+                g.current_user = user
+        except Exception:
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': 'Server error fetching user'}), 500
 
-        # set the model on g so handlers can use g.current_user
-        g.current_user = user
         return fn(*args, **kwargs)
     return wrapper
 
-# -------------------------------------------------
-# Health
-# -------------------------------------------------
+# -------- Health --------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "✅ PayMe backend is running"}), 200
 
-
-# -------------------------------------------------
-# Ensure DB tables exist on startup (SQLAlchemy side)
-# -------------------------------------------------
+# -------- Ensure DB creation on startup --------
 with app.app_context():
     try:
         DB.create_all()
-        # Also run the raw init_db so your sqlite tables exist for raw-sql paths
         init_db()
     except Exception as e:
         print("Error initializing DBs:", e, flush=True)
         traceback.print_exc()
 
-# -------------------------------------------------
-# Auth & User
-# -------------------------------------------------
+# -------- Auth routes (register, login, logout) --------
 @app.route("/register", methods=["POST"])
 def register():
-    # Expecting JSON: { username, phone, password }
+    # expecting JSON { username, phone, password }
     data, err, code = json_required(["username", "phone", "password"])
     if err:
         return err, code
@@ -492,53 +351,114 @@ def register():
     phone = data["phone"].strip()
     password = data["password"]
 
-    # frontend enforces phone length 11 digits; keep server-side check
+    # keep server-side validation: phone must be exactly 11 digits (per your frontend)
     if not phone.isdigit() or len(phone) != 11:
         return jsonify({"status": "error", "message": "Phone must be exactly 11 digits"}), 400
 
     account_number = phone[-10:]
-
-    # Hash password before storing
     hashed_pw = generate_password_hash(password)
 
     try:
         with get_conn() as conn:
             cur = conn.cursor()
-            # Insert user (works for sqlite and Postgres via wrapper)
             cur.execute(
                 "INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
                 (username, phone, hashed_pw, account_number, 0.0),
             )
-
-            # Read back the inserted user's id
+            # fetch id of inserted user
             cur.execute("SELECT id FROM users WHERE phone = ? LIMIT 1", (phone,))
             row = cur.fetchone()
             user_id = None
             if row:
-                # row may be dict-like (Postgres RealDictCursor) or sqlite3.Row (indexable)
                 try:
                     user_id = int(row["id"])
                 except Exception:
-                    try:
-                        user_id = int(row[0])
-                    except Exception:
-                        user_id = None
+                    user_id = int(row[0])
 
-        # If user_id obtained, store session so subsequent PIN setup will work
+        # set server session so frontend can call session-protected endpoints
         if user_id:
             session['user_id'] = user_id
 
         return jsonify({"status": "success", "account_number": account_number}), 200
 
     except Exception as ie:
-        # Try to return friendly duplicate messages based on DB error text
-        msg = "User already exists"
         txt = str(ie).lower()
+        msg = "User already exists"
         if "username" in txt:
             msg = "Username already exists"
         elif "phone" in txt or "unique" in txt:
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
+
+@app.route("/login", methods=["POST"])
+def login():
+    # expecting JSON { login, password } where login = username or phone (frontend sends this)
+    data, err, code = json_required(["login", "password"])
+    if err:
+        return err, code
+
+    login_value = data["login"].strip()
+    password = data["password"]
+
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # fetch by username OR phone
+            cur.execute(
+                "SELECT id, username, phone, password, account_number, balance FROM users WHERE username = ? OR phone = ? LIMIT 1",
+                (login_value, login_value),
+            )
+            row = cur.fetchone()
+
+            if not row:
+                return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+            # get stored hashed password
+            try:
+                stored_hashed = row["password"]
+                user_id = int(row["id"])
+                username = row["username"]
+                phone = row["phone"]
+                account_number = row["account_number"]
+                balance = row["balance"]
+            except Exception:
+                # sqlite row tuple fallback
+                stored_hashed = row[3]
+                user_id = int(row[0])
+                username = row[1]
+                phone = row[2]
+                account_number = row[4]
+                balance = row[5] if len(row) > 5 else None
+
+            if not check_password_hash(stored_hashed, password):
+                return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+        # credentials ok -> set session
+        session['user_id'] = user_id
+
+        user = {
+            "id": user_id,
+            "username": username,
+            "phone": phone,
+            "account_number": account_number,
+            "balance": balance
+        }
+        return jsonify({"status": "success", "user": user}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.pop('user_id', None)
+    return jsonify({"status": "success", "message": "Logged out"}), 200
+
+# Example protected route
+@app.route("/me", methods=["GET"])
+@login_required
+def get_me():
+    return jsonify({"status": "success", "user": g.current_user}), 200
 
 
 
