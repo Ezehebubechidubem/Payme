@@ -1,7 +1,7 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Create Account</title>
   <style>
@@ -41,14 +41,13 @@
       <input id="username" name="username" type="text" placeholder="Enter username" required autocomplete="username">
 
       <label for="phone">Phone Number</label>
-      <!-- use type=text to preserve leading zeros if any -->
       <input id="phone" name="phone" type="text" inputmode="numeric" placeholder="Enter phone number (11 digits)" maxlength="11" minlength="11" required>
 
       <label for="password">Password</label>
-      <input id="password" name="password" type="password" minlength="10" maxlength="15" placeholder="Enter password" required autocomplete="new-password">
+      <input id="password" name="password" type="password" minlength="10" maxlength="75" placeholder="Enter password" required autocomplete="new-password">
 
       <button type="submit" id="submitBtn">Register</button>
-      <div class="small">We will log you in automatically so you can create your PIN next.</div>
+      <div class="small">We will set a register session server-side so you can create your PIN next.</div>
     </form>
 
     <div class="switch">Already have an account? <a href="index.html">Login</a></div>
@@ -80,12 +79,8 @@
 
   <script>
   (function(){
-    // Backend endpoints
-    const BASE = 'https://payme-update.onrender.com';
-    const REGISTER_URL = BASE + '/register';
-    const LOGIN_URL = BASE + '/login';
-    // Where to redirect to create PIN after login
-    const CREATE_PIN_PAGE = 'create-pin.html'; // change to your PIN page filename if different
+    const REGISTER_URL = 'https://payme-update.onrender.com/register';
+    const LOGIN_AFTER_REGISTER = true; // keep behavior simple: after register, we redirect to login page
 
     const form = document.getElementById('registerForm');
     const usernameEl = document.getElementById('username');
@@ -137,52 +132,12 @@
       }
     });
 
-    // simple spinner state
     function setLoading(loading){
       submitBtn.disabled = loading;
       submitBtn.textContent = loading ? 'Creating account...' : 'Register';
     }
 
-    // Validate phone: exactly 11 digits
-    function validPhone(p){
-      return /^\d{11}$/.test(p);
-    }
-
-    // AFTER register: auto-login to create server session (fallback)
-    async function autoLogin({ username, phone, password }){
-      // Decide to send phone if it's 11 digits, else username
-      const payload = password ? { password } : { password: '' };
-      if (validPhone(phone)) payload.phone = phone;
-      else payload.username = username;
-
-      try {
-        const res = await fetch(LOGIN_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', // <- attempt to let server set session cookie
-          body: JSON.stringify(payload),
-        });
-        const j = await res.json().catch(() => null);
-        // treat success if backend returns status:'success' or res.ok
-        if ((j && (j.status === 'success' || j.success === true)) || res.ok) {
-          // store safe user info (no password)
-          const safeUser = {
-            username: username || (j && j.user && j.user.username) || null,
-            phone: phone || (j && j.user && j.user.phone) || null,
-            accountNumber: (j && j.user && j.user.account_number) || null,
-            id: (j && j.user && j.user.id) || null
-          };
-          localStorage.setItem('user', JSON.stringify(safeUser));
-          localStorage.setItem('loggedInUser', JSON.stringify(safeUser));
-          return { ok:true, data:j };
-        } else {
-          return { ok:false, data:j, status: res.status };
-        }
-      } catch (err) {
-        console.error('autoLogin error', err);
-        return { ok:false, err };
-      }
-    }
+    function validPhone(p){ return /^\d{11}$/.test(p); }
 
     form.addEventListener('submit', async function(e){
       e.preventDefault();
@@ -196,65 +151,36 @@
 
       setLoading(true);
       try {
-        // Register request
         const res = await fetch(REGISTER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // include credentials so backend can set cookie on register if it does that
-          credentials: 'include',
+          credentials: 'include', // IMPORTANT: allow server to set session cookie
           body: JSON.stringify({ username, phone, password })
         });
 
         const data = await res.json().catch(()=>({ status:'error', message: 'Invalid server response' }));
 
         if (data && data.status === 'success') {
-          // If backend returned a token (JWT), store it and go to create-pin
-          if (data.token) {
-            try { localStorage.setItem('token', data.token); } catch(e){ console.warn('could not store token', e); }
-            // store safe user info (no password)
-            const safeUser = {
-              username: username || (data && data.user && data.user.username) || null,
-              phone: phone || (data && data.user && data.user.phone) || null,
-              accountNumber: data.account_number || (data && data.user && data.user.account_number) || null,
-              id: (data && data.user && data.user.id) || null
-            };
-            localStorage.setItem('user', JSON.stringify(safeUser));
-            localStorage.setItem('loggedInUser', JSON.stringify(safeUser));
+          // Save safe user info locally (no password)
+          const user = { username, phone, accountNumber: data.account_number };
+          localStorage.setItem('user', JSON.stringify(user));
+          localStorage.setItem('loggedInUser', JSON.stringify(user));
 
-            showSuccess('✅ Registration successful. You are now logged in.', function(){
-              window.location.href = CREATE_PIN_PAGE;
-            });
-            setLoading(false);
-            return;
-          }
-
-          // Otherwise fallback to session-based auto-login (keeps backward compatibility)
-          const loginResult = await autoLogin({ username, phone, password });
-
-          if (loginResult.ok) {
-            // Success: show modal, then redirect to create-pin page
-            showSuccess('✅ Registration successful. You are now logged in.', function(){
-              window.location.href = CREATE_PIN_PAGE;
-            });
-          } else {
-            // registration succeeded but login failed; still show message and direct user to login
-            showSuccess('✅ Registration successful. Please login to continue.', function(){
-              window.location.href = 'index.html';
-            });
-          }
+          showSuccess('✅ Registration successful. Your account number: ' + data.account_number, function(){
+            // After register we keep original behavior — go to login page
+            window.location.href = 'index.html';
+          });
         } else {
-          // show backend-provided message where possible
           showError('❌ ' + (data && data.message ? data.message : 'Registration failed'), 'Registration failed');
         }
       } catch (err) {
-        console.error(err);
-        showError('⚠️ Server/network error. Please try again later.', 'Server error');
+        console.error('Register error', err);
+        showError('⚠️ Server error. Please try again later.', 'Server error');
       } finally {
         setLoading(false);
       }
     });
 
-    // focus first field
     window.addEventListener('load', () => usernameEl.focus());
   })();
   </script>
