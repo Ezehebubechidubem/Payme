@@ -275,22 +275,24 @@ LOCK_THRESHOLD = 4             # on 4th wrong attempt -> lock
 LOCK_DURATION = timedelta(hours=4)  # lock duration
 
 # ----- Models -----
-class PinAudit(db.Model):
+class PinAudit(DB.Model):
     __tablename__ = 'pin_audit'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    event_type = db.Column(db.String(50), nullable=False)  # PIN_SETUP, PIN_VERIFY_SUCCESS, PIN_VERIFY_FAIL, PIN_LOCK
-    meta = db.Column(db.JSON, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id = DB.Column(DB.Integer, primary_key=True)
+    user_id = DB.Column(DB.Integer, 
+DB.ForeignKey('users.id'), nullable=False)
+    event_type = DB.Column(DB.String(50), nullable=False)  # PIN_SETUP, PIN_VERIFY_SUCCESS, PIN_VERIFY_FAIL, PIN_LOCK
+    meta = DB.Column(DB.JSON, nullable=True)
+    created_at = DB.Column(DB.DateTime, default=datetime.utcnow)
 
-class Transaction(db.Model):
+class Transaction(DB.Model):
     __tablename__ = 'transactions'
-    id = db.Column(db.Integer, primary_key=True)
-    from_user = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    to_account = db.Column(db.String(255), nullable=False)  # destination account/identifier
-    amount = db.Column(db.Numeric, nullable=False)
-    status = db.Column(db.String(50), default='PENDING')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id = DB.Column(DB.Integer, primary_key=True)
+    from_user = DB.Column(DB.Integer,
+DB.ForeignKey('users.id'), nullable=False)
+    to_account = DB.Column(DB.String(255), nullable=False)  # destination account/identifier
+    amount = DB.Column(DB.Numeric, nullable=False)
+    status = DB.Column(DB.String(50), default='PENDING')
+    created_at = DB.Column(DB.DateTime, default=datetime.utcnow)
 
 
 # ----- Utility helpers -----
@@ -303,11 +305,11 @@ def is_locked(user: User):
 def lock_user(user: User):
     user.locked_until = datetime.utcnow() + LOCK_DURATION
     user.failed_attempts = 0  # reset attempts (optional)
-    db.session.add(user)
-    db.session.commit()
-    db.session.flush()
-    db.session.add(PinAudit(user_id=user.id, event_type='PIN_LOCK', meta={'locked_until': user.locked_until.isoformat()}))
-    db.session.commit()
+    DB.session.add(user)
+    DB.session.commit()
+    DB.session.flush()
+    DB.session.add(PinAudit(user_id=user.id, event_type='PIN_LOCK', meta={'locked_until': user.locked_until.isoformat()}))
+    DB.session.commit()
 
 # -------------------------------------------------
 # Health
