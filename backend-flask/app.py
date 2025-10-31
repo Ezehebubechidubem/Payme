@@ -49,7 +49,10 @@ cors_origins = os.environ.get("CORS_ORIGINS", "*")
 CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
 
 # ----- Rate limiter (optional) -----
-limiter = Limiter(app, key_func=get_remote_address)
+limiter = Limiter(
+    key_func=get_remote_address,
+)
+limiter.init_app(app)
 
 # Keep your sqlite path variable but rename to avoid conflict with SQLAlchemy instance
 SQLITE_DB_PATH = os.environ.get("SQLITE_DB_PATH", "payme.db")
