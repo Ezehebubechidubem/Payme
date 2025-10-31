@@ -275,23 +275,13 @@ LOCK_THRESHOLD = 4             # on 4th wrong attempt -> lock
 LOCK_DURATION = datetime.timedelta(hours=4)  # lock duration
 
 # ----- Models -----
-class User(db.Model):
-    __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)  # for login/password
-    payment_pin = db.Column(db.String(255), nullable=True)     # hashed PIN
-    failed_attempts = db.Column(db.Integer, default=0)
-    locked_until = db.Column(db.DateTime, nullable=True)
-    balance = db.Column(db.Numeric, default=0)  # for demo; adapt type to your ledger
-
 class PinAudit(db.Model):
     __tablename__ = 'pin_audit'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     event_type = db.Column(db.String(50), nullable=False)  # PIN_SETUP, PIN_VERIFY_SUCCESS, PIN_VERIFY_FAIL, PIN_LOCK
     meta = db.Column(db.JSON, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Transaction(db.Model):
     __tablename__ = 'transactions'
@@ -300,41 +290,24 @@ class Transaction(db.Model):
     to_account = db.Column(db.String(255), nullable=False)  # destination account/identifier
     amount = db.Column(db.Numeric, nullable=False)
     status = db.Column(db.String(50), default='PENDING')
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 
 # ----- Utility helpers -----
-def login_required(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        user_id = session.get('user_id')
-        if not user_id:
-            return jsonify({'success': False, 'message': 'User not logged in'}), 401
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({'success': False, 'message': 'User not found'}), 401
-        g.current_user = user
-        return fn(*args, **kwargs)
-    return wrapper
 
 def is_locked(user: User):
-    if user.locked_until and user.locked_until > datetime.datetime.utcnow():
+    if user.locked_until and user.locked_until > datetime.utcnow():
         return True, user.locked_until
     return False, None
 
 def lock_user(user: User):
-    user.locked_until = datetime.datetime.utcnow() + LOCK_DURATION
+    user.locked_until = datetime.utcnow() + LOCK_DURATION
     user.failed_attempts = 0  # reset attempts (optional)
     db.session.add(user)
     db.session.commit()
     db.session.flush()
-    # audit
     db.session.add(PinAudit(user_id=user.id, event_type='PIN_LOCK', meta={'locked_until': user.locked_until.isoformat()}))
     db.session.commit()
-
-def audit_event(user: User, event_type: str, meta: dict = None):
-    db.session.add(PinAudit(user_id=user.id, event_type=event_type, meta=meta))
-    db.session.commit()
-
 
 # -------------------------------------------------
 # Health
