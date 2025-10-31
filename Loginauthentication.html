@@ -5,70 +5,25 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Payme — Create Payment PIN</title>
   <style>
-    :root {
-      --bg:#fafafa; --card:#fff; --accent:#00a884;
-      --danger:#d9534f; --muted:#7a7a7a;
-    }
-    html,body {
-      height:100%; margin:0;
-      font-family:system-ui,Arial;
-      background:var(--bg);
-    }
-    /* full screen look */
-    .sheet {
-      position:fixed; left:0; right:0; bottom:0; top:0;
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:flex-end;
-    }
-    .card {
-      width:100%; max-width:540px; background:var(--card);
-      border-top-left-radius:18px; border-top-right-radius:18px;
-      box-shadow:0 -12px 40px rgba(0,0,0,0.12);
-      padding:18px 16px 28px; margin:0 auto;
-      display:flex; flex-direction:column; align-items:center;
-    }
-    .grab { width:48px; height:4px; background:#eee; border-radius:2px; margin-bottom:8px; }
-    .title { font-weight:700; font-size:18px; margin-top:6px; }
-    .desc { color:var(--muted); font-size:13px; margin-top:6px; text-align:center; }
-    .pin-dots { display:flex; gap:12px; margin:18px 0; }
-    .dot {
-      width:62px; height:62px; border-radius:10px;
-      border:2px solid #f2f2f2;
-      display:flex; align-items:center; justify-content:center;
-      font-size:28px;
-    }
-    .dot.filled { border-color:var(--accent); background:#f6fffb; }
-    .keypad {
-      width:100%; display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:12px; margin-top:8px;
-    }
-    .key {
-      background:#fff; border-radius:10px; height:72px;
-      display:flex; align-items:center; justify-content:center;
-      font-size:22px;
-      box-shadow:0 0 0 1px #f2f2f2 inset;
-      cursor:pointer; user-select:none;
-    }
-    .key:active { transform:scale(.995); }
-    .muted { color:var(--muted); font-size:13px; margin-top:6px; }
-    .danger { color:var(--danger); font-weight:600; margin-top:6px; }
-    .hidden { display:none; }
-
-    /* confirm button */
-    .confirm-btn {
-      background:var(--accent); color:#fff;
-      border:none; border-radius:10px;
-      width:100%; max-width:300px;
-      padding:14px 0; font-size:16px;
-      font-weight:600; margin-top:20px;
-      cursor:pointer; display:none;
-    }
-    .confirm-btn:active { opacity:0.9; }
+    :root { --bg:#fafafa; --card:#fff; --accent:#00a884; --danger:#d9534f; --muted:#7a7a7a; }
+    html,body{ height:100%; margin:0; font-family:system-ui,Arial; background:var(--bg); }
+    .sheet{ position:fixed; left:0; right:0; top:0; bottom:0; display:flex; align-items:flex-end; justify-content:center; }
+    .card{ width:100%; max-width:540px; background:var(--card); border-top-left-radius:18px; border-top-right-radius:18px; padding:18px 16px 28px; box-shadow:0 -12px 40px rgba(0,0,0,0.12); display:flex; flex-direction:column; align-items:center }
+    .grab{ width:48px; height:4px; background:#eee; border-radius:2px; margin-bottom:8px }
+    .title{ font-weight:700; font-size:18px; margin-top:6px }
+    .desc{ color:var(--muted); font-size:13px; text-align:center }
+    .pin-dots{ display:flex; gap:12px; margin:18px 0 }
+    .dot{ width:62px; height:62px; border-radius:10px; border:2px solid #f2f2f2; display:flex; align-items:center; justify-content:center; font-size:28px }
+    .dot.filled{ border-color:var(--accent); background:#f6fffb }
+    .keypad{ width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:8px }
+    .key{ background:#fff; border-radius:10px; height:72px; display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 0 0 1px #f2f2f2 inset; cursor:pointer; user-select:none }
+    .muted{ color:var(--muted); font-size:13px; margin-top:6px }
+    .danger{ color:var(--danger); font-weight:600; margin-top:6px }
+    .hidden{ display:none }
+    .confirm-btn{ background:var(--accent); color:#fff; border:0; border-radius:10px; width:100%; max-width:300px; padding:14px 0; font-size:16px; font-weight:600; margin-top:20px; cursor:pointer; display:none }
   </style>
 </head>
 <body>
-
 <div class="sheet" role="dialog" aria-modal="true" aria-label="Create Payment PIN">
   <div class="card">
     <div class="grab"></div>
@@ -97,39 +52,29 @@
 </div>
 
 <script>
-/* ==== Configuration ==== */
-const API_BASE = 'https://payme-update.onrender.com'; // <- your backend base URL
+/* ==== Config ==== */
+const API_BASE = 'https://payme-update.onrender.com'; // change if needed
 
 const headerTitle = document.getElementById('headerTitle');
-const headerDesc = document.getElementById('headerDesc');
-const pinDots = document.querySelectorAll('.dot');
-const message = document.getElementById('message');
-const errorEl = document.getElementById('error');
-const keypad = document.getElementById('keypad');
-const confirmBtn = document.getElementById('confirmBtn');
+const headerDesc  = document.getElementById('headerDesc');
+const pinDots     = document.querySelectorAll('.dot');
+const message     = document.getElementById('message');
+const errorEl     = document.getElementById('error');
+const keypad      = document.getElementById('keypad');
+const confirmBtn  = document.getElementById('confirmBtn');
 
 let mode = 'create';
 let firstPin = null;
 let current = '';
 
-function refreshDots() {
-  pinDots.forEach((d,i)=>{
-    d.classList.toggle('filled', !!current[i]);
-    d.textContent = current[i] ? '•' : '';
-  });
-  // show confirm button only in confirm mode & when 4 digits filled
+function refreshDots(){
+  pinDots.forEach((d,i)=>{ d.classList.toggle('filled', !!current[i]); d.textContent = current[i] ? '•' : ''; });
   confirmBtn.style.display = (mode === 'confirm' && current.length === 4) ? 'block' : 'none';
 }
+function showError(t){ errorEl.textContent = t; errorEl.classList.remove('hidden'); }
+function clearError(){ errorEl.textContent=''; errorEl.classList.add('hidden'); }
 
-function showError(t){ 
-  errorEl.textContent = t; 
-  errorEl.classList.remove('hidden'); 
-}
-function clearError(){ 
-  errorEl.textContent=''; 
-  errorEl.classList.add('hidden'); 
-}
-
+/* Keyboard handling */
 keypad.addEventListener('click', ev=>{
   const k = ev.target;
   if (!k.classList.contains('key')) return;
@@ -140,18 +85,46 @@ keypad.addEventListener('click', ev=>{
   refreshDots();
 
   if (current.length === 4 && mode === 'create') {
-    firstPin = current;
-    current = '';
-    mode = 'confirm';
+    firstPin = current; current = ''; mode = 'confirm';
     headerTitle.textContent = 'Confirm your PIN';
     headerDesc.textContent = 'Re-enter the 4-digit PIN to confirm';
     message.textContent = 'Confirm PIN';
     refreshDots();
   } else if (mode === 'confirm') {
-    refreshDots(); // just update UI and wait for button press
+    refreshDots();
   }
 });
 
+/* ==== On load: verify register session exists via /api/pin/status === */
+(async function checkSession(){
+  try {
+    const res = await fetch(`${API_BASE}/api/pin/status`, {
+      method: 'GET',
+      credentials: 'include',   // important: send cookie
+      headers: { 'Accept': 'application/json' }
+    });
+
+    // If 401 -> no session
+    if (res.status === 401 || !res.ok) {
+      // redirect to register page
+      alert('You are not registered / session expired. Redirecting to registration.');
+      window.location.href = 'paymeregister.html';
+      return;
+    }
+
+    // if response ok, we can parse; but we don't necessarily need the data now
+    const data = await res.json().catch(()=>null);
+    // If the server indicates no session or error, redirect
+    if (data && data.hasPin === undefined && data.hasSession === false) {
+      window.location.href = 'paymeregister.html';
+    }
+  } catch(err){
+    console.warn('session check error', err);
+    // don't block the page — allow user to try saving PIN; server will reject if needed
+  }
+})();
+
+/* ==== Submit PIN ==== */
 confirmBtn.addEventListener('click', async ()=>{
   if (current !== firstPin) {
     showError('PINs do not match. Try again.');
@@ -162,37 +135,35 @@ confirmBtn.addEventListener('click', async ()=>{
     return;
   }
 
-  message.textContent='Saving PIN...';
+  message.textContent = 'Saving PIN...';
   confirmBtn.disabled = true;
   try {
     const res = await fetch(`${API_BASE}/api/pin/setup`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      credentials: 'include',               // <<-- send register session cookie
-      body:JSON.stringify({ pin: current })
+      method: 'POST',
+      credentials: 'include',            // <<< important: send register session cookie
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: current })
     });
 
-    // If no session (backend returns 401), inform user and redirect to register
     if (res.status === 401) {
       showError('You are not registered / session expired. Redirecting to registration...');
-      setTimeout(()=> window.location.href = 'paymeregister.html', 1200);
+      setTimeout(()=> window.location.href = 'paymeregister.html', 1100);
       return;
     }
 
     const j = await res.json().catch(()=>({ success:false }));
     if (res.ok && j.success) {
-      message.textContent='PIN created successfully. Redirecting...';
+      message.textContent = 'PIN created successfully. Redirecting...';
       clearError();
-      // redirect to paymelogin.html as requested
-      setTimeout(()=> window.location.href='index.html', 1000);
+      setTimeout(()=> window.location.href = 'paymelogin.html', 900);
     } else {
-      showError(j.message || 'Failed to save PIN');
-      confirmBtn.disabled=false;
+      showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
+      confirmBtn.disabled = false;
     }
-  } catch(e) {
-    console.error('PIN setup error', e);
+  } catch(e){
+    console.error('pin setup error', e);
     showError('Network error, please try again.');
-    confirmBtn.disabled=false;
+    confirmBtn.disabled = false;
   }
 });
 </script>
