@@ -1,9 +1,10 @@
 
 
+    
+
     # app.py (fixed DB wiring + SQLAlchemy integration)
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, session, redirect, url_for, g
 from flask_cors import CORS
-from flask import Flask, session, redirect, url_for, request
 import sqlite3
 from datetime import datetime, timedelta  # + timedelta added to support savings durations
 import os
@@ -43,13 +44,35 @@ NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
 
 # ---------- App init (single instance) ----------
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY")  # required, will be None if not set
+# ensure SECRET_KEY exists; provide a dev fallback but require a proper secret in production
+app.secret_key = os.environ.get("SECRET_KEY") or "dev-secret-change-me"
 
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
-cors_origins = os.environ.get("CORS_ORIGINS", "*")
+# Read origins from env; if not set or set to "*", default to localhost dev origin.
+cors_origins_env = os.environ.get("CORS_ORIGINS", "")
+if cors_origins_env and cors_origins_env.strip() != "*":
+    # allow comma-separated origins in env var
+    cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+else:
+    # default for local development — change this to your actual frontend origin in production
+    cors_origins = ["http://localhost:5500"]
+
 CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
+
+# Set session cookie attributes depending on environment (use ENV=production in prod)
+if os.environ.get("ENV", "").lower() == "production":
+    app.config.update({
+        "SESSION_COOKIE_SAMESITE": "None",
+        "SESSION_COOKIE_SECURE": True,
+    })
+else:
+    # local development defaults (HTTP)
+    app.config.update({
+        "SESSION_COOKIE_SAMESITE": "Lax",
+        "SESSION_COOKIE_SECURE": False,
+    })
 
 # ----- Rate limiter (optional) -----
 limiter = Limiter(
