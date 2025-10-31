@@ -291,6 +291,28 @@ def init_db():
                 )
             """)
 
+CODE_TTL_SECONDS = 10 * 60  # 10 minutes for the 6-digit code
+
+def _ensure_pin_codes_table():
+    """
+    Create a simple pin_codes table used to store ephemeral 6-digit codes for account_number.
+    Works for both SQLite and Postgres via get_conn() wrapper.
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pin_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_number TEXT NOT NULL,
+                code TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+        """)
+
+try:
+    _ensure_pin_codes_table()
+except Exception:
+    pass
 
 # -------------------------------------------------
 # Utilities
