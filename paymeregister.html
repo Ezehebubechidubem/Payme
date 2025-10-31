@@ -125,7 +125,7 @@
 
         showSuccess(`✅ Registered. Account number: ${data.account_number}`, () => {
           // go to PIN creation page (user already has session if cookie saved)
-          window.location.href = 'create_pin.html';
+          window.location.href = 'Loginauthentication.html';
         });
       } else {
         showError(data.message || `Registration failed (HTTP ${res.status})`);
