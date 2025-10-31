@@ -528,40 +528,122 @@ def register():
         elif "phone" in str(ie).lower():
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
-# ----- PIN status endpoint (client uses this before showing modal) -----
+
+
+
+# GET /api/pin/status
 @app.route('/api/pin/status', methods=['GET'])
-@login_required
 def api_pin_status():
-    user = g.current_user
+    """
+    Returns PIN status for current user.
+    Accepts either:
+      - Authorization: Bearer <JWT token>
+      - session['user_id'] (legacy)
+    """
+    user = None
+
+    # Try JWT first (if token present/valid)
+    try:
+        # verify_jwt_in_request(optional=True) will validate if a token exists.
+        # If missing or invalid, it raises — we'll catch and fallback to session.
+        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+        verify_jwt_in_request(optional=True)
+        identity = get_jwt_identity()
+        if identity:
+            try:
+                user = User.query.get(int(identity))
+            except Exception:
+                user = None
+    except Exception:
+        user = None
+
+    # Fallback to session-based auth
+    if not user:
+        user_id = session.get('user_id')
+        if user_id:
+            try:
+                user = User.query.get(int(user_id))
+            except Exception:
+                user = None
+
+    if not user:
+        return jsonify({'success': False, 'message': 'User not logged in'}), 401
+
     locked, until = is_locked(user)
     return jsonify({
         'hasPin': bool(user.payment_pin),
         'locked': locked,
         'lockedUntil': until.isoformat() if until else None,
         'failedAttempts': user.failed_attempts
-    })
-#save pin
+    }), 200
 
+
+# POST /api/pin/setup
 @app.route('/api/pin/setup', methods=['POST'])
-@login_required
 def setup_pin():
-    data = request.get_json() or {}
+    """
+    Save a 4-digit PIN for the authenticated user.
+    Accepts:
+      - JSON body: { "pin": "1234" }
+      - Auth via Authorization: Bearer <JWT> OR session['user_id']
+    Returns JSON { success: True } on success or { success: False, message: "..." } on error.
+    """
+    user = None
+
+    # Try JWT first
+    try:
+        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+        verify_jwt_in_request(optional=True)
+        identity = get_jwt_identity()
+        if identity:
+            try:
+                user = User.query.get(int(identity))
+            except Exception:
+                user = None
+    except Exception:
+        user = None
+
+    # Fallback to session
+    if not user:
+        user_id = session.get('user_id')
+        if user_id:
+            try:
+                user = User.query.get(int(user_id))
+            except Exception:
+                user = None
+
+    if not user:
+        return jsonify({'success': False, 'message': 'User not logged in'}), 401
+
+    data = request.get_json(silent=True) or {}
     pin = (data.get('pin') or '').strip()
 
+    # Validate
     if not pin or len(pin) != PIN_LENGTH or not pin.isdigit():
         return jsonify({'success': False, 'message': 'Invalid PIN'}), 400
 
-    hashed_pin = generate_password_hash(pin)
-    user = g.current_user
-    user.payment_pin = hashed_pin
-    user.failed_attempts = 0
-    user.locked_until = None
+    # Hash and save
+    try:
+        hashed_pin = generate_password_hash(pin)
+        user.payment_pin = hashed_pin
+        user.failed_attempts = 0
+        user.locked_until = None
 
-    DB.session.add(user)
-    DB.session.commit()
+        DB.session.add(user)
+        DB.session.commit()
 
-    audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat()})
-    return jsonify({'success': True, 'message': 'PIN saved successfully'}), 200
+        # audit
+        try:
+            audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat()})
+        except Exception:
+            # audit failure shouldn't block main flow
+            app.logger.exception("Pin audit failed")
+
+        return jsonify({'success': True, 'message': 'PIN saved successfully'}), 200
+    except Exception as e:
+        app.logger.exception("Failed to save PIN")
+        return jsonify({'success': False, 'message': 'Server error saving PIN'}), 500
+
 @app.route('/api/pin/associate', methods=['POST'])
 def api_pin_associate():
     """
