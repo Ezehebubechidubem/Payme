@@ -5,108 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login</title>
   <style>
-    :root{
-      --primary:#00c853;
-      --primary-dark:#009624;
-      --bg:#f4f6f8;
-      --card:#fff;
-    }
-    body {
-      font-family: Arial, sans-serif;
-      background: var(--bg);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .form-container {
-      background: var(--card);
-      padding: 24px;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      width: 320px;
-    }
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #333;
-    }
-    label {
-      font-size: 14px;
-      font-weight: bold;
-      color: #444;
-      display: block;
-      margin-bottom: 6px;
-    }
-    input {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 16px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    input:focus {
-      border-color: var(--primary);
-      outline: none;
-      box-shadow: 0 0 0 3px rgba(0,200,83,0.08);
-    }
-    button {
-      width: 100%;
-      background: var(--primary);
-      border: none;
-      color: #fff;
-      padding: 12px;
-      border-radius: 6px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 14px;
-    }
+    :root{ --primary:#00c853; --primary-dark:#009624; --bg:#f4f6f8; --card:#fff; }
+    body { font-family: Arial, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    .form-container { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 320px; }
+    h2 { text-align: center; margin-bottom: 20px; color: #333; }
+    label { font-size: 14px; font-weight: bold; color: #444; display: block; margin-bottom: 6px; }
+    input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(0,200,83,0.08); }
+    button { width: 100%; background: var(--primary); border: none; color: #fff; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
     button[disabled] { opacity: 0.65; cursor: not-allowed; }
     button:hover { background: var(--primary-dark); }
-    .switch {
-      text-align: center;
-      margin-top: 12px;
-      font-size: 14px;
-    }
-    .switch a {
-      color: var(--primary);
-      text-decoration: none;
-      font-weight: bold;
-    }
+    .switch { text-align: center; margin-top: 12px; font-size: 14px; }
+    .switch a { color: var(--primary); text-decoration: none; font-weight: bold; }
 
-    /* Modal styles (success + error) */
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.45);
-      z-index: 9999;
-    }
+    .modal-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 9999; }
     .modal-overlay.show { display: flex; }
-    .modal {
-      width: calc(100% - 48px);
-      max-width: 460px;
-      background: #fff;
-      border-radius: 12px;
-      padding: 18px;
-      box-shadow: 0 18px 40px rgba(10,20,30,0.15);
-      text-align: center;
-    }
-    .modal .badge {
-      width: 68px;
-      height: 68px;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 32px;
-      margin-bottom: 12px;
-      color: #fff;
-    }
+    .modal { width: calc(100% - 48px); max-width: 460px; background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 18px 40px rgba(10,20,30,0.15); text-align: center; }
+    .modal .badge { width: 68px; height: 68px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 12px; color: #fff; }
     .modal .badge.success { background: linear-gradient(135deg,#00c853,#43a047); }
     .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
     .modal h3 { margin: 6px 0 6px; font-size: 18px; }
@@ -116,18 +31,7 @@
     .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
     .modal .btn-primary { background:var(--primary); color:#fff; border:0; }
 
-    /* small spinner */
-    .spinner {
-      display:inline-block;
-      width:16px;
-      height:16px;
-      border:2px solid rgba(255,255,255,0.3);
-      border-top-color:#fff;
-      border-radius:50%;
-      animation: spin .8s linear infinite;
-      vertical-align: middle;
-      margin-left:8px;
-    }
+    .spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; margin-left:8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
@@ -174,7 +78,7 @@
 
   <script>
     (function(){
-      const API = "https://payme-update.onrender.com/login"; // unchanged
+      const API = "https://payme-update.onrender.com/login"; // backend login endpoint
 
       const form = document.getElementById('loginForm');
       const loginInput = document.getElementById('login');
@@ -189,7 +93,6 @@
       const errorOk = document.getElementById('errorOk');
       const errorText = document.getElementById('errorText');
 
-      // Helper: show/hide modal
       function showSuccess(message, onOk) {
         successText.textContent = message || "You are now logged in.";
         successModal.classList.add('show');
@@ -217,7 +120,6 @@
         m.setAttribute('aria-hidden', 'true');
       }
 
-      // close modals on Escape
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           if (successModal.classList.contains('show')) hideModal(successModal);
@@ -225,7 +127,6 @@
         }
       });
 
-      // disable/enable login button and show spinner
       function setLoading(isLoading) {
         if (isLoading) {
           submitBtn.disabled = true;
@@ -242,72 +143,52 @@
         const login = loginInput.value.trim();
         const password = pwdInput.value;
 
-        // keep original behavior: don't change validation rules
-        // user can see modal errors instead of alert()
+        if (!login || !password) {
+          showError('Please enter both login and password');
+          return;
+        }
+
         setLoading(true);
         try {
           const res = await fetch(API, {
             method: "POST",
+            credentials: 'include', // IMPORTANT: allow session cookie from server
             headers: { "Content-Type": "application/json" },
-            credentials: 'include', // allow server to set session cookie if it does
             body: JSON.stringify({ login, password })
           });
 
-          // parse JSON safely
           let data = null;
           try { data = await res.json(); } catch (err) { data = null; }
 
-          if (res.status === 401 || (data && data.success === false)) {
-            const msg = (data && data.message) ? data.message : 'Invalid credentials';
-            showError("❌ " + msg);
-            return;
-          }
-
-          if (data && (data.status === "success" || data.success === true) && data.user) {
-            // preserve exact fields as before (id, username, phone, accountNumber, password)
+          if (data && data.status === "success" && data.user) {
             const user = {
               id: data.user.id,
               username: data.user.username,
               phone: data.user.phone,
               accountNumber: data.user.account_number,
-              password: password
+              // DO NOT store password in localStorage for security
             };
-            // Store in both keys for compatibility
             localStorage.setItem("user", JSON.stringify(user));
             localStorage.setItem("loggedInUser", JSON.stringify(user));
 
-            // If server returned a JWT token, save it so PIN page can use it
-            const token = data.token || data.access_token || null;
-            if (token) {
-              try { localStorage.setItem('token', token); } catch (e) { console.warn('Could not store token', e); }
-            }
-
-            // show modal; redirect only after user presses Continue (keeps UX similar to alert->redirect)
             showSuccess("✅ Login successful!", () => {
-              // exact redirect kept
+              // keep your original redirect target (Loginauthentication.html)
               window.location.href = "Loginauthentication.html";
             });
-
           } else {
-            // error path: show modal with server-provided message if available
             const msg = (data && data.message) ? data.message : `Login failed${res && res.status ? " (HTTP " + res.status + ")" : ""}`;
             showError("❌ " + msg);
           }
 
         } catch (err) {
-          // network/server error -> modal
           console.error("Login error:", err);
-          showError("⚠️ Server error. Please try again later.");
+          showError("⚠️ Server/network error. Please try again later.");
         } finally {
           setLoading(false);
         }
       });
 
-      // also allow Enter to submit when inputs focused (default form behavior handles it)
-      // Accessibility: focus first input on load
-      window.addEventListener('load', () => {
-        loginInput.focus();
-      });
+      window.addEventListener('load', () => loginInput.focus());
     })();
   </script>
 </body>
