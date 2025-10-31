@@ -483,6 +483,7 @@ with app.app_context():
 # -------------------------------------------------
 @app.route("/register", methods=["POST"])
 def register():
+    # Expecting JSON: { username, phone, password }
     data, err, code = json_required(["username", "phone", "password"])
     if err:
         return err, code
@@ -491,66 +492,53 @@ def register():
     phone = data["phone"].strip()
     password = data["password"]
 
+    # frontend enforces phone length 11 digits; keep server-side check
     if not phone.isdigit() or len(phone) != 11:
         return jsonify({"status": "error", "message": "Phone must be exactly 11 digits"}), 400
 
     account_number = phone[-10:]
 
-    try:
-        # Hash the password before storing (safer than plaintext)
-        hashed_pw = generate_password_hash(password)
+    # Hash password before storing
+    hashed_pw = generate_password_hash(password)
 
+    try:
         with get_conn() as conn:
             cur = conn.cursor()
-            # keep your original insertion style (works for both sqlite and Postgres via wrapper)
+            # Insert user (works for sqlite and Postgres via wrapper)
             cur.execute(
                 "INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
                 (username, phone, hashed_pw, account_number, 0.0),
             )
 
-            # Read back the inserted user's id so we can set the register session.
-            # This works for both sqlite (Row) and Postgres (RealDictCursor).
+            # Read back the inserted user's id
             cur.execute("SELECT id FROM users WHERE phone = ? LIMIT 1", (phone,))
             row = cur.fetchone()
             user_id = None
             if row:
-                # row may be a dict-like (Postgres) or sqlite3.Row — try name access first
+                # row may be dict-like (Postgres RealDictCursor) or sqlite3.Row (indexable)
                 try:
-                    user_id = row["id"]
+                    user_id = int(row["id"])
                 except Exception:
                     try:
-                        user_id = row[0]
+                        user_id = int(row[0])
                     except Exception:
                         user_id = None
 
-        # If we have the new user's id, store it in the session so the pin setup can use it
+        # If user_id obtained, store session so subsequent PIN setup will work
         if user_id:
-            # ensure it's a plain int
-            session['user_id'] = int(user_id)
+            session['user_id'] = user_id
 
-        # Also create a JWT token (signed with app.secret_key) and return it to the frontend.
-        # Frontend can store this token and send Authorization: Bearer <token> on subsequent requests.
-        token = None
-        try:
-            token = create_access_token(identity=int(user_id))
-        except Exception:
-            token = None
-
-        response_payload = {"status": "success", "account_number": account_number}
-        if token:
-            response_payload["token"] = token
-
-        return jsonify(response_payload), 200
+        return jsonify({"status": "success", "account_number": account_number}), 200
 
     except Exception as ie:
-        # Try to provide the same messages as original (works for sqlite and Postgres)
+        # Try to return friendly duplicate messages based on DB error text
         msg = "User already exists"
-        if "username" in str(ie).lower():
+        txt = str(ie).lower()
+        if "username" in txt:
             msg = "Username already exists"
-        elif "phone" in str(ie).lower():
+        elif "phone" in txt or "unique" in txt:
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
-
 
 
 
@@ -806,6 +794,7 @@ def api_transaction_execute():
 
 @app.route("/login", methods=["POST"])
 def login():
+    # Expecting JSON: { login, password } where login is username or phone
     data, err, code = json_required(["login", "password"])
     if err:
         return err, code
@@ -813,27 +802,51 @@ def login():
     login_value = data["login"].strip()
     password = data["password"]
 
+    # Look up user by username OR phone
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT id, username, phone, password, account_number, balance "
-            "FROM users WHERE (username = ? OR phone = ?) AND password = ?",
-            (login_value, login_value, password),
+            "FROM users WHERE username = ? OR phone = ? LIMIT 1",
+            (login_value, login_value),
         )
         row = cur.fetchone()
 
     if not row:
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
+    # extract fields regardless of cursor type
+    try:
+        stored_pw = row["password"]
+        user_id = int(row["id"])
+        username = row["username"]
+        phone = row["phone"]
+        account_number = row["account_number"]
+        balance = row["balance"]
+    except Exception:
+        # fallback if row is tuple-like
+        stored_pw = row[3] if len(row) > 3 else None
+        user_id = int(row[0]) if len(row) > 0 else None
+        username = row[1] if len(row) > 1 else None
+        phone = row[2] if len(row) > 2 else None
+        account_number = row[4] if len(row) > 4 else None
+        balance = row[5] if len(row) > 5 else 0
+
+    # Verify password against hash
+    if not stored_pw or not check_password_hash(stored_pw, password):
+        return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+    # Login success: set session so frontend with credentials:'include' receives cookie
+    session['user_id'] = user_id
+
     user = {
-        "id": row["id"],
-        "username": row["username"],
-        "phone": row["phone"],
-        "account_number": row["account_number"],
-        "balance": row["balance"],
+        "id": user_id,
+        "username": username,
+        "phone": phone,
+        "account_number": account_number,
+        "balance": balance,
     }
     return jsonify({"status": "success", "user": user}), 200
-
 
 # -------------------------------------------------
 # Money
