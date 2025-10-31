@@ -1328,6 +1328,26 @@ def buy_airtime():
 
     return jsonify({"status": "success", "message": "Airtime purchased", "balance": new_balance, "transaction": txn}), 200
 
+@app.route("/initdb")
+def init_db():
+    import sqlite3
+    conn = sqlite3.connect("payme.db")
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        phone TEXT UNIQUE,
+        password TEXT,
+        account_number TEXT UNIQUE,
+        balance REAL DEFAULT 0.0
+    )
+    """)
+    
+    conn.commit()
+    conn.close()
+    return "✅ users table created successfully"
 # -------------------------------------------------
 # Startup
 # -------------------------------------------------
