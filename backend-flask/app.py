@@ -1,4 +1,6 @@
- # app.py (fixed DB wiring + SQLAlchemy integration)
+
+
+    # app.py (fixed DB wiring + SQLAlchemy integration)
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from flask import Flask, session, redirect, url_for, request
@@ -408,13 +410,39 @@ def register():
     account_number = phone[-10:]
 
     try:
+        # Hash the password before storing (safer than plaintext)
+        hashed_pw = generate_password_hash(password)
+
         with get_conn() as conn:
             cur = conn.cursor()
+            # keep your original insertion style (works for both sqlite and Postgres via wrapper)
             cur.execute(
                 "INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
-                (username, phone, password, account_number, 0.0),
+                (username, phone, hashed_pw, account_number, 0.0),
             )
+
+            # Read back the inserted user's id so we can set the register session.
+            # This works for both sqlite (Row) and Postgres (RealDictCursor).
+            cur.execute("SELECT id FROM users WHERE phone = ? LIMIT 1", (phone,))
+            row = cur.fetchone()
+            user_id = None
+            if row:
+                # row may be a dict-like (Postgres) or sqlite3.Row — try name access first
+                try:
+                    user_id = row["id"]
+                except Exception:
+                    try:
+                        user_id = row[0]
+                    except Exception:
+                        user_id = None
+
+        # If we have the new user's id, store it in the session so the pin setup can use it
+        if user_id:
+            # ensure it's a plain int
+            session['user_id'] = int(user_id)
+
         return jsonify({"status": "success", "account_number": account_number}), 200
+
     except Exception as ie:
         # Try to provide the same messages as original (works for sqlite and Postgres)
         msg = "User already exists"
@@ -457,7 +485,6 @@ def setup_pin():
 
     audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat()})
     return jsonify({'success': True, 'message': 'PIN saved successfully'}), 200
-
 
 # ----- PIN verify endpoint (called when user enters PIN before transaction) -----
 @app.route('/api/pin/verify', methods=['POST'])
