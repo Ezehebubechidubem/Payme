@@ -1,26 +1,36 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Payme — Create Account</title>
+  <title>Create Account</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f4f6f8; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
-    .form-container { background:#fff; padding:24px; border-radius:12px; width:340px; box-shadow:0 6px 20px rgba(0,0,0,0.08); }
-    h2 { text-align:center; margin-bottom:18px; color:#333; }
-    label{ display:block; font-weight:700; margin-bottom:6px; color:#444; font-size:13px }
-    input{ width:100%; padding:10px; margin-bottom:14px; border:1px solid #ddd; border-radius:8px; font-size:14px }
-    button{ width:100%; background:#00c853; color:#fff; padding:12px; border:0; border-radius:8px; font-weight:700; cursor:pointer }
-    .small{ font-size:13px; color:#666; text-align:center; margin-top:12px }
-    .modal-overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.45); z-index:999 }
-    .modal-overlay.show{ display:flex }
-    .modal{ background:#fff; padding:18px; border-radius:10px; width:90%; max-width:420px; text-align:center; box-shadow:0 18px 40px rgba(0,0,0,0.12) }
-    .badge{ width:60px; height:60px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:28px; margin-bottom:10px }
-    .badge.success{ background:linear-gradient(135deg,#00c853,#43a047) }
-    .badge.error{ background:linear-gradient(135deg,#f44336,#e53935) }
-    .actions{ margin-top:12px; display:flex; justify-content:center }
-    .btn{ padding:10px 14px; border-radius:8px; font-weight:700; border:0; cursor:pointer }
-    .btn-primary{ background:#00c853; color:#fff }
+    .form-container { background:#fff; padding:24px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1); width:320px; }
+    h2 { text-align:center; margin-bottom:20px; color:#333; }
+    label { font-size:14px; font-weight:700; color:#444; display:block; margin-bottom:6px; }
+    input { width:100%; padding:10px; margin-bottom:16px; border:1px solid #ccc; border-radius:6px; font-size:14px; }
+    input:focus { border-color:#00c853; outline:none; }
+    button { width:100%; background:#00c853; border:0; color:#fff; padding:12px; border-radius:6px; font-weight:700; cursor:pointer; font-size:14px; }
+    button:hover { background:#009624; }
+    .switch { text-align:center; margin-top:12px; font-size:14px; }
+    .switch a { color:#00c853; text-decoration:none; font-weight:700; }
+
+    .modal-overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.45); z-index:9999; }
+    .modal-overlay.show { display:flex; }
+    .modal { width:calc(100% - 48px); max-width:460px; background:#fff; border-radius:12px; padding:18px; box-shadow:0 18px 40px rgba(10,20,30,0.15); text-align:center; }
+    .modal .badge { width:68px; height:68px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:12px; color:#fff; }
+    .modal .badge.success { background:linear-gradient(135deg,#00c853,#43a047); }
+    .modal .badge.error   { background:linear-gradient(135deg,#f44336,#e53935); }
+    .modal h3 { margin:6px 0 6px; font-size:18px; }
+    .modal p { margin:0 0 12px; color:#555; }
+    .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+    .modal .btn { padding:10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
+    .modal .btn-primary { background:#00c853; color:#fff; }
+    .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
+
+    @media (max-width:420px){ .form-container{ padding:16px } .modal{ padding:14px } }
+    .small { font-size:12px; color:#666; text-align:center; margin-top:8px }
   </style>
 </head>
 <body>
@@ -28,19 +38,20 @@
     <h2>Create Account</h2>
     <form id="registerForm" autocomplete="on" novalidate>
       <label for="username">Username</label>
-      <input id="username" name="username" type="text" placeholder="Enter username" required>
+      <input id="username" name="username" type="text" placeholder="Enter username" required autocomplete="username">
 
       <label for="phone">Phone Number</label>
-      <input id="phone" name="phone" type="text" inputmode="numeric" pattern="\d{11}" 
-        maxlength="11"
-        placeholder="08012345678" required>
+      <!-- use type=text to preserve leading zeros if any -->
+      <input id="phone" name="phone" type="text" inputmode="numeric" placeholder="Enter phone number (11 digits)" maxlength="11" minlength="11" required>
 
       <label for="password">Password</label>
-      <input id="password" name="password" type="password" minlength="10" maxlength="15" placeholder="Choose a password" required>
+      <input id="password" name="password" type="password" minlength="10" maxlength="15" placeholder="Enter password" required autocomplete="new-password">
 
       <button type="submit" id="submitBtn">Register</button>
-      
+      <div class="small">We will log you in automatically so you can create your PIN next.</div>
     </form>
+
+    <div class="switch">Already have an account? <a href="index.html">Login</a></div>
   </div>
 
   <!-- Success modal -->
@@ -48,7 +59,7 @@
     <div class="modal" role="document">
       <div class="badge success">✓</div>
       <h3 id="successTitle">Registration successful</h3>
-      <p id="successMessage"></p>
+      <p id="successMessage">Your account was created.</p>
       <div class="actions">
         <button id="successOk" class="btn btn-primary">OK</button>
       </div>
@@ -60,89 +71,173 @@
     <div class="modal" role="document">
       <div class="badge error">✕</div>
       <h3 id="errorTitle">Error</h3>
-      <p id="errorMessage"></p>
+      <p id="errorMessage">An error occurred</p>
       <div class="actions">
         <button id="errorOk" class="btn btn-primary">OK</button>
       </div>
     </div>
   </div>
 
-<script>
-(function(){
-  const API_BASE = 'https://payme-update.onrender.com'; // adjust if needed
-  const form = document.getElementById('registerForm');
-  const usernameEl = document.getElementById('username');
-  const phoneEl = document.getElementById('phone');
-  const passwordEl = document.getElementById('password');
+  <script>
+  (function(){
+    // Backend endpoints
+    const BASE = 'https://payme-update.onrender.com';
+    const REGISTER_URL = BASE + '/register';
+    const LOGIN_URL = BASE + '/login';
+    // Where to redirect to create PIN after login
+    const CREATE_PIN_PAGE = 'create-pin.html'; // change to your PIN page filename if different
 
-  const successModal = document.getElementById('successModal');
-  const successMessage = document.getElementById('successMessage');
-  const successOk = document.getElementById('successOk');
+    const form = document.getElementById('registerForm');
+    const usernameEl = document.getElementById('username');
+    const phoneEl = document.getElementById('phone');
+    const passwordEl = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
 
-  const errorModal = document.getElementById('errorModal');
-  const errorMessage = document.getElementById('errorMessage');
-  const errorOk = document.getElementById('errorOk');
+    const successModal = document.getElementById('successModal');
+    const successTitle = document.getElementById('successTitle');
+    const successMessage = document.getElementById('successMessage');
+    const successOk = document.getElementById('successOk');
 
-  function showSuccess(msg, onOk){
-    successMessage.textContent = msg || '';
-    successModal.classList.add('show');
-    successModal.setAttribute('aria-hidden','false');
-    successOk.focus();
-    successOk.onclick = () => { successModal.classList.remove('show'); successOk.onclick=null; if (onOk) onOk(); };
-  }
-  function showError(msg){
-    errorMessage.textContent = msg || '';
-    errorModal.classList.add('show');
-    errorModal.setAttribute('aria-hidden','false');
-    errorOk.focus();
-    errorOk.onclick = () => { errorModal.classList.remove('show'); errorOk.onclick=null; };
-  }
+    const errorModal = document.getElementById('errorModal');
+    const errorTitle = document.getElementById('errorTitle');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorOk = document.getElementById('errorOk');
 
-  form.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const username = usernameEl.value.trim();
-    const phone = phoneEl.value.trim();
-    const password = passwordEl.value;
-
-    if (!/^\d{11}$/.test(phone)) { showError('Phone must be exactly 11 digits'); return; }
-    if (!username) { showError('Username is required'); return; }
-    if (!password || password.length < 6) { showError('Password must be at least 6 characters'); return; }
-
-    // send register request and include credentials so cookie is saved
-    try {
-      const res = await fetch(`${API_BASE}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',              // <<< required: accept Set-Cookie from server
-        body: JSON.stringify({ username, phone, password })
-      });
-
-      const data = await res.json().catch(()=>({ status:'error', message: 'Invalid server response' }));
-      if (res.ok && data.status === 'success') {
-        // store safe user info (DO NOT store password)
-        const safe = { username, phone, accountNumber: data.account_number };
-        localStorage.setItem('user', JSON.stringify(safe));
-
-        showSuccess(`✅ Registered. Account number: ${data.account_number}`, () => {
-          // go to PIN creation page (user already has session if cookie saved)
-          window.location.href = 'Loginauthentication.html';
-        });
-      } else {
-        showError(data.message || `Registration failed (HTTP ${res.status})`);
-      }
-
-    } catch (err) {
-      console.error('register error', err);
-      showError('Network/server error. Try again later.');
+    function showSuccess(msg, onOk){
+      successTitle.textContent = 'Registered';
+      successMessage.textContent = msg || '';
+      successModal.classList.add('show');
+      successModal.setAttribute('aria-hidden','false');
+      successOk.focus();
+      successOk.onclick = () => {
+        successModal.classList.remove('show');
+        successModal.setAttribute('aria-hidden','true');
+        successOk.onclick = null;
+        if (typeof onOk === 'function') onOk();
+      };
     }
-  });
+    function showError(msg, title='Error', onOk){
+      errorTitle.textContent = title;
+      errorMessage.textContent = msg || '';
+      errorModal.classList.add('show');
+      errorModal.setAttribute('aria-hidden','false');
+      errorOk.focus();
+      errorOk.onclick = () => {
+        errorModal.classList.remove('show');
+        errorModal.setAttribute('aria-hidden','true');
+        errorOk.onclick = null;
+        if (typeof onOk === 'function') onOk();
+      };
+    }
 
-  // allow escape to close modals
-  document.addEventListener('keydown', (e)=> {
-    if (e.key === 'Escape') { if (successModal.classList.contains('show')) successModal.classList.remove('show'); if (errorModal.classList.contains('show')) errorModal.classList.remove('show'); }
-  });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (successModal.classList.contains('show')) { successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true'); successOk.onclick = null; }
+        if (errorModal.classList.contains('show')) { errorModal.classList.remove('show'); errorModal.setAttribute('aria-hidden','true'); errorOk.onclick = null; }
+      }
+    });
 
-})();
-</script>
+    // simple spinner state
+    function setLoading(loading){
+      submitBtn.disabled = loading;
+      submitBtn.textContent = loading ? 'Creating account...' : 'Register';
+    }
+
+    // Validate phone: exactly 11 digits
+    function validPhone(p){
+      return /^\d{11}$/.test(p);
+    }
+
+    // AFTER register: auto-login to create server session (so PIN endpoints can use session)
+    async function autoLogin({ username, phone, password }){
+      // Decide to send phone if it's 11 digits, else username
+      const payload = password ? { password } : { password: '' };
+      if (validPhone(phone)) payload.phone = phone;
+      else payload.username = username;
+
+      try {
+        const res = await fetch(LOGIN_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', // <- IMPORTANT: allow server to set session cookie
+          body: JSON.stringify(payload),
+        });
+        const j = await res.json().catch(() => null);
+        // treat success if backend returns status:'success' or res.ok
+        if ((j && (j.status === 'success' || j.success === true)) || res.ok) {
+          // store safe user info (no password)
+          const safeUser = {
+            username: username || (j && j.user && j.user.username) || null,
+            phone: phone || (j && j.user && j.user.phone) || null,
+            accountNumber: (j && j.user && j.user.account_number) || null,
+            id: (j && j.user && j.user.id) || null
+          };
+          localStorage.setItem('user', JSON.stringify(safeUser));
+          localStorage.setItem('loggedInUser', JSON.stringify(safeUser));
+          return { ok:true, data:j };
+        } else {
+          return { ok:false, data:j, status: res.status };
+        }
+      } catch (err) {
+        console.error('autoLogin error', err);
+        return { ok:false, err };
+      }
+    }
+
+    form.addEventListener('submit', async function(e){
+      e.preventDefault();
+      const username = (usernameEl.value || '').trim();
+      const phone = (phoneEl.value || '').trim();
+      const password = passwordEl.value || '';
+
+      if (!username) { showError('Please enter a username', 'Invalid input'); return; }
+      if (!validPhone(phone)) { showError('Phone number must be exactly 11 digits', 'Invalid phone'); return; }
+      if (!password || password.length < 10) { showError('Password must be at least 10 characters', 'Invalid password'); return; }
+
+      setLoading(true);
+      try {
+        // Register request
+        const res = await fetch(REGISTER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // include credentials so backend can set cookie on register if it does that
+          credentials: 'include',
+          body: JSON.stringify({ username, phone, password })
+        });
+
+        const data = await res.json().catch(()=>({ status:'error', message: 'Invalid server response' }));
+
+        if (data && data.status === 'success') {
+          // Try to auto-login so we have a server session for saving PIN
+          const loginResult = await autoLogin({ username, phone, password });
+
+          if (loginResult.ok) {
+            // Success: show modal, then redirect to create-pin page
+            showSuccess('✅ Registration successful. You are now logged in.', function(){
+              // navigate to the PIN creation page (your PIN UI uses session to save pin)
+              window.location.href = CREATE_PIN_PAGE;
+            });
+          } else {
+            // registration succeeded but login failed; still show message and direct user to login
+            showSuccess('✅ Registration successful. Please login to continue.', function(){
+              window.location.href = 'index.html';
+            });
+          }
+        } else {
+          // show backend-provided message where possible
+          showError('❌ ' + (data && data.message ? data.message : 'Registration failed'), 'Registration failed');
+        }
+      } catch (err) {
+        console.error(err);
+        showError('⚠️ Server/network error. Please try again later.', 'Server error');
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // focus first field
+    window.addEventListener('load', () => usernameEl.focus());
+  })();
+  </script>
 </body>
 </html>
