@@ -1,3 +1,4 @@
+ # app.py (fixed DB wiring + SQLAlchemy integration)
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import sqlite3
@@ -19,7 +20,8 @@ import uuid
 
 from services.flutterwave_service import FlutterwaveService
 
-
+# load .env in development
+load_dotenv()
 
 # -------------------------------------------------
 # Postgres Support
@@ -36,30 +38,47 @@ if DATABASE_URL:
 
 NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
 
+# ---------- App init (single instance) ----------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")  # required, will be None if not set
 
 # -------------------------------------------------
 # App & CORS
 # -------------------------------------------------
-app = Flask(__name__)
-
 cors_origins = os.environ.get("CORS_ORIGINS", "*")
 CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
 
-DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
+# ----- Rate limiter (optional) -----
+limiter = Limiter(app, key_func=get_remote_address)
+
+# Keep your sqlite path variable but rename to avoid conflict with SQLAlchemy instance
+SQLITE_DB_PATH = os.environ.get("SQLITE_DB_PATH", "payme.db")
+
+# -------------------------------------------------
+# SQLAlchemy setup (so your DB.Model-based models work)
+# -------------------------------------------------
+from flask_sqlalchemy import SQLAlchemy
+
+# configure SQLAlchemy URI: prefer DATABASE_URL (postgres), otherwise sqlite file
+if DATABASE_URL:
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+else:
+    # use absolute path to sqlite file for safety
+    sqlite_abs = os.path.abspath(SQLITE_DB_PATH)
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{sqlite_abs}"
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# This is the SQLAlchemy instance used by your DB.Model classes below
+DB = SQLAlchemy(app)
 
 # Helper: safe now iso
 def _now_iso():
     return datetime.now().isoformat()
 
 # -------------------------------------------------
-# DB helpers
+# DB helpers (raw connection helpers retained)
 # -------------------------------------------------
-# We provide a get_conn() context manager that supports both sqlite3 and psycopg2.
-# It returns an object with cursor() that supports execute(...), fetchone(), fetchall() etc.
-# For psycopg2 we wrap execute to convert "?" placeholders -> "%s" so existing SQL works.
-
 class PGCursorWrapper:
     """Wrap a psycopg2 cursor and convert ? -> %s in SQL automatically."""
     def __init__(self, cur):
@@ -144,7 +163,7 @@ def get_conn():
         return PGConnectionContext(DATABASE_URL)
     else:
         print("⚠️ Using SQLite fallback", flush=True)
-        conn = sqlite3.connect(DB, check_same_thread=False)
+        conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         with conn:
             conn.execute("PRAGMA journal_mode=WAL;")
@@ -274,12 +293,27 @@ PIN_LENGTH = 4
 LOCK_THRESHOLD = 4             # on 4th wrong attempt -> lock
 LOCK_DURATION = timedelta(hours=4)  # lock duration
 
-# ----- Models -----
+# ----- Models (SQLAlchemy) -----
+# NOTE: your code used DB.Model in places; keep that naming (DB) to match your models below.
+# I added a minimal User model because helpers reference it. If you already have a User model elsewhere,
+# remove/replace this one to avoid duplicate class names.
+class User(DB.Model):
+    __tablename__ = 'users'
+    id = DB.Column(DB.Integer, primary_key=True)
+    username = DB.Column(DB.String(255), unique=True, nullable=True)
+    phone = DB.Column(DB.String(255), unique=True, nullable=True)
+    password = DB.Column(DB.String(255), nullable=True)
+    account_number = DB.Column(DB.String(255), unique=True, nullable=True)
+    balance = DB.Column(DB.Numeric, default=0)
+    # fields for pin handling
+    payment_pin = DB.Column(DB.String(255), nullable=True)
+    failed_attempts = DB.Column(DB.Integer, default=0)
+    locked_until = DB.Column(DB.DateTime, nullable=True)
+
 class PinAudit(DB.Model):
     __tablename__ = 'pin_audit'
     id = DB.Column(DB.Integer, primary_key=True)
-    user_id = DB.Column(DB.Integer, 
-DB.ForeignKey('users.id'), nullable=False)
+    user_id = DB.Column(DB.Integer, DB.ForeignKey('users.id'), nullable=False)
     event_type = DB.Column(DB.String(50), nullable=False)  # PIN_SETUP, PIN_VERIFY_SUCCESS, PIN_VERIFY_FAIL, PIN_LOCK
     meta = DB.Column(DB.JSON, nullable=True)
     created_at = DB.Column(DB.DateTime, default=datetime.utcnow)
@@ -287,8 +321,7 @@ DB.ForeignKey('users.id'), nullable=False)
 class Transaction(DB.Model):
     __tablename__ = 'transactions'
     id = DB.Column(DB.Integer, primary_key=True)
-    from_user = DB.Column(DB.Integer,
-DB.ForeignKey('users.id'), nullable=False)
+    from_user = DB.Column(DB.Integer, DB.ForeignKey('users.id'), nullable=False)
     to_account = DB.Column(DB.String(255), nullable=False)  # destination account/identifier
     amount = DB.Column(DB.Numeric, nullable=False)
     status = DB.Column(DB.String(50), default='PENDING')
@@ -296,7 +329,6 @@ DB.ForeignKey('users.id'), nullable=False)
 
 
 # ----- Utility helpers -----
-
 def is_locked(user: User):
     if user.locked_until and user.locked_until > datetime.utcnow():
         return True, user.locked_until
@@ -311,6 +343,10 @@ def lock_user(user: User):
     DB.session.add(PinAudit(user_id=user.id, event_type='PIN_LOCK', meta={'locked_until': user.locked_until.isoformat()}))
     DB.session.commit()
 
+def audit_event(user: User, event_type: str, meta: dict = None):
+    DB.session.add(PinAudit(user_id=user.id, event_type=event_type, meta=meta))
+    DB.session.commit()
+
 # -------------------------------------------------
 # Health
 # -------------------------------------------------
@@ -318,6 +354,18 @@ def lock_user(user: User):
 def home():
     return jsonify({"message": "✅ PayMe backend is running"}), 200
 
+
+# -------------------------------------------------
+# Ensure DB tables exist on startup (SQLAlchemy side)
+# -------------------------------------------------
+with app.app_context():
+    try:
+        DB.create_all()
+        # Also run the raw init_db so your sqlite tables exist for raw-sql paths
+        init_db()
+    except Exception as e:
+        print("Error initializing DBs:", e, flush=True)
+        traceback.print_exc()
 
 # -------------------------------------------------
 # Auth & User
