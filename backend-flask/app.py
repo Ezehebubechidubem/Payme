@@ -305,60 +305,34 @@ def register():
 
 @app.route("/login", methods=["POST"])
 def login():
-    # Expecting JSON: { login, password } where login is username or phone
-    data, err, code = json_required(["login", "password"])
-    if err:
-        return err, code
+    data = request.get_json()
+    login = data.get("login")
+    password = data.get("password")
 
-    login_value = data["login"].strip()
-    password = data["password"]
+    conn = sqlite3.connect("payme.db")
+    c = conn.cursor()
 
-    # Look up user by username OR phone
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, username, phone, password, account_number, balance "
-            "FROM users WHERE username = ? OR phone = ? LIMIT 1",
-            (login_value, login_value),
-        )
-        row = cur.fetchone()
+    c.execute("SELECT id, username, phone, account_number, balance, password FROM users WHERE username=? OR phone=?", (login, login))
+    row = c.fetchone()
+    conn.close()
 
-    if not row:
-        return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+    if row:
+        user = {
+            "id": row[0],
+            "username": row[1],
+            "phone": row[2],
+            "account_number": row[3],
+            "balance": row[4],
+            "password": row[5],
+        }
 
-    # extract fields regardless of cursor type
-    try:
-        stored_pw = row["password"]
-        user_id = int(row["id"])
-        username = row["username"]
-        phone = row["phone"]
-        account_number = row["account_number"]
-        balance = row["balance"]
-    except Exception:
-        # fallback if row is tuple-like
-        stored_pw = row[3] if len(row) > 3 else None
-        user_id = int(row[0]) if len(row) > 0 else None
-        username = row[1] if len(row) > 1 else None
-        phone = row[2] if len(row) > 2 else None
-        account_number = row[4] if len(row) > 4 else None
-        balance = row[5] if len(row) > 5 else 0
+        # Direct comparison (no hashing)
+        if user["password"] == password:
+            return jsonify({"status": "success", "user": user}), 200
+        else:
+            return jsonify({"status": "error", "message": "Invalid password"}), 401
 
-    # Verify password against hash
-    if not stored_pw or not check_password_hash(stored_pw, password):
-        return jsonify({"status": "error", "message": "Invalid credentials"}), 401
-
-    # Login success: set session so frontend with credentials:'include' receives cookie
-    session['user_id'] = user_id
-
-    user = {
-        "id": user_id,
-        "username": username,
-        "phone": phone,
-        "account_number": account_number,
-        "balance": balance,
-    }
-    return jsonify({"status": "success", "user": user}), 200
-
+    return jsonify({"status": "error", "message": "User not found"}), 404
 # -------------------------------------------------
 # Money
 # -------------------------------------------------
