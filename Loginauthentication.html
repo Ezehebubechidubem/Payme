@@ -169,7 +169,7 @@ confirmBtn.addEventListener('click', async ()=>{
       message.textContent='PIN created successfully. Redirecting...';
       clearError();
       // redirect to index.html as requested
-      setTimeout(()=> window.location.href='index.html', 1000);
+      setTimeout(()=> window.location.href='paymelogin.html', 1000);
     } else {
       showError(j.message || 'Failed to save PIN');
       confirmBtn.disabled=false;
