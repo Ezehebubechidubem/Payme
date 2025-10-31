@@ -2,7 +2,9 @@
 
     
 
-    # app.py (fixed DB wiring + SQLAlchemy integration)
+ 
+# app.py (fixed DB wiring + SQLAlchemy integration)
+
 from flask import Flask, request, jsonify, make_response, session, redirect, url_for, g
 from flask_cors import CORS
 import sqlite3
@@ -19,7 +21,16 @@ from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash
 from functools import wraps
 
+# JWT support (added)
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    verify_jwt_in_request,
+    get_jwt_identity,
+)
+
 # ----------------- BEGIN: towallet endpoints (paste into app.py) -----------------
+
 import uuid
 
 from services.flutterwave_service import FlutterwaveService
@@ -46,6 +57,10 @@ NUBAPI_KEY = os.environ.get("NUBAPI_KEY")  # stored safely in Render
 app = Flask(__name__)
 # ensure SECRET_KEY exists; provide a dev fallback but require a proper secret in production
 app.secret_key = os.environ.get("SECRET_KEY") or "dev-secret-change-me"
+
+# Initialize JWT with the same secret key (per your request)
+app.config['JWT_SECRET_KEY'] = app.secret_key
+jwt = JWTManager(app)
 
 # -------------------------------------------------
 # App & CORS
@@ -377,19 +392,46 @@ def audit_event(user: User, event_type: str, meta: dict = None):
     DB.session.commit()
 
 def login_required(fn):
+    """
+    Accept either:
+      - Authorization: Bearer <JWT token>  (preferred)
+    OR
+      - session['user_id'] (legacy session support)
+
+    On success sets g.current_user to the SQLAlchemy User model.
+    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        user_id = session.get('user_id')
-        if not user_id:
+        user = None
+
+        # 1) Try JWT from Authorization header (preferred)
+        try:
+            # verify_jwt_in_request(optional=True) will attempt to validate a token if present.
+            # If the token is missing or invalid, we simply fallback to session below.
+            verify_jwt_in_request(optional=True)
+            identity = get_jwt_identity()
+            if identity:
+                try:
+                    user = User.query.get(int(identity))
+                except Exception:
+                    user = None
+        except Exception:
+            # any JWT parsing/validation error -> ignore here and fallback to session
+            user = None
+
+        # 2) Fallback to session-based auth for backwards compatibility
+        if not user:
+            user_id = session.get('user_id')
+            if user_id:
+                try:
+                    user = User.query.get(int(user_id))
+                except Exception:
+                    user = None
+
+        if not user:
             return jsonify({'success': False, 'message': 'User not logged in'}), 401
 
-        # Use SQLAlchemy (DB) rather than raw sqlite cursor so g.current_user has attributes
-        user = User.query.get(user_id)
-        if not user:
-            # session might be stale: clear it
-            session.pop('user_id', None)
-            return jsonify({'success': False, 'message': 'User not found'}), 404
-
+        # set the model on g so handlers can use g.current_user
         g.current_user = user
         return fn(*args, **kwargs)
     return wrapper
@@ -464,7 +506,19 @@ def register():
             # ensure it's a plain int
             session['user_id'] = int(user_id)
 
-        return jsonify({"status": "success", "account_number": account_number}), 200
+        # Also create a JWT token (signed with app.secret_key) and return it to the frontend.
+        # Frontend can store this token and send Authorization: Bearer <token> on subsequent requests.
+        token = None
+        try:
+            token = create_access_token(identity=int(user_id))
+        except Exception:
+            token = None
+
+        response_payload = {"status": "success", "account_number": account_number}
+        if token:
+            response_payload["token"] = token
+
+        return jsonify(response_payload), 200
 
     except Exception as ie:
         # Try to provide the same messages as original (works for sqlite and Postgres)
