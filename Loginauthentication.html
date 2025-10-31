@@ -53,7 +53,9 @@
 
 <script>
 /* ==== Config ==== */
-const API_BASE = 'https://payme-update.onrender.com'; // change if needed
+const API_BASE = 'https://payme-update.onrender.com'; // backend base
+const PIN_PAGE_REDIRECT = 'paymelogin.html';         // where to send after success
+const REGISTER_PAGE = 'paymeregister.html';          // where to redirect when auth missing
 
 const headerTitle = document.getElementById('headerTitle');
 const headerDesc  = document.getElementById('headerDesc');
@@ -95,32 +97,55 @@ keypad.addEventListener('click', ev=>{
   }
 });
 
-/* ==== On load: verify register session exists via /api/pin/status === */
+/* ==== Helpers ==== */
+function getToken() {
+  return localStorage.getItem('token') || null;
+}
+function clearAuthAndRedirect() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = REGISTER_PAGE;
+}
+function buildAuthHeaders(extra = {}) {
+  const token = getToken();
+  if (!token) return null;
+  return Object.assign({}, extra, { 'Authorization': 'Bearer ' + token });
+}
+
+/* ==== On load: verify token via /api/pin/status === */
 (async function checkSession(){
+  const token = getToken();
+  if (!token) {
+    // no token => redirect to registration where user will get token after register
+    window.location.href = REGISTER_PAGE;
+    return;
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/pin/status`, {
       method: 'GET',
-      credentials: 'include',   // important: send cookie
-      headers: { 'Accept': 'application/json' }
+      headers: buildAuthHeaders({ 'Accept': 'application/json' })
     });
 
-    // If 401 -> no session
-    if (res.status === 401 || !res.ok) {
-      // redirect to register page
-      alert('You are not registered / session expired. Redirecting to registration.');
-      window.location.href = 'paymeregister.html';
+    if (res.status === 401) {
+      // token invalid/expired or no auth -> clear and redirect
+      clearError();
+      clearAuthAndRedirect();
       return;
     }
 
-    // if response ok, we can parse; but we don't necessarily need the data now
-    const data = await res.json().catch(()=>null);
-    // If the server indicates no session or error, redirect
-    if (data && data.hasPin === undefined && data.hasSession === false) {
-      window.location.href = 'paymeregister.html';
+    if (!res.ok) {
+      // other server error: don't block user; allow to attempt saving; show a non-blocking warning
+      console.warn('pin status check returned', res.status);
+      return;
     }
+
+    // optionally read response; not required
+    // const data = await res.json().catch(()=>null);
+
   } catch(err){
     console.warn('session check error', err);
-    // don't block the page — allow user to try saving PIN; server will reject if needed
+    // network problem — allow user to continue; server will reject on save if unauthenticated
   }
 })();
 
@@ -137,17 +162,26 @@ confirmBtn.addEventListener('click', async ()=>{
 
   message.textContent = 'Saving PIN...';
   confirmBtn.disabled = true;
+  clearError();
+
+  const token = getToken();
+  if (!token) {
+    // should not happen (we redirect earlier), but safe-guard
+    clearAuthAndRedirect();
+    return;
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/pin/setup`, {
       method: 'POST',
-      credentials: 'include',            // <<< important: send register session cookie
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ pin: current })
     });
 
     if (res.status === 401) {
-      showError('You are not registered / session expired. Redirecting to registration...');
-      setTimeout(()=> window.location.href = 'paymeregister.html', 1100);
+      // unauthorized — token invalid/expired
+      showError('Authentication expired. Redirecting to registration/login...');
+      setTimeout(() => clearAuthAndRedirect(), 900);
       return;
     }
 
@@ -155,7 +189,8 @@ confirmBtn.addEventListener('click', async ()=>{
     if (res.ok && j.success) {
       message.textContent = 'PIN created successfully. Redirecting...';
       clearError();
-      setTimeout(()=> window.location.href = 'paymelogin.html', 900);
+      // remove token if you want user to re-login; we keep token by default
+      setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 900);
     } else {
       showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
       confirmBtn.disabled = false;
