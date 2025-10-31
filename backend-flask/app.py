@@ -305,34 +305,60 @@ def register():
 
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     login = data.get("login")
     password = data.get("password")
 
-    conn = sqlite3.connect("payme.db")
-    c = conn.cursor()
+    if not login or not password:
+        return jsonify({"status": "error", "message": "Missing login or password"}), 400
 
-    c.execute("SELECT id, username, phone, account_number, balance, password FROM users WHERE username=? OR phone=?", (login, login))
-    row = c.fetchone()
-    conn.close()
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, username, phone, account_number, balance, password FROM users WHERE username=? OR phone=? LIMIT 1",
+                (login, login)
+            )
+            row = cur.fetchone()
+    except Exception as e:
+        print("DB login error:", e, flush=True)
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Database error"}), 500
 
-    if row:
-        user = {
-            "id": row[0],
-            "username": row[1],
-            "phone": row[2],
-            "account_number": row[3],
-            "balance": row[4],
-            "password": row[5],
-        }
+    if not row:
+        return jsonify({"status": "error", "message": "User not found"}), 404
 
-        # Direct comparison (no hashing)
-        if user["password"] == password:
-            return jsonify({"status": "success", "user": user}), 200
-        else:
-            return jsonify({"status": "error", "message": "Invalid password"}), 401
+    # `row` may be sqlite3.Row (mapping) or dict-like (Postgres wrapper)
+    try:
+        stored_pw = row["password"]
+        user_id = int(row["id"])
+        username = row["username"]
+        phone = row["phone"]
+        account_number = row["account_number"]
+        balance = row["balance"]
+    except Exception:
+        # fallback if tuple-like
+        stored_pw = row[5] if len(row) > 5 else None
+        user_id = int(row[0]) if len(row) > 0 else None
+        username = row[1] if len(row) > 1 else None
+        phone = row[2] if len(row) > 2 else None
+        account_number = row[3] if len(row) > 3 else None
+        balance = row[4] if len(row) > 4 else None
 
-    return jsonify({"status": "error", "message": "User not found"}), 404
+    # direct compare (you store plain password)
+    if stored_pw != password:
+        return jsonify({"status": "error", "message": "Invalid password"}), 401
+
+    user = {
+        "id": user_id,
+        "username": username,
+        "phone": phone,
+        "account_number": account_number,
+        "balance": balance,
+        "password": stored_pw,
+    }
+    return jsonify({"status": "success", "user": user}), 200
+
 # -------------------------------------------------
 # Money
 # -------------------------------------------------
