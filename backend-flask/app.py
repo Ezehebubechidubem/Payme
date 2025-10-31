@@ -1,10 +1,4 @@
-
-
-    
-
- 
-
-                    # app.py (clean — no PIN logic)
+ # app.py (clean — no PIN logic)
 from flask import Flask, request, jsonify, make_response, session, redirect, url_for, g
 from flask_cors import CORS
 import sqlite3
