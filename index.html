@@ -78,9 +78,8 @@
 
   <script>
     (function(){
-      // Use relative endpoint so frontend works on same host / same origin deployment.
-      // Your backend provides app.route("/login", methods=["POST"]) — this will call that.
-      const API = "/login";
+      // <-- your backend URL used explicitly as requested
+      const API = "https://payme-update.onrender.com/login";
 
       const form = document.getElementById('loginForm');
       const loginInput = document.getElementById('login');
@@ -154,7 +153,6 @@
         try {
           const res = await fetch(API, {
             method: "POST",
-            credentials: 'include', // IMPORTANT: allow session cookie from server
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ login, password })
           });
