@@ -562,6 +562,58 @@ def setup_pin():
 
     audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat()})
     return jsonify({'success': True, 'message': 'PIN saved successfully'}), 200
+@app.route('/api/pin/associate', methods=['POST'])
+def api_pin_associate():
+    """
+    Associate a previously-created 4-digit PIN with an account number.
+    Expected JSON:
+      { "account_number": "0123456789", "code": "123456", "pin": "1234" }
+
+    NOTE: This endpoint is intentionally simple right now — it does not validate
+    the 6-digit 'code' against an OTP system because none exists yet. If you
+    have an OTP service, insert validation here before saving the PIN.
+    """
+    data = request.get_json() or {}
+    account_number = (data.get('account_number') or '').strip()
+    code = (data.get('code') or '').strip()
+    pin = (data.get('pin') or '').strip()
+
+    # Basic validation
+    if not account_number or not account_number.isdigit() or len(account_number) not in (10,):
+        return jsonify({'success': False, 'message': 'Invalid account_number (10 digits required)'}), 400
+    if not code or not code.isdigit() or len(code) != 6:
+        return jsonify({'success': False, 'message': 'Invalid code (6 digits required)'}), 400
+    if not pin or not pin.isdigit() or len(pin) != PIN_LENGTH:
+        return jsonify({'success': False, 'message': 'Invalid PIN (4 digits required)'}), 400
+
+    # Find user by account_number
+    user = User.query.filter_by(account_number=str(account_number)).first()
+    if not user:
+        return jsonify({'success': False, 'message': 'Account not found'}), 404
+
+    # Prevent overwriting an existing PIN (safety)
+    if user.payment_pin:
+        return jsonify({'success': False, 'message': 'Account already has a PIN'}), 409
+
+    # OPTIONAL: If you have an OTP verification system, validate `code` here.
+    # e.g. if not verify_otp(account_number, code): return 403
+    # For now we accept the provided 6-digit code but **log** it for audit.
+    # Save hashed PIN
+    try:
+        hashed_pin = generate_password_hash(pin)
+        user.payment_pin = hashed_pin
+        user.failed_attempts = 0
+        user.locked_until = None
+
+        DB.session.add(user)
+        DB.session.commit()
+
+        audit_event(user, 'PIN_SETUP', meta={'time': datetime.utcnow().isoformat(), 'method': 'associate', 'provided_code': code})
+        return jsonify({'success': True, 'message': 'PIN associated to account successfully'}), 200
+    except Exception as e:
+        DB.session.rollback()
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Server error while saving PIN'}), 500
 
 # ----- PIN verify endpoint (called when user enters PIN before transaction) -----
 @app.route('/api/pin/verify', methods=['POST'])
