@@ -1,95 +1,573 @@
-# models.py
-"""
-Create the extra tables needed for PIN functionality:
- - pin_codes (ephemeral 6-digit codes)
- - user_pins (store hashed 4-digit PINs linked to user id)
- - pin_audit  (audit trail)
-This module is intentionally DB-agnostic and uses utils.get_conn() to create tables.
-"""
-
-from datetime import datetime
+# app.py - full PayMe backend consolidated
 import os
-from utils import get_conn
+import sys
+import traceback
+import sqlite3
+import requests
+import math
+import time
+from datetime import datetime, timedelta
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+from flask import Flask, request, jsonify, make_response, session
+from flask_cors import CORS
 
-def init_tables():
-    """
-    Create the tables needed by pin routes.
-    Uses different DDL for Postgres vs SQLite to avoid incompatibilities.
-    """
-    conn = get_conn()
-    cur = conn.cursor()
-
-    if DATABASE_URL:
-        # Postgres DDL
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pin_codes (
-            id SERIAL PRIMARY KEY,
-            account_number TEXT NOT NULL,
-            code TEXT NOT NULL,
-            expires_at TIMESTAMP NOT NULL
-        )
-        """)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_pins (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            hashed_pin TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT now()
-        )
-        """)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pin_audit (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER,
-            event_type TEXT,
-            meta JSONB,
-            created_at TIMESTAMP DEFAULT now()
-        )
-        """)
-    else:
-        # SQLite DDL
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pin_codes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            account_number TEXT NOT NULL,
-            code TEXT NOT NULL,
-            expires_at TEXT NOT NULL
-        )
-        """)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_pins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            hashed_pin TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pin_audit (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            event_type TEXT,
-            meta TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-    # If sqlite, commit immediately and close; if PGContext, commit happens on exit
-    try:
-        conn.commit()
-    except Exception:
-        # PGConnectionContext may not be real sqlite Connection - commit inside context manager
-        pass
-    try:
-        conn.close()
-    except Exception:
-        pass
-
-# Run on import to ensure tables exist (safe)
+# optional postgres support
 try:
-    init_tables()
-except Exception as e:
-    # If DB isn't available at import, don't crash; table will be created on first route call
-    print("models.init_tables() warning:", e)
+    DATABASE_URL = os.environ.get("DATABASE_URL")
+except Exception:
+    DATABASE_URL = None
+
+# security helpers
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# -------------------------------------------------
+# Create single Flask app and configure CORS
+# -------------------------------------------------
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": os.environ.get("CORS_ORIGINS", "*")}}, supports_credentials=True)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+
+# -------------------------------------------------
+# DB helpers and compatibility for sqlite3 / psycopg2
+# -------------------------------------------------
+DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
+
+# Try import psycopg2 only if DATABASE_URL provided
+psycopg2 = None
+psycopg2_extras = None
+if DATABASE_URL:
+    try:
+        import psycopg2
+        import psycopg2.extras
+        psycopg2_extras = psycopg2.extras
+    except Exception:
+        psycopg2 = None
+        psycopg2_extras = None
+
+class PGCursorWrapper:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql, params=None):
+        if params is None:
+            return self._cur.execute(sql)
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.execute(safe_sql, params)
+
+    def executemany(self, sql, seq_of_params):
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.executemany(safe_sql, seq_of_params)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+class PGConnectionContext:
+    def __init__(self, dsn):
+        self.dsn = dsn
+        self.conn = None
+
+    def __enter__(self):
+        if psycopg2 is None:
+            raise RuntimeError("psycopg2 not installed; cannot use PostgreSQL. Install psycopg2-binary.")
+        self.conn = psycopg2.connect(self.dsn)
+        self.conn.autocommit = False
+        return self
+
+    def cursor(self):
+        raw_cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        return PGCursorWrapper(raw_cur)
+
+    def commit(self):
+        if self.conn:
+            self.conn.commit()
+
+    def rollback(self):
+        if self.conn:
+            self.conn.rollback()
+
+    def close(self):
+        if self.conn:
+            try:
+                self.conn.close()
+            except:
+                pass
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type:
+            try:
+                self.conn.rollback()
+            except:
+                pass
+        else:
+            try:
+                self.conn.commit()
+            except:
+                pass
+        try:
+            self.conn.close()
+        except:
+            pass
+
+def get_conn():
+    if DATABASE_URL:
+        return PGConnectionContext(DATABASE_URL)
+    else:
+        conn = sqlite3.connect(DB, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        with conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA foreign_keys=ON;")
+        return conn
+
+def init_db():
+    if DATABASE_URL:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users(
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE,
+                    phone TEXT UNIQUE,
+                    password TEXT,
+                    account_number TEXT UNIQUE,
+                    balance NUMERIC DEFAULT 0
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS transactions(
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    type TEXT,
+                    amount NUMERIC,
+                    other_party TEXT,
+                    date TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS savings(
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    amount NUMERIC,
+                    type TEXT CHECK(type IN ('flexible','fixed')),
+                    start_date TEXT,
+                    duration_days INTEGER,
+                    end_date TEXT,
+                    status TEXT DEFAULT 'active',
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+    else:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE,
+                    phone TEXT UNIQUE,
+                    password TEXT,
+                    account_number TEXT UNIQUE,
+                    balance REAL DEFAULT 0
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS transactions(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    type TEXT,
+                    amount REAL,
+                    other_party TEXT,
+                    date TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS savings(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    amount REAL,
+                    type TEXT CHECK(type IN ('flexible','fixed')),
+                    start_date TEXT,
+                    duration_days INTEGER,
+                    end_date TEXT,
+                    status TEXT DEFAULT 'active',
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+
+# -------------------------------------------------
+# Utilities
+# -------------------------------------------------
+def json_required(keys):
+    if not request.is_json:
+        return None, jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
+    data = request.get_json(silent=True) or {}
+    missing = [k for k in keys if data.get(k) in (None, "")]
+    if missing:
+        return None, jsonify({"status": "error", "message": f"Missing fields: {', '.join(missing)}"}), 400
+    return data, None, None
+
+def _now_iso():
+    return datetime.now().isoformat()
+
+# -------------------------------------------------
+# Logging + error handling + security headers
+# -------------------------------------------------
+@app.before_request
+def _log_request():
+    print(f"> {request.method} {request.path}", file=sys.stdout, flush=True)
+
+@app.errorhandler(Exception)
+def _handle_exception(e):
+    traceback.print_exc()
+    return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.after_request
+def _security_headers(resp):
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-XSS-Protection"] = "1; mode=block"
+    return resp
+
+@app.route("/", methods=["OPTIONS"])
+@app.route("/<path:_any>", methods=["OPTIONS"])
+def options(_any=None):
+    return make_response(("", 204))
+
+# -------------------------------------------------
+# Health
+# -------------------------------------------------
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "✅ PayMe backend is running"}), 200
+
+# -------------------------------------------------
+# Auth & User
+# -------------------------------------------------
+@app.route("/register", methods=["POST"])
+def register():
+    data, err, code = json_required(["username", "phone", "password"])
+    if err:
+        return err, code
+
+    username = data["username"].strip()
+    phone = data["phone"].strip()
+    password = data["password"]
+
+    if not phone.isdigit() or len(phone) != 11:
+        return jsonify({"status": "error", "message": "Phone must be exactly 11 digits"}), 400
+
+    account_number = phone[-10:]
+    hashed_pw = generate_password_hash(password)
+
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO users (username, phone, password, account_number, balance) VALUES (?, ?, ?, ?, ?)",
+                (username, phone, hashed_pw, account_number, 0.0),
+            )
+        return jsonify({"status": "success", "account_number": account_number}), 200
+    except Exception as ie:
+        msg = "User already exists"
+        if "username" in str(ie).lower():
+            msg = "Username already exists"
+        elif "phone" in str(ie).lower():
+            msg = "Phone already exists"
+        return jsonify({"status": "error", "message": msg}), 400
+
+@app.route("/login", methods=["POST"])
+def login():
+    data, err, code = json_required(["login", "password"])
+    if err:
+        return err, code
+
+    login_value = data["login"].strip()
+    password = data["password"]
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, phone, password, account_number, balance "
+            "FROM users WHERE username = ? OR phone = ? LIMIT 1",
+            (login_value, login_value),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+    try:
+        stored_pw = row["password"]
+        user_id = int(row["id"])
+        username = row["username"]
+        phone = row["phone"]
+        account_number = row["account_number"]
+        balance = row["balance"]
+    except Exception:
+        stored_pw = row[3] if len(row) > 3 else None
+        user_id = int(row[0]) if len(row) > 0 else None
+        username = row[1] if len(row) > 1 else None
+        phone = row[2] if len(row) > 2 else None
+        account_number = row[4] if len(row) > 4 else None
+        balance = row[5] if len(row) > 5 else 0
+
+    if not stored_pw or not check_password_hash(stored_pw, password):
+        return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+    # Set session (optional)
+    session['user_id'] = user_id
+
+    user = {
+        "id": user_id,
+        "username": username,
+        "phone": phone,
+        "account_number": account_number,
+        "balance": balance,
+    }
+    return jsonify({"status": "success", "user": user}), 200
+
+# -------------------------------------------------
+# Money: balance, add, send, transactions, users
+# -------------------------------------------------
+@app.route("/balance/<phone>", methods=["GET"])
+def balance(phone: str):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT balance FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+    return jsonify({"balance": (row["balance"] if row else 0.0)}), 200
+
+@app.route("/add_money", methods=["POST"])
+def add_money():
+    data, err, code = json_required(["phone", "amount"])
+    if err:
+        return err, code
+
+    phone = str(data["phone"]).strip()
+    try:
+        amount = float(data["amount"])
+    except Exception:
+        return jsonify({"status": "error", "message": "amount must be a number"}), 400
+
+    if amount <= 0:
+        return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        user_id = row["id"]
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, user_id))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Deposit", amount, "Self", datetime.now().isoformat()),
+        )
+
+    return jsonify({"status": "success", "message": f"₦{amount} added"}), 200
+
+@app.route("/send_money", methods=["POST"])
+def send_money():
+    data, err, code = json_required(["sender_phone", "receiver_acc", "amount"])
+    if err:
+        return err, code
+
+    sender_phone = str(data["sender_phone"]).strip()
+    receiver_acc = str(data["receiver_acc"]).strip()
+    try:
+        amount = float(data["amount"])
+    except Exception:
+        return jsonify({"status": "error", "message": "amount must be number"}), 400
+
+    if amount <= 0:
+        return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
+    if not receiver_acc.isdigit() or len(receiver_acc) != 10:
+        return jsonify({"status": "error", "message": "receiver_acc must be 10 digits"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # Get sender
+        cur.execute("SELECT id, balance FROM users WHERE phone = ?", (sender_phone,))
+        sender_row = cur.fetchone()
+        if not sender_row or sender_row["balance"] < amount:
+            return jsonify({"status": "error", "message": "Insufficient funds"}), 400
+
+        sender_id = sender_row["id"]
+        # Deduct sender
+        cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, sender_id))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (sender_id, "Transfer Out", amount, receiver_acc, datetime.now().isoformat()),
+        )
+
+        # Credit receiver (if exists)
+        cur.execute("SELECT id FROM users WHERE account_number = ?", (receiver_acc,))
+        recv = cur.fetchone()
+        if recv:
+            recv_id = recv["id"]
+            cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, recv_id))
+            cur.execute(
+                "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                (recv_id, "Transfer In", amount, sender_phone, datetime.now().isoformat()),
+            )
+
+    return jsonify({"status": "success", "message": f"₦{amount} sent"}), 200
+
+@app.route("/transactions/<phone>", methods=["GET"])
+def transactions(phone: str):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT type, amount, other_party, date FROM transactions "
+            "WHERE user_id = (SELECT id FROM users WHERE phone = ?) ORDER BY id DESC",
+            (phone,),
+        )
+        rows = cur.fetchall()
+    result = [
+        {"type": r["type"], "amount": r["amount"], "other_party": r["other_party"], "date": r["date"]}
+        for r in rows
+    ]
+    return jsonify(result), 200
+
+@app.route("/user_by_account/<account_number>", methods=["GET"])
+def user_by_account(account_number: str):
+    if not account_number.isdigit() or len(account_number) != 10:
+        return jsonify({"status": "error", "message": "Invalid account number"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT username, phone FROM users WHERE account_number = ?", (account_number,))
+        row = cur.fetchone()
+
+    if not row:
+        return jsonify({"status": "error", "message": "Account not found"}), 404
+
+    return jsonify({
+        "status": "success",
+        "username": row["username"],
+        "phone": row["phone"]
+    }), 200
+
+@app.route("/user/<phone>", methods=["GET"])
+def get_user(phone: str):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT username, phone, account_number, balance FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+    return jsonify({"status": "success", "user": dict(row)}), 200
+
+@app.route("/update_user", methods=["POST"])
+def update_user():
+    data, err, code = json_required(["phone"])
+    if err:
+        return err, code
+
+    phone = str(data["phone"]).strip()
+    new_phone = str(data.get("new_phone", "")).strip()
+    new_password = str(data.get("new_password", "")).strip()
+
+    if new_phone and (not new_phone.isdigit() or len(new_phone) != 11):
+        return jsonify({"status": "error", "message": "New phone must be 11 digits"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        if new_phone:
+            cur.execute("UPDATE users SET phone = ?, account_number = ? WHERE id = ?", 
+                        (new_phone, new_phone[-10:], user["id"]))
+        if new_password:
+            cur.execute("UPDATE users SET password = ? WHERE id = ?", (generate_password_hash(new_password), user["id"]))
+
+        cur.execute("SELECT username, phone, account_number, balance FROM users WHERE id = ?", (user["id"],))
+        updated = dict(cur.fetchone())
+
+    return jsonify({"status": "success", "user": updated}), 200
+
+# -------------------------------------------------
+# Flutterwave / Banks / Resolve (global)
+# -------------------------------------------------
+@app.route("/banks", methods=["GET"])
+def get_banks():
+    try:
+        flw_key = os.environ.get("FLW_SECRET_KEY")
+        if not flw_key:
+            return jsonify({
+                "status": "error",
+                "message": "FLW_SECRET_KEY not configured on server. Set FLW_SECRET_KEY to fetch Flutterwave banks."
+            }), 400
+
+        url = "https://api.flutterwave.com/v3/banks/NG"
+        headers = {"Authorization": f"Bearer {flw_key}", "User-Agent": "PayMe/1.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
+
+        if resp.status_code != 200:
+            try:
+                body_json = resp.json()
+            except Exception:
+                body_json = resp.text or ""
+            return jsonify({
+                "status": "error",
+                "message": "Flutterwave returned non-200 for /banks",
+                "fw_status": resp.status_code,
+                "fw_response": body_json
+            }), resp.status_code
+
+        data = resp.json()
+        banks = {}
+        for item in data.get("data", []):
+            code = str(item.get("code") or "").strip()
+            name = (item.get("name") or "").strip()
+            if code and name:
+                banks[code] = name
+
+        return jsonify({"status": "success", "message": "Banks fetched from Flutterwave", "banks": banks}), 200
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "status": "error",
+            "message": "Network error when contacting Flutterwave /banks",
+            "details": str(e)
+        }), 502
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": "Internal error while fetching banks from Flutterwave",
+            "details": str(e)
+        }), 500
+
+@app.route("/resolve-account", methods=["POST"])
+def resolve_account():
+    try:
+        data = request.get_json(silent=True) or {}
+        account_number = str(data.get("account_number", "")).strip()
+        bank_code = data.get("bank_code", "")
+
+        if not account_number.isdigit() or len(account_number) != 10:
+            return jsonify({"status": "error", "message": "Invalid account number"}), 400
+
+        def try_parse_json(resp):
+            try:
+                return resp.json(), None
+            except ValueError:
+                text = resp.text or ""
+                return None, text[:3000]
+
+        flw_key = os.environ.get("FLW_SECRET_KEY")
+        if not flw_key:
+            return jsonify({"
