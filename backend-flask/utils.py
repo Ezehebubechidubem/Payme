@@ -1,50 +1,133 @@
 # utils.py
-from datetime import datetime, timedelta
+import os
+import sqlite3
+import traceback
+from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# Business constants (tweak as needed)
-PIN_LENGTH = 4
-LOCK_THRESHOLD = 4
-LOCK_DURATION = timedelta(hours=4)
-CODE_TTL_SECONDS = 10 * 60  # 10 minutes for 6-digit verification codes
+# Optional postgres support
+DATABASE_URL = os.environ.get("DATABASE_URL")
+SQLITE_DB_PATH = os.environ.get("SQLITE_DB_PATH", "payme.db")
 
-# PIN helpers
+# --------- Postgres cursor/connection wrapper (if DATABASE_URL set) ----------
+# We keep this minimal and compatible with the rest of the code: it returns
+# an object usable with "with get_conn() as conn: cur = conn.cursor(); cur.execute(...)"
+class PGCursorWrapper:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql, params=None):
+        if params is None:
+            return self._cur.execute(sql)
+        # Accept ? placeholders in our code and convert to %s for psycopg2
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.execute(safe_sql, params)
+
+    def executemany(self, sql, seq_of_params):
+        safe_sql = sql.replace("?", "%s")
+        return self._cur.executemany(safe_sql, seq_of_params)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
+class PGConnectionContext:
+    def __init__(self, dsn):
+        self.dsn = dsn
+        self.conn = None
+
+    def __enter__(self):
+        try:
+            import psycopg2
+            import psycopg2.extras
+        except Exception as e:
+            raise RuntimeError("psycopg2 is required for PostgreSQL usage") from e
+        self.conn = psycopg2.connect(self.dsn)
+        self.conn.autocommit = False
+        return self
+
+    def cursor(self):
+        import psycopg2.extras
+        raw_cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        return PGCursorWrapper(raw_cur)
+
+    def commit(self):
+        if self.conn:
+            self.conn.commit()
+
+    def rollback(self):
+        if self.conn:
+            self.conn.rollback()
+
+    def close(self):
+        if self.conn:
+            try:
+                self.conn.close()
+            except:
+                pass
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if exc_type:
+                try:
+                    self.conn.rollback()
+                except:
+                    pass
+            else:
+                try:
+                    self.conn.commit()
+                except:
+                    pass
+        finally:
+            try:
+                self.conn.close()
+            except:
+                pass
+
+
+def get_conn():
+    """
+    Returns either a PGConnectionContext (when DATABASE_URL set) or a sqlite3.Connection.
+    Usage:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(...)
+    For sqlite3, the returned object is the raw connection (not wrapper).
+    """
+    if DATABASE_URL:
+        return PGConnectionContext(DATABASE_URL)
+    else:
+        conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        with conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA foreign_keys=ON;")
+        return conn
+
+
+# ----------------- PIN hashing helpers -----------------
 def hash_pin(pin: str) -> str:
-    if not pin or not pin.isdigit() or len(pin) != PIN_LENGTH:
-        raise ValueError("PIN must be exactly %d digits" % PIN_LENGTH)
+    """Use werkzeug password hasher (PBKDF2) - safe for small secrets."""
     return generate_password_hash(pin)
 
-def verify_pin_hash(hashed: str, pin: str) -> bool:
-    if not hashed or not pin:
-        return False
-    return check_password_hash(hashed, pin)
 
-def is_locked(user) -> (bool, 'datetime|None'):
-    """Return (locked_bool, locked_until_datetime_or_None)."""
-    if not user:
-        return False, None
-    if user.locked_until and user.locked_until > datetime.utcnow():
-        return True, user.locked_until
-    return False, None
-
-def register_failed_attempt(user, DB):
-    """
-    Increment failed_attempts and lock if threshold reached.
-    DB: SQLAlchemy instance (models.DB)
-    """
+def check_pin(pin: str, hashed: str) -> bool:
     try:
-        user.failed_attempts = (user.failed_attempts or 0) + 1
-        if user.failed_attempts >= LOCK_THRESHOLD:
-            user.locked_until = datetime.utcnow() + LOCK_DURATION
-            user.failed_attempts = 0  # reset after locking (optional)
-        DB.session.add(user)
-        DB.session.commit()
+        return check_password_hash(hashed, pin)
     except Exception:
-        DB.session.rollback()
-        raise
+        return False
 
-def reset_attempts_and_unlock(user, DB):
-    user.failed_attempts = 0
-    user.locked_until = None
-    DB.session.add(user)
-    DB.session.commit()
+
+# ----------------- small helpers -----------------
+def now_iso():
+    return datetime.utcnow().isoformat()
+
+def debug_log(*args, **kwargs):
+    # Helper to keep server logs consistent when printing exceptions
+    print(*args, **kwargs)
