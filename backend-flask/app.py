@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, make_response, session
 from flask_cors import CORS
+from pin_routes import bp as pin_bp
+app.register_blueprint(pin_bp)
 
 # optional postgres support
 try:
