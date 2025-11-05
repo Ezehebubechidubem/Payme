@@ -1,29 +1,48 @@
-# models.py
+# utils.py
 """
-Optional models module. Provides a DB instance (flask_sqlalchemy.SQLAlchemy) that can be
-initialized by app.py if you want to centralize DB initialization here:
-
-In app.py:
-    from models import DB
-    DB.init_app(app)
-    with app.app_context():
-        DB.create_all()
-
-We define PinAudit here (useful for logging pin events). We keep the User model out,
-because your app.py already defines / owns the canonical User model.
+Utility helpers for PIN handling. Independent and safe to import in pin_routes.py.
 """
-from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
 
-DB = SQLAlchemy()
+PIN_LENGTH = 4
+MAX_FAILED_ATTEMPTS = 4
+LOCK_DURATION = timedelta(hours=4)
 
-class PinAudit(DB.Model):
-    __tablename__ = 'pin_audit'
-    id = DB.Column(DB.Integer, primary_key=True)
-    user_id = DB.Column(DB.Integer, nullable=False)
-    action = DB.Column(DB.String(50), nullable=False)
-    meta = DB.Column(DB.JSON, nullable=True)
-    created_at = DB.Column(DB.DateTime, default=datetime.utcnow)
+def hash_pin(pin: str) -> str:
+    if not pin or not pin.isdigit():
+        raise ValueError("PIN must be digits")
+    return generate_password_hash(pin)
 
-    def __repr__(self):
-        return f"<PinAudit user={self.user_id} action={self.action}>"
+def verify_pin(hashed_pin: str, pin: str) -> bool:
+    if not hashed_pin:
+        return False
+    return check_password_hash(hashed_pin, pin)
+
+def is_locked(user) -> (bool, datetime):
+    """Return (locked:bool, until:datetime or None). Expects user.locked_until attribute or None."""
+    if not user:
+        return False, None
+    try:
+        if getattr(user, 'locked_until', None) and getattr(user, 'locked_until') > datetime.utcnow():
+            return True, user.locked_until
+    except Exception:
+        pass
+    return False, None
+
+def lock_user(user, DB=None):
+    """Lock a user and optionally commit via DB.session."""
+    user.locked_until = datetime.utcnow() + LOCK_DURATION
+    user.failed_attempts = 0
+    if DB:
+        DB.session.add(user)
+        DB.session.commit()
+    return user.locked_until
+
+def reset_attempts(user, DB=None):
+    user.failed_attempts = 0
+    user.locked_until = None
+    if DB:
+        DB.session.add(user)
+        DB.session.commit()
+    return True
