@@ -568,6 +568,434 @@ def resolve_account():
                 text = resp.text or ""
                 return None, text[:3000]
 
-        flw_key = os.environ.get("FLW_SECRET_KEY")
+                flw_key = os.environ.get("FLW_SECRET_KEY")
         if not flw_key:
-            return jsonify({"
+            return jsonify({"status": "error", "message": "FLW_SECRET_KEY not configured on server"}), 500
+
+        account_bank = None
+        mapping_error = None
+        try:
+            bank_code_raw = "" if bank_code is None else str(bank_code)
+            bank_code_clean = ''.join(ch for ch in bank_code_raw if ch.isdigit()).strip()
+            try:
+                account_bank, mapping_error = find_flutter_code(bank_code_raw)
+                if isinstance(account_bank, (int, float)):
+                    account_bank = str(account_bank)
+                if account_bank:
+                    account_bank = ''.join(ch for ch in str(account_bank) if ch.isdigit())
+            except NameError:
+                account_bank = bank_code_clean if bank_code_clean else None
+                if not account_bank:
+                    mapping_error = "No helper available and bank_code not numeric"
+            except Exception as e:
+                account_bank = None
+                mapping_error = f"Helper error: {str(e)}"
+
+            if account_bank and not (3 <= len(account_bank) <= 6):
+                mapping_error = f"bank_code numeric but invalid length ({len(account_bank)})"
+                account_bank = None
+
+        except Exception as e:
+            account_bank = None
+            mapping_error = f"Normalization error: {str(e)}"
+
+        if not account_bank and "test" in flw_key.lower():
+            account_bank = "044"
+            mapping_error = None
+
+        try:
+            print("🧾 resolve-account inputs -> account_number:", account_number,
+                  "bank_code_raw:", repr(bank_code), "bank_code_clean:", account_bank, flush=True)
+        except Exception:
+            pass
+
+        if not account_bank:
+            return jsonify({
+                "status": "error",
+                "message": "Could not determine Flutterwave numeric bank code",
+                "details": mapping_error
+            }), 400
+
+        try:
+            flw_url = "https://api.flutterwave.com/v3/accounts/resolve"
+            payload = {"account_number": account_number, "account_bank": account_bank}
+            headers = {
+                "Authorization": f"Bearer {flw_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "PayMe/1.0"
+            }
+
+            flw_res = requests.post(flw_url, headers=headers, json=payload, timeout=12)
+            flw_status = flw_res.status_code
+            flw_json, flw_preview = try_parse_json(flw_res)
+
+            print("Flutterwave resolve status:", flw_status, flush=True)
+            print("Flutterwave resolve preview:", (flw_res.text or "")[:1200], flush=True)
+
+            if flw_json and (flw_json.get("status") == "success" or str(flw_status).startswith("2")):
+                acct_name = None
+                if isinstance(flw_json.get("data"), dict):
+                    acct_name = flw_json["data"].get("account_name") or flw_json["data"].get("accountName") or flw_json["data"].get("accountname")
+                if not acct_name:
+                    acct_name = flw_json.get("account_name") or (flw_json.get("data") or {}).get("account_name")
+
+                if acct_name:
+                    return jsonify({
+                        "status": "success",
+                        "provider": "flutterwave",
+                        "account_name": acct_name,
+                        "account_number": account_number,
+                        "bank_code": account_bank,
+                        "raw": flw_json
+                    }), 200
+
+                return jsonify({
+                    "status": "error",
+                    "provider": "flutterwave",
+                    "message": "Flutterwave returned success but no account_name",
+                    "raw": flw_json
+                }), 400
+
+            if flw_json:
+                msg = flw_json.get("message") or flw_json.get("error") or "Flutterwave unresolved"
+            else:
+                msg = "Flutterwave did not return valid JSON"
+            helper_unavail_texts = [
+                "No helper available",
+                "bank_code not numeric",
+                "Could not determine Flutterwave numeric bank code",
+                "No route to resolve"
+            ]
+            helper_issue = False
+            if isinstance(msg, str):
+                for token in helper_unavail_texts:
+                    if token.lower() in msg.lower():
+                        helper_issue = True
+                        break
+
+            if helper_issue:
+                return jsonify({
+                    "status": "warning",
+                    "provider": "flutterwave",
+                    "message": "Name lookup not available for this bank via Flutterwave. Proceed with caution.",
+                    "can_proceed": True,
+                    "bank_code": account_bank,
+                    "raw": flw_json if flw_json is not None else flw_preview
+                }), 200
+
+            return jsonify({
+                "status": "error",
+                "provider": "flutterwave",
+                "message": msg,
+                "raw": flw_json if flw_json is not None else flw_preview
+            }), flw_status if isinstance(flw_status, int) and flw_status >= 400 else 400
+
+        except requests.exceptions.RequestException as e:
+            print("Flutterwave request exception:", str(e), flush=True)
+            return jsonify({"status": "error", "message": f"Network error contacting Flutterwave: {str(e)}"}), 502
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
+
+# -------------------------------------------------
+# Savings
+# -------------------------------------------------
+INTEREST_RATE = 0.20  # 20% annual simple interest
+
+def _calc_interest(amount: float, days: int) -> float:
+    if days <= 0:
+        return 0.0
+    return amount * INTEREST_RATE * (days / 365.0)
+
+def _sweep_matured_savings_for_user(conn, user_id: int):
+    cur = conn.cursor()
+    now = datetime.now()
+
+    if DATABASE_URL:
+        sql = """
+            SELECT id, amount, type, start_date, duration_days, end_date
+            FROM savings
+            WHERE user_id = ? AND status = 'active' AND CAST(end_date AS timestamp) <= ?
+        """
+    else:
+        sql = """
+            SELECT id, amount, type, start_date, duration_days, end_date
+            FROM savings
+            WHERE user_id = ? AND status = 'active' AND datetime(end_date) <= ?
+        """
+
+    cur.execute(sql, (user_id, now.isoformat()))
+    matured = cur.fetchall()
+
+    for s in matured:
+        amount = float(s["amount"])
+        duration_days = int(s["duration_days"])
+        interest = _calc_interest(amount, duration_days)
+        payout = amount + interest
+
+        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (s["id"],))
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (payout, user_id))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Savings Maturity", payout, "System", datetime.now().isoformat()),
+        )
+
+    return len(matured)
+
+@app.route("/savings/create", methods=["POST"])
+def savings_create():
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    phone = data.get("phone")
+    amount = data.get("amount")
+    savings_type = str(data.get("savings_type", "")).strip().lower()
+    duration_days = int(data.get("duration_days", 0))
+
+    if not (user_id or phone):
+        return jsonify({"status": "error", "message": "user_id or phone required"}), 400
+    try:
+        if not amount or float(amount) <= 0:
+            return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid amount"}), 400
+    if savings_type not in ("flexible", "fixed"):
+        return jsonify({"status": "error", "message": "savings_type must be 'flexible' or 'fixed'"}), 400
+    if duration_days <= 0:
+        return jsonify({"status": "error", "message": "duration_days must be > 0"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        if user_id:
+            cur.execute("SELECT id, balance FROM users WHERE id = ?", (user_id,))
+        else:
+            cur.execute("SELECT id, balance FROM users WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        user_id = row["id"]
+        balance = float(row["balance"])
+        if balance < float(amount):
+            return jsonify({"status": "error", "message": "Insufficient balance"}), 400
+
+        start = datetime.now()
+        end = start + timedelta(days=duration_days)
+
+        cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, user_id))
+        cur.execute(
+            """
+            INSERT INTO savings (user_id, amount, type, start_date, duration_days, end_date, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'active')
+            """,
+            (user_id, amount, savings_type, start.isoformat(), duration_days, end.isoformat()),
+        )
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Savings Start", amount, savings_type, datetime.now().isoformat()),
+        )
+
+    return jsonify({"status": "success", "message": f"₦{amount} saved for {duration_days} days"}), 200
+
+@app.route("/savings/list/<int:user_id>", methods=["GET"])
+def savings_list(user_id: int):
+    with get_conn() as conn:
+        _sweep_matured_savings_for_user(conn, user_id)
+
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, amount, type, start_date, duration_days, end_date, status
+            FROM savings
+            WHERE user_id = ?
+            ORDER BY id DESC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    savings = []
+    now = datetime.now()
+
+    for r in rows:
+        savings.append({
+            "id": r["id"],
+            "amount": r["amount"],
+            "savings_type": r["type"],
+            "start_date": r["start_date"],
+            "end_date": r["end_date"],
+            "duration_days": r["duration_days"],
+            "status": r["status"],
+            "can_withdraw": (
+                r["status"] == "active" and (
+                    r["type"] == "flexible" or 
+                    (r["type"] == "fixed" and datetime.fromisoformat(r["end_date"]) <= now)
+                )
+            )
+        })
+
+    return jsonify({"status": "success", "savings": savings}), 200
+@app.route("/savings/withdraw", methods=["POST"])
+def savings_withdraw():
+    data, err, code = json_required(["user_id", "savings_id"])
+    if err:
+        return err, code
+
+    try:
+        user_id = int(data["user_id"])
+        savings_id = int(data["savings_id"])
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid payload"}), 400
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, amount, type, start_date, duration_days, end_date, status "
+            "FROM savings WHERE id = ? AND user_id = ?",
+            (savings_id, user_id),
+        )
+        s = cur.fetchone()
+
+        if not s:
+            return jsonify({"status": "error", "message": "Savings not found"}), 404
+        if s["status"] != "active":
+            return jsonify({"status": "error", "message": "Already withdrawn"}), 400
+
+        amount = float(s["amount"])
+        start = datetime.fromisoformat(s["start_date"])
+        end = datetime.fromisoformat(s["end_date"])
+        now = datetime.now()
+        payout = amount
+
+        if s["type"] == "flexible":
+            if now >= end:
+                interest = _calc_interest(amount, s["duration_days"])
+                payout += interest
+        elif s["type"] == "fixed":
+            if now < end:
+                return jsonify({"status": "error", "message": "Fixed savings cannot be withdrawn before maturity"}), 400
+            interest = _calc_interest(amount, s["duration_days"])
+            payout += interest
+        else:
+            return jsonify({"status": "error", "message": "Invalid savings type"}), 400
+
+        cur.execute("UPDATE savings SET status = 'withdrawn' WHERE id = ?", (s["id"],))
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (payout, user_id))
+        cur.execute(
+            "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "Savings Withdraw", payout, s["type"], datetime.now().isoformat()),
+        )
+
+    return jsonify({"status": "success", "message": f"₦{payout} credited to main balance"}), 200
+
+# -------------------------------------------------
+# Airtime
+# -------------------------------------------------
+@app.route("/buy_airtime", methods=["POST"])
+def buy_airtime():
+    data, err, code = json_required(["phone", "network", "amount", "recipient"])
+    if err:
+        return err, code
+
+    phone = str(data["phone"]).strip()
+    network = str(data["network"]).strip()
+    recipient = str(data["recipient"]).strip()
+    try:
+        amount = float(data["amount"])
+    except Exception:
+        return jsonify({"status": "error", "message": "amount must be a number"}), 400
+
+    if amount <= 0:
+        return jsonify({"status": "error", "message": "Amount must be > 0"}), 400
+
+    fee = int(math.ceil(amount * 0.01))
+    total = float(amount + fee)
+    now_iso = datetime.now().isoformat()
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, balance FROM users WHERE phone = ?", (phone,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        user_id = user["id"]
+        balance = float(user["balance"])
+        if balance < total:
+            return jsonify({"status": "error", "message": "Insufficient balance", "balance": balance}), 400
+
+        cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (total, user_id))
+        other_party = f"airtime|network:{network}|to:{recipient}|fee:{fee}|value:{amount}"
+
+        if DATABASE_URL:
+            cur.execute(
+                "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
+                (user_id, "Airtime", total, other_party, now_iso),
+            )
+            row = cur.fetchone()
+            txn_id = row["id"] if row and "id" in row else None
+        else:
+            cur.execute(
+                "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
+                (user_id, "Airtime", total, other_party, now_iso),
+            )
+            txn_id = cur.lastrowid
+
+        cur.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+        newbal = cur.fetchone()
+        new_balance = float(newbal["balance"]) if newbal else None
+
+    txn = {
+        "id": txn_id,
+        "type": "Airtime",
+        "network": network,
+        "recipient": recipient,
+        "amount": amount,
+        "fee": fee,
+        "total": total,
+        "date": now_iso,
+        "status": "success",
+    }
+
+    return jsonify({"status": "success", "message": "Airtime purchased", "balance": new_balance, "transaction": txn}), 200
+
+# -------------------------------------------------
+# ----------------- BEGIN: towallet endpoints -----------------
+# -------------------------------------------------
+@app.route("/towallet/balance/<phone>", methods=["GET"])
+def towallet_balance(phone):
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT balance FROM users WHERE phone = ?", (phone,))
+            row = cur.fetchone()
+        bal = float(row["balance"]) if row else 0.0
+        return jsonify({"status":"success","balance": bal}), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status":"error","message": str(e)}), 500
+
+@app.route("/towallet/transactions/<phone>", methods=["GET"])
+def towallet_transactions(phone):
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT t.id, t.type, t.amount, t.other_party, t.date "
+                "FROM transactions t JOIN users u ON t.user_id = u.id WHERE u.phone = ? ORDER BY t.id DESC",
+                (phone,)
+            )
+            rows = cur.fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                "id": r["id"],
+                "type": r["type"],
+                "amount": r["amount"],
+                "other_party": r["other_party"],
+                "date": r["date"]
+            })
+        return jsonify({"status":"success","transactions": out}), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status":"error","message": str(e)}), 500
