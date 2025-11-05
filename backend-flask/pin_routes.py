@@ -1,255 +1,322 @@
 # pin_routes.py
 from flask import Blueprint, request, jsonify, session, g
+from utils import get_conn, hash_pin, check_pin, now_iso
+from models import init_tables
 from datetime import datetime, timedelta
-import random, traceback
+import random
+import traceback
+import os
 
-from models import DB, User, PinAudit, PinCode
-from utils import (
-    PIN_LENGTH,
-    CODE_TTL_SECONDS,
-    hash_pin,
-    verify_pin_hash,
-    is_locked,
-    register_failed_attempt,
-    reset_attempts_and_unlock,
-    LOCK_DURATION,
-    LOCK_THRESHOLD,
-)
-
-# Try to import JWT helpers if the main app enabled flask_jwt_extended.
-# If not available, fallback is session-based auth.
-try:
-    from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
-    _HAS_JWT = True
-except Exception:
-    _HAS_JWT = False
+# jwt helpers (works only if your app initialized flask_jwt_extended.JWTManager)
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 
 bp = Blueprint("pin_routes", __name__, url_prefix="/api/pin")
 
+# TTL for 6-digit codes (seconds)
+CODE_TTL_SECONDS = int(os.environ.get("PIN_CODE_TTL", 10 * 60))
 
-# -----------------------
-# Auth helper (local)
-# -----------------------
-def _get_user_from_auth():
+# Ensure tables exist (safe no-op if already created)
+try:
+    init_tables()
+except Exception:
+    pass
+
+
+def login_required(view):
     """
-    Try to get a current user:
-      1) If JWT is available and a valid token present, use it (expects identity == user.id)
-      2) Fallback to session['user_id'] if present
-    Returns SQLAlchemy User instance or None.
+    Decorator that accepts either:
+     - Authorization: Bearer <JWT token> (preferred)
+     - session['user_id'] (legacy)
+    On success, stores user row in g.current_user (dict-like).
     """
-    user = None
-    # 1) JWT path
-    if _HAS_JWT:
+    from functools import wraps
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = None
+        # 1) try JWT
         try:
-            # verify_jwt_in_request will raise if token invalid; we want to catch and fallback
             verify_jwt_in_request(optional=True)
             identity = get_jwt_identity()
             if identity:
-                try:
-                    user = User.query.get(int(identity))
-                except Exception:
-                    user = None
+                # try to load user row by id
+                with get_conn() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT id, username, phone, account_number, balance FROM users WHERE id = ? LIMIT 1", (int(identity),))
+                    row = cur.fetchone()
+                    if row:
+                        # row may be dict-like (PG) or sqlite Row; normalize to dict
+                        if isinstance(row, dict):
+                            user = row
+                        else:
+                            # sqlite row: (id, username, phone, account_number, balance)
+                            user = {
+                                "id": row[0],
+                                "username": row[1],
+                                "phone": row[2],
+                                "account_number": row[3],
+                                "balance": row[4]
+                            }
         except Exception:
             user = None
 
-    # 2) Session fallback
-    if not user:
-        uid = session.get("user_id")
-        if uid:
+        # 2) fallback to session
+        if not user:
             try:
-                user = User.query.get(int(uid))
+                user_id = session.get("user_id")
+                if user_id:
+                    with get_conn() as conn:
+                        cur = conn.cursor()
+                        cur.execute("SELECT id, username, phone, account_number, balance FROM users WHERE id = ? LIMIT 1", (int(user_id),))
+                        row = cur.fetchone()
+                        if row:
+                            if isinstance(row, dict):
+                                user = row
+                            else:
+                                user = {
+                                    "id": row[0],
+                                    "username": row[1],
+                                    "phone": row[2],
+                                    "account_number": row[3],
+                                    "balance": row[4]
+                                }
             except Exception:
                 user = None
 
-    return user
-
-
-def login_required(fn):
-    """
-    Decorator that requires a logged-in user (jwt or session).
-    Sets g.current_user on success.
-    """
-    from functools import wraps
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        user = _get_user_from_auth()
         if not user:
             return jsonify({"success": False, "message": "User not logged in"}), 401
+
         g.current_user = user
-        return fn(*args, **kwargs)
-    return wrapper
+        return view(*args, **kwargs)
+    return wrapped
 
 
-# -----------------------
-# Dev / Test endpoint: request a 6-digit code (would be SMS in production)
-# POST body: { "account_number": "1234567890" }
-# Returns { success: true, code: "123456", expires_at: "ISO" } (dev only)
-# -----------------------
+# ---------------- Dev/testing: request a 6-digit code for account_number --------------
 @bp.route("/request-code", methods=["POST"])
-def request_code():
+def request_pin_code():
+    """
+    Dev/testing endpoint that generates a 6-digit code for an account number.
+    Body: { "account_number": "1234567890" }
+    NOTE: in production you would SMS/EMAIL the code instead of returning it.
+    """
+    data = request.get_json() or {}
+    acct = (data.get("account_number") or "").strip()
+    if not acct or not acct.isdigit() or len(acct) not in (10, 11):
+        return jsonify({"success": False, "message": "Invalid account_number"}), 400
+
+    code = f"{random.randint(0, 999999):06d}"
+    expires_at = (datetime.utcnow() + timedelta(seconds=CODE_TTL_SECONDS)).isoformat()
+
     try:
-        data = request.get_json() or {}
-        acct = (data.get("account_number") or "").strip()
-        if not acct or not acct.isdigit() or len(acct) not in (10, 11):
-            return jsonify({"success": False, "message": "Invalid account_number (expect 10 digits)"}), 400
-
-        # Generate 6-digit code
-        code = f"{random.randint(0, 999999):06d}"
-        expires_at = datetime.utcnow() + timedelta(seconds=CODE_TTL_SECONDS)
-
-        # Remove existing codes for this account (single active)
-        DB.session.query(PinCode).filter_by(account_number=acct).delete()
-        DB.session.add(PinCode(account_number=acct, code=code, expires_at=expires_at))
-        DB.session.commit()
-
-        # IMPORTANT: in production you would NOT return the code in the API response.
-        return jsonify({"success": True, "message": "Code generated", "code": code, "expires_at": expires_at.isoformat()}), 200
-
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # delete existing codes for account
+            cur.execute("DELETE FROM pin_codes WHERE account_number = ?", (acct,))
+            cur.execute("INSERT INTO pin_codes (account_number, code, expires_at) VALUES (?, ?, ?)", (acct, code, expires_at))
+        # Return code for dev/testing (do not do this in production)
+        return jsonify({"success": True, "message": "Code generated", "code": code, "expires_at": expires_at}), 200
     except Exception as e:
         traceback.print_exc()
-        DB.session.rollback()
+        return jsonify({"success": False, "message": "Failed to generate code"}), 500
+
+
+# ---------------- Status (auth-aware) ----------------
+@bp.route("/status", methods=["GET"])
+@login_required
+def api_pin_status():
+    """
+    Returns if the authenticated user has a PIN set and basic lock state.
+    Response:
+      { hasPin: bool, locked: false, lockedUntil: null, failedAttempts: 0 }
+    Note: we do not track per-user failedAttempts here beyond audit entries; extend if needed.
+    """
+    user = g.current_user
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM user_pins WHERE user_id = ? LIMIT 1", (user["id"],))
+            row = cur.fetchone()
+            has_pin = bool(row)
+        # Minimal lock info (expand if you track attempts)
+        return jsonify({
+            "hasPin": has_pin,
+            "locked": False,
+            "lockedUntil": None,
+            "failedAttempts": 0
+        })
+    except Exception:
+        traceback.print_exc()
         return jsonify({"success": False, "message": "Server error"}), 500
 
 
-# -----------------------
-# Associate a 4-digit PIN with an account using the 6-digit code (frontend flow)
-# POST body: { account_number: "1234567890", code: "123456", pin: "1234" }
-# -----------------------
-@bp.route("/associate", methods=["POST"])
-def associate():
+# ---------------- Setup PIN for authenticated user ----------------
+@bp.route("/setup", methods=["POST"])
+@login_required
+def setup_pin():
+    """
+    Body: { pin: "1234" }
+    Authenticated route (JWT or session). Stores hashed PIN in user_pins.
+    """
+    data = request.get_json() or {}
+    pin = (data.get("pin") or "").strip()
+    if not pin or not pin.isdigit() or len(pin) != 4:
+        return jsonify({"success": False, "message": "Invalid PIN"}), 400
+
+    user = g.current_user
+    hashed = hash_pin(pin)
+
     try:
-        data = request.get_json() or {}
-        account_number = (data.get("account_number") or "").strip()
-        code = (data.get("code") or "").strip()
-        pin = (data.get("pin") or "").strip()
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # check if existing
+            cur.execute("SELECT id FROM user_pins WHERE user_id = ? LIMIT 1", (user["id"],))
+            r = cur.fetchone()
+            if r:
+                cur.execute("UPDATE user_pins SET hashed_pin = ?, created_at = ? WHERE user_id = ?", (hashed, now_iso(), user["id"]))
+                event = "PIN_UPDATED"
+            else:
+                cur.execute("INSERT INTO user_pins (user_id, hashed_pin, created_at) VALUES (?, ?, ?)", (user["id"], hashed, now_iso()))
+                event = "PIN_CREATED"
+        # audit
+        try:
+            with get_conn() as conn2:
+                c2 = conn2.cursor()
+                c2.execute("INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                           (user["id"], event, f"'method':'setup'", now_iso()))
+        except Exception:
+            pass
 
-        # Basic validation
-        if not account_number or not account_number.isdigit() or len(account_number) not in (10, 11):
-            return jsonify({"success": False, "message": "Invalid account_number"}), 400
-        if not code or not code.isdigit() or len(code) != 6:
-            return jsonify({"success": False, "message": "Invalid code"}), 400
-        if not pin or not pin.isdigit() or len(pin) != PIN_LENGTH:
-            return jsonify({"success": False, "message": f"Invalid PIN (must be {PIN_LENGTH} digits)"}), 400
+        return jsonify({"success": True, "message": "PIN saved successfully"}), 200
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"success": False, "message": "Server error"}), 500
 
-        # Find user by account_number
-        user = User.query.filter_by(account_number=account_number).first()
-        if not user:
-            return jsonify({"success": False, "message": "Account not found"}), 404
 
-        # Find code row
-        code_row = DB.session.query(PinCode).filter_by(account_number=account_number, code=code).first()
-        if not code_row:
-            return jsonify({"success": False, "message": "Invalid or expired code"}), 400
+# ---------------- Associate PIN via account_number + code ----------------
+@bp.route("/associate", methods=["POST"])
+def pin_associate():
+    """
+    Frontend uses this flow:
+      - user creates 4-digit PIN locally
+      - frontend requests backend to associate PIN with account by sending:
+            { account_number: "1234567890", code: "123456", pin: "1234" }
+    This endpoint:
+      - validates account exists
+      - checks that pin_codes row exists and not expired
+      - inserts hashed PIN into user_pins for that user_id (single-use)
+      - removes used code from pin_codes
+    """
+    data = request.get_json() or {}
+    account_number = (data.get("account_number") or "").strip()
+    code = (data.get("code") or "").strip()
+    pin = (data.get("pin") or "").strip()
 
-        # Check expiration
-        if code_row.expires_at < datetime.utcnow():
-            DB.session.delete(code_row)
-            DB.session.commit()
-            return jsonify({"success": False, "message": "Code expired"}), 400
+    if not account_number or not account_number.isdigit() or len(account_number) not in (10, 11):
+        return jsonify({"success": False, "message": "Invalid account_number"}), 400
+    if not code or not code.isdigit() or len(code) != 6:
+        return jsonify({"success": False, "message": "Invalid code"}), 400
+    if not pin or not pin.isdigit() or len(pin) != 4:
+        return jsonify({"success": False, "message": "Invalid PIN"}), 400
 
-        # All good -> consume code and set hashed PIN on user
-        DB.session.delete(code_row)
-        user.payment_pin = hash_pin(pin)
-        user.failed_attempts = 0
-        user.locked_until = None
-        DB.session.add(user)
-        DB.session.add(PinAudit(user_id=user.id, event_type="PIN_SETUP", meta={"method": "associate"}))
-        DB.session.commit()
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # find user by account_number
+            cur.execute("SELECT id FROM users WHERE account_number = ? LIMIT 1", (account_number,))
+            urow = cur.fetchone()
+            if not urow:
+                return jsonify({"success": False, "message": "Account not found"}), 404
+            user_id = urow["id"] if isinstance(urow, dict) else urow[0]
 
+            # find matching code
+            cur.execute("SELECT id, code, expires_at FROM pin_codes WHERE account_number = ? AND code = ? LIMIT 1", (account_number, code))
+            crow = cur.fetchone()
+            if not crow:
+                return jsonify({"success": False, "message": "Invalid or expired code"}), 400
+
+            # parse expiry
+            expires_at = crow["expires_at"] if isinstance(crow, dict) else crow[2]
+            try:
+                from datetime import datetime
+                exp_dt = datetime.fromisoformat(expires_at) if isinstance(expires_at, str) else expires_at
+            except Exception:
+                exp_dt = datetime.utcnow() - timedelta(seconds=1)
+            if exp_dt < datetime.utcnow():
+                # remove expired
+                code_id = crow["id"] if isinstance(crow, dict) else crow[0]
+                cur.execute("DELETE FROM pin_codes WHERE id = ?", (code_id,))
+                return jsonify({"success": False, "message": "Code expired"}), 400
+
+            # delete used code (single use)
+            code_id = crow["id"] if isinstance(crow, dict) else crow[0]
+            cur.execute("DELETE FROM pin_codes WHERE id = ?", (code_id,))
+
+        # update user_pins (use a new conn so commit separate)
+        hashed = hash_pin(pin)
+        with get_conn() as conn2:
+            c2 = conn2.cursor()
+            c2.execute("SELECT id FROM user_pins WHERE user_id = ? LIMIT 1", (user_id,))
+            existing = c2.fetchone()
+            if existing:
+                c2.execute("UPDATE user_pins SET hashed_pin = ?, created_at = ? WHERE user_id = ?", (hashed, now_iso(), user_id))
+            else:
+                c2.execute("INSERT INTO user_pins (user_id, hashed_pin, created_at) VALUES (?, ?, ?)", (user_id, hashed, now_iso()))
+            # audit
+            c2.execute("INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                       (user_id, "PIN_ASSOCIATE", f"account:{account_number}", now_iso()))
         return jsonify({"success": True, "message": "PIN attached to account successfully"}), 200
 
     except Exception:
         traceback.print_exc()
-        DB.session.rollback()
         return jsonify({"success": False, "message": "Server error"}), 500
 
 
-# -----------------------
-# PIN status for the current user (auth required)
-# GET => { hasPin, locked, lockedUntil, failedAttempts }
-# -----------------------
-@bp.route("/status", methods=["GET"])
-@login_required
-def status():
-    user = g.current_user
-    locked, until = is_locked(user)
-    return jsonify({
-        "hasPin": bool(user.payment_pin),
-        "locked": locked,
-        "lockedUntil": until.isoformat() if until else None,
-        "failedAttempts": user.failed_attempts or 0
-    }), 200
-
-
-# -----------------------
-# Setup PIN for logged-in user (auth required)
-# POST body: { pin: "1234" }
-# -----------------------
-@bp.route("/setup", methods=["POST"])
-@login_required
-def setup_pin():
-    try:
-        data = request.get_json() or {}
-        pin = (data.get("pin") or "").strip()
-        if not pin or not pin.isdigit() or len(pin) != PIN_LENGTH:
-            return jsonify({"success": False, "message": f"Invalid PIN (must be {PIN_LENGTH} digits)"}), 400
-
-        user = g.current_user
-        user.payment_pin = hash_pin(pin)
-        user.failed_attempts = 0
-        user.locked_until = None
-        DB.session.add(user)
-        DB.session.add(PinAudit(user_id=user.id, event_type="PIN_SETUP", meta={"method": "setup"}))
-        DB.session.commit()
-
-        return jsonify({"success": True, "message": "PIN saved successfully"}), 200
-
-    except Exception:
-        traceback.print_exc()
-        DB.session.rollback()
-        return jsonify({"success": False, "message": "Server error"}), 500
-
-
-# -----------------------
-# Verify a PIN for an account (used before a transaction)
-# POST body: { account_number: "...", pin: "1234" }
-# Response: success true/false + messages
-# -----------------------
+# ---------------- Verify PIN for transaction ----------------
 @bp.route("/verify", methods=["POST"])
-def verify_pin():
+def verify_pin_for_tx():
+    """
+    Body: { account_number: '1234567890', pin: '1234' }
+    Returns success true/false. This endpoint is stateless (no login required)
+    so your frontend (or your main backend) can call this before performing money movement.
+    """
+    data = request.get_json() or {}
+    account_number = (data.get("account_number") or "").strip()
+    pin = (data.get("pin") or "").strip()
+    if not account_number or not account_number.isdigit() or not pin or not pin.isdigit():
+        return jsonify({"success": False, "message": "Invalid input"}), 400
+
     try:
-        data = request.get_json() or {}
-        account_number = (data.get("account_number") or "").strip()
-        pin = (data.get("pin") or "").strip()
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT up.hashed_pin, u.id
+                FROM users u
+                JOIN user_pins up ON up.user_id = u.id
+                WHERE u.account_number = ?
+                LIMIT 1
+            """, (account_number,))
+            row = cur.fetchone()
 
-        if not account_number or not pin:
-            return jsonify({"success": False, "message": "account_number and pin are required"}), 400
+        if not row:
+            return jsonify({"success": False, "message": "PIN not set for this account"}), 404
 
-        user = User.query.filter_by(account_number=account_number).first()
-        if not user:
-            return jsonify({"success": False, "message": "Account not found"}), 404
+        if isinstance(row, dict):
+            hashed = row.get("hashed_pin")
+            user_id = row.get("id")
+        else:
+            hashed = row[0]
+            user_id = row[1]
 
-        # locked?
-        locked, until = is_locked(user)
-        if locked:
-            return jsonify({"success": False, "message": "Account locked", "lockedUntil": until.isoformat()}), 403
-
-        # verify hashed pin
-        ok = verify_pin_hash(user.payment_pin or "", pin)
+        ok = check_pin(pin, hashed)
+        # audit
+        with get_conn() as conn2:
+            c2 = conn2.cursor()
+            c2.execute("INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                        (user_id, "PIN_VERIFY_SUCCESS" if ok else "PIN_VERIFY_FAIL", f"account:{account_number}", now_iso()))
         if ok:
-            # reset attempts on success
-            reset_attempts_and_unlock(user, DB)
-            DB.session.add(PinAudit(user_id=user.id, event_type="PIN_VERIFY_SUCCESS", meta=None))
-            DB.session.commit()
             return jsonify({"success": True, "message": "PIN verified"}), 200
         else:
-            # register failed attempt and maybe lock
-            register_failed_attempt(user, DB)
-            DB.session.add(PinAudit(user_id=user.id, event_type="PIN_VERIFY_FAIL", meta=None))
-            DB.session.commit()
-            return jsonify({"success": False, "message": "Incorrect PIN"}), 401
+            return jsonify({"success": False, "message": "Invalid PIN"}), 401
 
     except Exception:
         traceback.print_exc()
-        DB.session.rollback()
         return jsonify({"success": False, "message": "Server error"}), 500
