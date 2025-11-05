@@ -1148,7 +1148,7 @@ def towallet_send_money():
                         cur.execute(
                             "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
                             (recv_id, "Transfer In", amount, sender_phone, _now_iso())
-                        )
+                         )
                         tid_in = cur.lastrowid
                     meta.update({
                         "internal": True,
@@ -1157,21 +1157,20 @@ def towallet_send_money():
                         "recipient_phone": recv_phone,
                         "transaction_in_id": tid_in
                     })
-  
-else:
-                meta.update({"external": True, "recipient_found": False})
+                else:
+                    meta.update({"external": True, "recipient_found": False})
 
-            # ✅ fetch the new sender balance after transfer
-            cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
-            newbal_row = cur.fetchone()
-            new_bal = float(newbal_row["balance"]) if newbal_row else None
-            meta["sender_balance"] = new_bal
+                # ✅ fetch the new sender balance after transfer
+                cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
+                newbal_row = cur.fetchone()
+                new_bal = float(newbal_row["balance"]) if newbal_row else None
+                meta["sender_balance"] = new_bal
 
-            return jsonify({
-                "status": "success",
-                "message": f"Transfer of ₦{amount} processed",
-                "meta": meta
-            }), 200
+                return jsonify({
+                    "status": "success",
+                    "message": f"Transfer of ₦{amount} processed",
+                    "meta": meta
+                }), 200
 
     except Exception as e:
         traceback.print_exc()
