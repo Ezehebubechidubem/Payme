@@ -11,9 +11,7 @@ import time
 # ----------------- BEGIN: towallet endpoints (paste into app.py) -----------------
 import uuid
 
-# app.py (near bottom, after DB.create_all() and init_db() already run)
-from pin_routes import bp as pin_bp
-app.register_blueprint(pin_bp)
+
 
 
 from services.flutterwave_service import FlutterwaveService
@@ -229,6 +227,9 @@ def init_db():
 # Helper: safe now iso
 def _now_iso():
     return datetime.now().isoformat()
+# app.py (near bottom, after DB.create_all() and init_db() already run)
+from pin_routes import bp as pin_bp
+app.register_blueprint(pin_bp)
 
 # -------------------------------------------------
 # Utilities
