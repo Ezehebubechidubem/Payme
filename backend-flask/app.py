@@ -1160,17 +1160,26 @@ def towallet_send_money():
                 else:
                     meta.update({"internal": True, "recipient_found": False, "note":"internal code but no local recipient; money treated external"})
             else:
-                meta.update({"external": True, "recipient_found": False})
-cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
-            newbal_row = cur.fetchone()
-            new_bal = float(newbal_row["balance"]) if newbal_row else None
-            meta["sender_balance"] = new_bal
+                        meta.update({"external": True, "recipient_found": False})
 
-        return jsonify({"status":"success","message": f"Transfer of ₦{amount} processed", "meta": meta}), 200
+                # ✅ FIX STARTS HERE — properly indented inside the try block
+                cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
+                newbal_row = cur.fetchone()
+                new_bal = float(newbal_row["balance"]) if newbal_row else None
+                meta["sender_balance"] = new_bal
 
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status":"error","message": f"Internal error: {str(e)}"}), 500
+                return jsonify({
+                    "status": "success",
+                    "message": f"Transfer of ₦{amount} processed",
+                    "meta": meta
+                }), 200
+
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({
+                "status": "error",
+                "message": f"Internal error: {str(e)}"
+            }), 500
 
 # -------------------------------------------------
 # Startup
