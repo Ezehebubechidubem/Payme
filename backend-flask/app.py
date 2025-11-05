@@ -1092,33 +1092,39 @@ def towallet_resolve_account():
 def towallet_send_money():
     try:
         data = request.get_json(silent=True) or {}
-        sender_phone = str(data.get("sender_phone","")).strip()
-        receiver_acc = str(data.get("receiver_acc","")).strip()
-        receiver_bank = str(data.get("receiver_bank","")).strip()
+        sender_phone = str(data.get("sender_phone", "")).strip()
+        receiver_acc = str(data.get("receiver_acc", "")).strip()
+        receiver_bank = str(data.get("receiver_bank", "")).strip()
+
         try:
             amount = float(data.get("amount", 0) or 0)
         except Exception:
-            return jsonify({"status":"error","message":"Invalid amount"}), 400
+            return jsonify({"status": "error", "message": "Invalid amount"}), 400
 
         if not sender_phone:
-            return jsonify({"status":"error","message":"Missing sender_phone"}), 400
+            return jsonify({"status": "error", "message": "Missing sender_phone"}), 400
         if not (receiver_acc.isdigit() and len(receiver_acc) == 10):
-            return jsonify({"status":"error","message":"Invalid receiver_acc"}), 400
+            return jsonify({"status": "error", "message": "Invalid receiver_acc"}), 400
         if amount <= 0:
-            return jsonify({"status":"error","message":"Invalid amount"}), 400
+            return jsonify({"status": "error", "message": "Invalid amount"}), 400
 
         with get_conn() as conn:
             cur = conn.cursor()
+
+            # ✅ Fetch sender
             cur.execute("SELECT id, balance, account_number FROM users WHERE phone = ?", (sender_phone,))
             srow = cur.fetchone()
             if not srow:
-                return jsonify({"status":"error","message":"Sender not found"}), 404
+                return jsonify({"status": "error", "message": "Sender not found"}), 404
+
             sender_id = srow["id"]
             sender_bal = float(srow["balance"])
             if sender_bal < amount:
-                return jsonify({"status":"error","message":"Insufficient funds"}), 400
+                return jsonify({"status": "error", "message": "Insufficient funds"}), 400
 
+            # ✅ Deduct from sender
             cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, sender_id))
+
             if DATABASE_URL:
                 cur.execute(
                     "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
@@ -1135,6 +1141,7 @@ def towallet_send_money():
 
             meta = {"transaction_out_id": tid_out}
 
+            # ✅ If internal transfer
             if receiver_bank == "00023":
                 cur.execute("SELECT id, phone, balance FROM users WHERE account_number = ?", (receiver_acc,))
                 rrow = cur.fetchone()
@@ -1142,6 +1149,8 @@ def towallet_send_money():
                     recv_id = rrow["id"]
                     recv_phone = rrow["phone"]
                     cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, recv_id))
+
+                    # record incoming transaction
                     if DATABASE_URL:
                         cur.execute(
                             "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
@@ -1153,8 +1162,9 @@ def towallet_send_money():
                         cur.execute(
                             "INSERT INTO transactions (user_id, type, amount, other_party, date) VALUES (?, ?, ?, ?, ?)",
                             (recv_id, "Transfer In", amount, sender_phone, _now_iso())
-                         )
+                        )
                         tid_in = cur.lastrowid
+
                     meta.update({
                         "internal": True,
                         "recipient_found": True,
@@ -1163,19 +1173,25 @@ def towallet_send_money():
                         "transaction_in_id": tid_in
                     })
                 else:
-                    meta.update({"external": True, "recipient_found": False})
+                    meta.update({"internal": True, "recipient_found": False})
 
-                # ✅ fetch the new sender balance after transfer
-                cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
-                newbal_row = cur.fetchone()
-                new_bal = float(newbal_row["balance"]) if newbal_row else None
-                meta["sender_balance"] = new_bal
+            else:
+                # External transfer
+                meta.update({"external": True, "recipient_found": False})
 
-                return jsonify({
-                    "status": "success",
-                    "message": f"Transfer of ₦{amount} processed",
-                    "meta": meta
-                }), 200
+            # ✅ fetch updated sender balance always
+            cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
+            newbal_row = cur.fetchone()
+            new_bal = float(newbal_row["balance"]) if newbal_row else sender_bal
+            meta["sender_balance"] = new_bal
+
+            conn.commit()
+
+            return jsonify({
+                "status": "success",
+                "message": f"Transfer of ₦{amount} processed",
+                "meta": meta
+            }), 200
 
     except Exception as e:
         traceback.print_exc()
