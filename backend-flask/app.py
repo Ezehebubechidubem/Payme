@@ -6,6 +6,7 @@ import sqlite3
 import requests
 import math
 import time
+import uuid
 from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, make_response, session
@@ -19,6 +20,10 @@ except Exception:
 
 # security helpers
 from werkzeug.security import generate_password_hash, check_password_hash
+
+# Helper: safe now iso
+def _now_iso():
+    return datetime.now().isoformat()
 
 # -------------------------------------------------
 # Create single Flask app and configure CORS
