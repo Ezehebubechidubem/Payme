@@ -1159,7 +1159,7 @@ def towallet_send_money():
                     })
   
 else:
-      meta.update({"external": True, "recipient_found": False})
+                meta.update({"external": True, "recipient_found": False})
 
             # ✅ fetch the new sender balance after transfer
             cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
