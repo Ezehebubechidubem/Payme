@@ -1157,12 +1157,10 @@ def towallet_send_money():
                         "recipient_phone": recv_phone,
                         "transaction_in_id": tid_in
                     })
-                else:
-                    meta.update({"internal": True, "recipient_found": False, "note":"internal code but no local recipient; money treated external"})
-            else:
-                        meta.update({"external": True, "recipient_found": False})
+  else:
+                    meta.update({"external": True, "recipient_found": False})
 
-                # ✅ FIX STARTS HERE — properly indented inside the try block
+                # ✅ Make sure all of this is inside the same indentation level as "meta.update"
                 cur.execute("SELECT balance FROM users WHERE id = ?", (sender_id,))
                 newbal_row = cur.fetchone()
                 new_bal = float(newbal_row["balance"]) if newbal_row else None
@@ -1174,12 +1172,12 @@ def towallet_send_money():
                     "meta": meta
                 }), 200
 
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({
-                "status": "error",
-                "message": f"Internal error: {str(e)}"
-            }), 500
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({
+            "status": "error",
+            "message": f"Internal error: {str(e)}"
+        }), 500
 
 # -------------------------------------------------
 # Startup
