@@ -402,4 +402,51 @@ confirmBtn.addEventListener('click', async () => {
     return;
   }
 
-  // close confirm and redirect to Mainauthentication 
+  // close confirm and redirect to Mainauthentication where user enters PIN
+  confirmOverlay.classList.remove('show');
+  window.location.href = 'Mainauthentication.html';
+});
+
+/* success/error modals handlers */
+const successModal = document.getElementById('successModal');
+const viewTxBtn = document.getElementById('viewTxBtn');
+const doneBtn = document.getElementById('doneBtn');
+
+document.getElementById('errorOk').addEventListener('click', hideError);
+document.getElementById('errorModal').addEventListener('click', (e)=> { if(e.target === document.getElementById('errorModal')) hideError(); });
+
+viewTxBtn.addEventListener('click', ()=> { hideSuccess(); window.location.href = 'transactions.html'; });
+doneBtn.addEventListener('click', ()=> { hideSuccess(); /* stay on page */ });
+
+function hideSuccess(){
+  successModal.classList.remove('show');
+  successModal.style.display = 'none';
+  successModal.setAttribute('aria-hidden','true');
+}
+
+/* close confirm with ESC */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'Escape') {
+    confirmOverlay.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    hideSuccess();
+    hideError();
+  }
+});
+
+/* success/error modal close wiring for click outside */
+document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
+document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
+
+/* small helper: setStoredUser (used above) */
+function setStoredUser(u) { try {
+  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
+  const ev = { type: "data_purchase", transaction_for: "data", ts: Date.now(), user: u };
+  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
+} catch(e){ console.error(e); }}
+
+/* init finished */
+</script>
+</body>
+</html>
+ 
