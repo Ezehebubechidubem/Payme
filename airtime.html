@@ -371,4 +371,87 @@ function showDetailedSuccess(payload){
   */
   try {
     const amt = Number(payload.amount) || 0;
-    successAmount.textContent = `₦${amt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFr
+    successAmount.textContent = `₦${amt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    successStatus.textContent = payload.message || 'Successful';
+
+    // only show recipient number in the details (per request)
+    detailList.innerHTML = '';
+    const recipientValue = payload.recipient || payload.phone || '-';
+    const div = document.createElement('div');
+    div.className = 'detail-item';
+    div.innerHTML = `<div class="detail-label">Recipient</div><div class="detail-value">${recipientValue}</div>`;
+    detailList.appendChild(div);
+
+    // Show modal
+    successModal.classList.add('show');
+    successModal.style.display = 'flex';
+    successModal.setAttribute('aria-hidden','false');
+    doneBtn.focus();
+  } catch(e){
+    console.error('showDetailedSuccess error', e);
+  }
+}
+function hideDetailedSuccess(){
+  successModal.classList.remove('show');
+  successModal.style.display = 'none';
+  successModal.setAttribute('aria-hidden','true');
+}
+
+/* Confirm -> NEW FLOW:
+   create pending_tx in sessionStorage and redirect to Mainauthentication.html
+*/
+confirmBtn.addEventListener('click', async () => {
+  const recipient = confirmTo.textContent.trim();
+  const amountText = confirmAmount.textContent.replace(/[^0-9.]/g,'');
+  const amount = Number(amountText) || (Number(selectedAmount) || Number(customAmount.value));
+  const fee = Math.ceil(amount * 0.01);
+  const total = amount + fee;
+  const network = confirmNetwork.textContent.trim();
+
+  const user = getStoredUser();
+  if (!user || !user.phone) {
+    showError('You must be logged in to make a purchase.');
+    return;
+  }
+
+  const pending = {
+    phone: user.phone,
+    recipient: recipient,
+    amount: amount,
+    fee: fee,
+    total: total,
+    network: network,
+    product: 'airtime',
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+  } catch(e) {
+    console.error('session storage failed', e);
+    showError('Unable to create pending transaction. Try again.');
+    return;
+  }
+
+  confirmOverlay.classList.remove('show');
+  window.location.href = 'Mainauthentication.html';
+});
+
+/* close confirm with ESC */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'Escape') {
+    confirmOverlay.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    hideDetailedSuccess();
+    hideError();
+  }
+});
+
+/* success/error modal close wiring for click outside */
+document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideDetailedSuccess(); });
+document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
+
+/* init finished */
+</script>
+</body>
+</html>
