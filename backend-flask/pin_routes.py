@@ -271,13 +271,16 @@ def pin_associate():
 
 
 # ---------------- Verify PIN for transaction ----------------
+# ---------------- Verify PIN for transaction ----------------
 @bp.route("/verify", methods=["POST"])
 def verify_pin_for_tx():
     """
     Body: { account_number: '1234567890', pin: '1234' }
-    Returns success true/false. This endpoint is stateless (no login required)
-    so your frontend (or your main backend) can call this before performing money movement.
+    Supports 10 max failed attempts; locks for 4 hours if exceeded.
     """
+    MAX_ATTEMPTS = 10
+    LOCK_HOURS = 4
+
     data = request.get_json() or {}
     account_number = (data.get("account_number") or "").strip()
     pin = (data.get("pin") or "").strip()
@@ -288,7 +291,7 @@ def verify_pin_for_tx():
         with get_conn() as conn:
             cur = conn.cursor()
             cur.execute("""
-                SELECT up.hashed_pin, u.id
+                SELECT u.id, up.hashed_pin, up.failed_attempts, up.locked_until
                 FROM users u
                 JOIN user_pins up ON up.user_id = u.id
                 WHERE u.account_number = ?
@@ -296,27 +299,66 @@ def verify_pin_for_tx():
             """, (account_number,))
             row = cur.fetchone()
 
-        if not row:
-            return jsonify({"success": False, "message": "PIN not set for this account"}), 404
+            if not row:
+                return jsonify({"success": False, "message": "PIN not set for this account"}), 404
 
-        if isinstance(row, dict):
-            hashed = row.get("hashed_pin")
-            user_id = row.get("id")
-        else:
-            hashed = row[0]
-            user_id = row[1]
+            # Normalize data
+            if isinstance(row, dict):
+                user_id = row["id"]
+                hashed = row["hashed_pin"]
+                failed = row.get("failed_attempts", 0) or 0
+                locked_until = row.get("locked_until")
+            else:
+                user_id, hashed, failed, locked_until = row[0], row[1], row[2] or 0, row[3]
 
-        ok = check_pin(pin, hashed)
-        # audit
-        with get_conn() as conn2:
-            c2 = conn2.cursor()
-            c2.execute("INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
-                        (user_id, "PIN_VERIFY_SUCCESS" if ok else "PIN_VERIFY_FAIL", f"account:{account_number}", now_iso()))
-        if ok:
-            return jsonify({"success": True, "message": "PIN verified"}), 200
-        else:
-            return jsonify({"success": False, "message": "Invalid PIN"}), 401
+            # Check if locked
+            if locked_until:
+                try:
+                    lock_time = datetime.fromisoformat(locked_until) if isinstance(locked_until, str) else locked_until
+                    if lock_time > datetime.utcnow():
+                        remain = lock_time - datetime.utcnow()
+                        mins = int(remain.total_seconds() // 60)
+                        return jsonify({
+                            "success": False,
+                            "message": f"Too many failed attempts. Try again in {mins} minutes."
+                        }), 403
+                except Exception:
+                    pass
 
-    except Exception:
+            ok = check_pin(pin, hashed)
+
+            if ok:
+                # Reset failed attempts
+                cur.execute("UPDATE user_pins SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?", (user_id,))
+                # Audit success
+                cur.execute(
+                    "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                    (user_id, "PIN_VERIFY_SUCCESS", f"account:{account_number}", now_iso())
+                )
+                conn.commit()
+                return jsonify({"success": True, "message": "PIN verified"}), 200
+
+            else:
+                failed += 1
+                locked_until_val = None
+                msg = "Invalid PIN"
+                if failed >= MAX_ATTEMPTS:
+                    locked_until_val = (datetime.utcnow() + timedelta(hours=LOCK_HOURS)).isoformat()
+                    msg = f"Too many failed attempts. Locked for {LOCK_HOURS} hours."
+
+                cur.execute(
+                    "UPDATE user_pins SET failed_attempts = ?, locked_until = ? WHERE user_id = ?",
+                    (failed, locked_until_val, user_id)
+                )
+                # Audit fail
+                cur.execute(
+                    "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                    (user_id, "PIN_VERIFY_FAIL", f"attempts:{failed}", now_iso())
+                )
+                conn.commit()
+
+                return jsonify({"success": False, "message": msg}), 401
+
+    except Exception as e:
         traceback.print_exc()
         return jsonify({"success": False, "message": "Server error"}), 500
