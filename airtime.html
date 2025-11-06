@@ -400,3 +400,16 @@ document.addEventListener('keydown', (e)=> {
 
 /* success/error modal close wiring for click outside */
 document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
+document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
+
+/* small helper: setStoredUser (used above) */
+function setStoredUser(u) { try {
+  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
+  const ev = { type: "airtime_purchase", transaction_for: "airtime", ts: Date.now(), user: u };
+  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
+} catch(e){ console.error(e); }}
+
+/* init finished */
+</script>
+</body>
+</html>
