@@ -402,4 +402,98 @@ payBtn.addEventListener('click', ()=>{
   const to = recipientInput.value.trim();
   if (!validPhone11(to)) return showError('Enter a valid 11-digit recipient phone');
   const amt = Number(selectedPrice || customAmount.value);
-  if (!amt || amt < 50) return showError('Enter a valid amoun
+    if (!amt || amt < 50) return showError('Enter a valid amount (minimum ₦50)');
+  const fee = Math.ceil(amt * 0.01);
+  const total = amt + fee;
+
+  confirmTitle.textContent = `Buy ${selectedNetwork.name} Data`;
+  confirmSub.textContent = 'Confirm before we proceed';
+  confirmPlan.textContent = selectedPlanLabel || 'Custom';
+  confirmAmount.textContent = `₦${Number(amt).toLocaleString()}`;
+  confirmFee.textContent = `₦${Number(fee).toLocaleString()}`;
+  confirmTotal.textContent = `₦${Number(total).toLocaleString()}`;
+  confirmTo.textContent = to;
+  confirmOverlay.classList.add('show');
+});
+
+cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
+
+/* Confirm -> create pending_tx and redirect to Mainauthentication.html for PIN */
+confirmBtn.addEventListener('click', async () => {
+  const recipient = confirmTo.textContent.trim();
+  const amount = Number((confirmAmount.textContent || '').replace(/[^0-9.]/g,'')) || Number(selectedPrice || customAmount.value);
+  const fee = Math.ceil(amount * 0.01);
+  const total = amount + fee;
+  const network = selectedNetwork.name;
+  const plan = selectedPlanLabel || 'Custom';
+
+  const user = getStoredUser();
+  if (!user || !user.phone) { showError('You must be logged in'); return; }
+
+  const pending = {
+    phone: user.phone,
+    recipient: recipient,
+    amount: amount,
+    fee: fee,
+    total: total,
+    network: network,
+    product: 'data',
+    data_plan: plan,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+  } catch(e){
+    console.error('session storage failed', e);
+    showError('Unable to create pending transaction. Try again.');
+    return;
+  }
+
+  // close confirm and redirect to Mainauthentication where user enters PIN
+  confirmOverlay.classList.remove('show');
+  window.location.href = 'Mainauthentication.html';
+});
+
+/* success/error modals handlers */
+const successModal = document.getElementById('successModal');
+const viewTxBtn = document.getElementById('viewTxBtn');
+const doneBtn = document.getElementById('doneBtn');
+
+document.getElementById('errorOk').addEventListener('click', hideError);
+document.getElementById('errorModal').addEventListener('click', (e)=> { if(e.target === document.getElementById('errorModal')) hideError(); });
+
+viewTxBtn.addEventListener('click', ()=> { hideSuccess(); window.location.href = 'transactions.html'; });
+doneBtn.addEventListener('click', ()=> { hideSuccess(); /* stay on page */ });
+
+function hideSuccess(){
+  successModal.classList.remove('show');
+  successModal.style.display = 'none';
+  successModal.setAttribute('aria-hidden','true');
+}
+
+/* close confirm with ESC */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'Escape') {
+    confirmOverlay.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    hideSuccess();
+    hideError();
+  }
+});
+
+/* success/error modal close wiring for click outside */
+document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
+document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
+
+/* small helper: setStoredUser (used above) */
+function setStoredUser(u) { try {
+  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
+  const ev = { type: "data_purchase", transaction_for: "data", ts: Date.now(), user: u };
+  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
+} catch(e){ console.error(e); }}
+
+/* init finished */
+</script>
+</body>
+</html>
