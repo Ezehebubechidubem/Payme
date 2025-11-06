@@ -1,4 +1,3 @@
-<!-- Mainauthentication.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -22,6 +21,7 @@
     .danger{color:var(--danger);margin-top:8px;text-align:center;display:none}
     .note{color:#666;font-size:13px;text-align:center;margin-top:8px}
     .hidden{display:none}
+    .key.disabled { opacity:0.6; pointer-events:none; }
   </style>
 </head>
 <body>
@@ -62,6 +62,9 @@
     const submitBtn = document.getElementById('submitBtn');
     const cancelBtn = document.getElementById('cancelBtn');
 
+    const LOCK_THRESHOLD = 3;               // 3 failed attempts
+    const LOCK_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
+
     function getStoredUser() {
       const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
       try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
@@ -75,6 +78,83 @@
     }
 
     let current = '';
+    let lockInfo = null;   // { failedAttempts, lockedUntilISO }
+    let lockKey = null;
+    let lockTimer = null;
+    let countdownInterval = null;
+
+    function getLockKeyForAccount(accountId){
+      // accountId: prefer account number, fallback to phone if needed
+      return `pin_lock_${accountId || 'anonymous'}`;
+    }
+    function loadLockInfo(){
+      try {
+        const raw = localStorage.getItem(lockKey);
+        if (!raw) return { failedAttempts: 0, lockedUntil: null };
+        const parsed = JSON.parse(raw);
+        // normalize
+        return { failedAttempts: parsed.failedAttempts || 0, lockedUntil: parsed.lockedUntil || null };
+      } catch(e){
+        return { failedAttempts: 0, lockedUntil: null };
+      }
+    }
+    function saveLockInfo(info){
+      try {
+        localStorage.setItem(lockKey, JSON.stringify(info));
+      } catch(e){ console.warn('saveLockInfo failed', e); }
+      lockInfo = info;
+    }
+    function clearLockInfo(){
+      try { localStorage.removeItem(lockKey); } catch(e){}
+      lockInfo = { failedAttempts:0, lockedUntil: null };
+      enableKeypad();
+      updateMessageFromPending();
+      if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    }
+
+    function isLocked(){
+      if (!lockInfo || !lockInfo.lockedUntil) return false;
+      try {
+        const until = new Date(lockInfo.lockedUntil);
+        return until > new Date();
+      } catch(e){ return false; }
+    }
+
+    function formatRemaining(ms){
+      if (ms <= 0) return '0s';
+      const totalSec = Math.floor(ms/1000);
+      const hrs = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      const secs = totalSec % 60;
+      if (hrs > 0) return `${hrs}h ${mins}m`;
+      if (mins > 0) return `${mins}m ${secs}s`;
+      return `${secs}s`;
+    }
+
+    function disableKeypad(){
+      keypad.querySelectorAll('.key').forEach(k => k.classList.add('disabled'));
+      submitBtn.disabled = true;
+    }
+    function enableKeypad(){
+      keypad.querySelectorAll('.key').forEach(k => k.classList.remove('disabled'));
+      submitBtn.disabled = (current.length !== 4);
+    }
+
+    function setLockCountdown(){
+      if (!lockInfo || !lockInfo.lockedUntil) return;
+      if (countdownInterval) clearInterval(countdownInterval);
+      countdownInterval = setInterval(() => {
+        const until = new Date(lockInfo.lockedUntil);
+        const msLeft = until - new Date();
+        if (msLeft <= 0) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+          clearLockInfo();
+          return;
+        }
+        message.textContent = `Too many failed attempts. Try again in ${formatRemaining(msLeft)}.`;
+      }, 1000);
+    }
 
     function refreshDots(){
       pinDots.forEach((d,i)=>{
@@ -82,7 +162,7 @@
         d.textContent = ch ? '•' : '';
         d.classList.toggle('filled', !!ch);
       });
-      submitBtn.disabled = (current.length !== 4);
+      submitBtn.disabled = (current.length !== 4) || isLocked();
     }
 
     function showError(msg){
@@ -91,9 +171,40 @@
     }
     function clearError(){ errorEl.style.display='none'; errorEl.textContent=''; }
 
+    function updateMessageFromPending(){
+      const pending = getPending();
+      if (!pending) {
+        message.textContent = 'No pending transaction — go back and try again.';
+        submitBtn.disabled = true;
+      } else {
+        message.textContent = `Confirm ₦${Number(pending.amount).toLocaleString()} to ${pending.recipient} (${pending.network})`;
+      }
+    }
+
+    function incrementFailedAndMaybeLock(){
+      const now = new Date();
+      lockInfo.failedAttempts = (lockInfo.failedAttempts || 0) + 1;
+      if (lockInfo.failedAttempts >= LOCK_THRESHOLD) {
+        const until = new Date(now.getTime() + LOCK_DURATION_MS);
+        lockInfo.lockedUntil = until.toISOString();
+        saveLockInfo(lockInfo);
+        disableKeypad();
+        // show remaining time
+        message.textContent = `Too many failed attempts. Transactions suspended until ${until.toLocaleString()}`;
+        // start countdown updates
+        setLockCountdown();
+      } else {
+        saveLockInfo(lockInfo);
+        const left = LOCK_THRESHOLD - lockInfo.failedAttempts;
+        showError(`Invalid PIN. ${left} attempt${left>1?'s':''} left before lock.`);
+      }
+    }
+
     keypad.addEventListener('click', ev=>{
       const k = ev.target;
       if (!k.classList.contains('key')) return;
+      // ignore input if locked
+      if (isLocked()) return;
       handleKey(k);
     });
     keypad.addEventListener('keydown', ev=>{
@@ -101,6 +212,7 @@
         const k = document.activeElement;
         if (k && k.classList.contains('key')) {
           ev.preventDefault();
+          if (isLocked()) return;
           handleKey(k);
         }
       }
@@ -114,12 +226,23 @@
     }
 
     cancelBtn.addEventListener('click', ()=>{
-      // redirect back to airtime (changed from data.html to airtime.html as requested)
+      // redirect back to airtime page
       window.location.href = 'airtime.html';
     });
 
     submitBtn.addEventListener('click', async ()=>{
       clearError();
+      if (isLocked()) {
+        // locked — display message
+        const until = lockInfo && lockInfo.lockedUntil ? new Date(lockInfo.lockedUntil) : null;
+        if (until) {
+          showError(`Too many failed attempts. Try again in ${formatRemaining(until - new Date())}.`);
+        } else {
+          showError('Too many failed attempts. Try later.');
+        }
+        return;
+      }
+
       const pending = getPending();
       if (!pending) {
         showError('No pending transaction found. Go back and try again.');
@@ -127,10 +250,15 @@
       }
 
       const user = getStoredUser();
-      if (!user || !(user.account_number || user.accountNumber)) {
+      if (!user || !(user.account_number || user.accountNumber || user.phone)) {
         showError('You must be logged in. Please log in and try again.');
         return;
       }
+
+      // determine lock key (account_number preferred, fallback to phone)
+      const acctId = (user.account_number || user.accountNumber) || user.phone;
+      if (!lockKey) lockKey = getLockKeyForAccount(acctId);
+      if (!lockInfo) lockInfo = loadLockInfo();
 
       const accountNumber = (user.account_number || user.accountNumber || '').toString();
       const payload = { account_number: accountNumber, pin: current };
@@ -138,7 +266,7 @@
       try {
         const res = await fetch(`${API_BASE}/api/pin/verify`, {
           method: 'POST',
-          credentials: 'include',           // <- include session cookie
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
@@ -146,7 +274,9 @@
         const j = await res.json().catch(()=>({ success:false, message: 'Invalid server response' }));
 
         if (res.ok && j.success) {
-          // PIN ok -> execute pending transaction (also include credentials)
+          // success -> reset lock info
+          saveLockInfo({ failedAttempts: 0, lockedUntil: null });
+          // PIN ok -> execute pending transaction
           const txPayload = {
             phone: pending.phone,
             network: pending.network,
@@ -169,9 +299,11 @@
               sessionStorage.setItem('last_tx_success', JSON.stringify({
                 message: execJson.message || 'Airtime purchased successfully',
                 amount: pending.amount,
-                network: pending.network
+                network: pending.network,
+                recipient: pending.recipient,
+                datetime: new Date().toISOString()
               }));
-              // redirect to airtime.html after success (changed from data.html)
+              // redirect to airtime page after success
               window.location.href = 'airtime.html';
               return;
             } else {
@@ -186,8 +318,15 @@
           }
 
         } else {
-          const msg = (j && j.message) ? j.message : 'Invalid PIN';
-          showError(msg);
+          // invalid PIN -> increment attempts and maybe lock
+          // load current lockInfo and increment
+          if (!lockKey) {
+            const acctId2 = (user.account_number || user.accountNumber) || user.phone;
+            lockKey = getLockKeyForAccount(acctId2);
+          }
+          lockInfo = loadLockInfo();
+          incrementFailedAndMaybeLock();
+          // clear entered PIN and UI dots
           current = '';
           refreshDots();
           return;
@@ -201,15 +340,31 @@
 
     (function init(){
       const pending = getPending();
-      if (!pending) {
-        message.textContent = 'No pending transaction — go back and try again.';
-        submitBtn.disabled = true;
+      const user = getStoredUser();
+      // setup lockKey
+      const acctId = user ? ((user.account_number || user.accountNumber) || user.phone) : 'anonymous';
+      lockKey = getLockKeyForAccount(acctId);
+      lockInfo = loadLockInfo();
+
+      // if locked and lock time still in future -> disable UI and show remaining
+      if (isLocked()) {
+        disableKeypad();
+        const until = new Date(lockInfo.lockedUntil);
+        message.textContent = `Too many failed attempts. Try again in ${formatRemaining(until - new Date())}.`;
+        setLockCountdown();
       } else {
-        message.textContent = `Confirm ₦${Number(pending.amount).toLocaleString()} to ${pending.recipient} (${pending.network})`;
+        // if expired, clear stored lock
+        if (lockInfo.lockedUntil) {
+          // expired -> clear
+          clearLockInfo();
+        }
       }
+
+      updateMessageFromPending();
       refreshDots();
     })();
 
+    // ensure keys are focusable for keyboard accessibility
     document.querySelectorAll('.key').forEach(k => { k.setAttribute('tabindex', '0'); });
 
   })();
