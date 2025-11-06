@@ -190,7 +190,7 @@ confirmBtn.addEventListener('click', async ()=>{
       message.textContent = 'PIN created successfully. Redirecting...';
       clearError();
       // remove token if you want user to re-login; we keep token by default
-      setTimeout(()=> window.lcation.href = PIN_PAGE_REDIRECT, 900);
+      setTimeout(()=> window.lcation.href = PIN_PAGE_EDIRECT, 900);
     } else {
       showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
       confirmBtn.disabled = false;
