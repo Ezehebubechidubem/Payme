@@ -1,4 +1,3 @@
-<!-- data.html (updated — only success modal + small init logic changed; everything else kept) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -18,7 +17,8 @@
     body{background:var(--bg);color:var(--text);padding-bottom:84px}
     .wrap{max-width:440px;margin:0 auto;padding:12px}
     .topbar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-    .topbar h1{font-size:18px;margin:0;font-weight:700}
+    .back-arrow{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;color:var(--primary);text-decoration:none;border:1px solid #f0f0f0;background:#fff}
+    .topbar h1{font-size:18px;margin:0;font-weight:700;flex:1;text-align:center}
     .card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:0 1px 0 rgba(0,0,0,.03) inset}
     .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .label{font-size:12px;color:var(--muted)}
@@ -42,7 +42,7 @@
     .confirm-overlay.show{display:flex}
     .confirm-card{background:#fff;padding:16px;border-radius:12px;width:92%;max-width:420px}
     .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0e9f72;color:#fff;padding:10px 14px;border-radius:999px;display:none}
-    /* --- UPDATED success modal (richer) --- */
+    /* --- SUCCESS modal (richer) --- */
     .success-modal { position: fixed; inset: 0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.45); z-index:100; }
     .success-card { background:#fff; border-radius:12px; padding:18px; width:92%; max-width:480px; text-align:center; box-shadow: 0 18px 40px rgba(10,20,30,0.12); }
     .success-badge { width:68px;height:68px;border-radius:999px; display:inline-grid; place-items:center; color:#fff; font-size:32px; margin-bottom:10px; background:linear-gradient(135deg,#00c853,#43a047); }
@@ -58,7 +58,8 @@
     .btn-outline { background:#fff; border:1px solid #ddd; color:#333 }
     .btn-primary { background:var(--primary); color:#fff }
     .error-badge { background:linear-gradient(135deg,#f44336,#e53935); }
-    /* end updated modal */
+    /* change button style (green) */
+    .change-btn { background:var(--primary); color:#fff; border:0; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:700; }
     .loader { display:inline-block; width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,0.2); border-top-color: #fff; animation: spin .7s linear infinite; vertical-align: middle; margin-left:8px; }
     @keyframes spin { to { transform: rotate(360deg);} }
     a{text-decoration:none;color:inherit}
@@ -67,25 +68,27 @@
 <body>
   <div class="wrap">
     <header class="topbar">
+      <a id="backBtn" class="back-arrow" href="paymelogin.html" aria-label="Back"><i class="fa fa-arrow-left"></i></a>
       <h1>Airtime</h1>
-      <a href="paymelogin.html" style="margin-left:auto;color:var(--muted);font-weight:700">Back</a>
+      <!-- keep spacing balanced -->
+      <div style="width:40px;"></div>
     </header>
 
     <!-- Recipient -->
     <div class="card">
-      <div class="label">Recipient Number</div>
+      <!-- removed the label above; placeholder holds the description now -->
       <div style="margin-top:8px" class="row">
         <div id="selectedNetworkBadge" style="display:flex;align-items:center;gap:10px">
           <div id="networkBadge" class="logo-badge" style="background:#e53935">A</div>
           <div id="networkName" style="font-weight:700">Airtel</div>
         </div>
-        <button id="chooseNetworkBtn" class="tiny">Change</button>
+        <button id="chooseNetworkBtn" class="change-btn">Change</button>
       </div>
 
       <div style="margin-top:10px">
-        <input id="recipientInput" type="tel" placeholder="e.g 0803xxxxxxx" inputmode="tel" />
+        <input id="recipientInput" type="tel" placeholder="Recipient number (e.g. 0803xxxxxxx)" inputmode="tel" />
       </div>
-      <div class="muted-note">Tip: enter recipient number in local format (11 digits, e.g. 0803xxxxxxxx)</div>
+      <!-- tip removed as requested -->
     </div>
 
     <!-- Amount -->
@@ -156,7 +159,7 @@
     </div>
   </div>
 
-  <!-- UPDATED success popup (detailed) -->
+  <!-- UPDATED success popup (detailed but now only recipient in details) -->
   <div id="successModal" class="success-modal" aria-hidden="true">
     <div class="success-card" role="dialog" aria-modal="true" aria-labelledby="successHeading">
       <div class="success-badge">₦</div>
@@ -165,10 +168,7 @@
       <div class="success-pill" id="successStatus">Successful</div>
 
       <div class="detail-list" id="detailList">
-        <!-- populated dynamically -->
-        <!-- example detail-item:
-        <div class="detail-item"><div class="detail-label">Order amount</div><div class="detail-value">₦1,000.00</div></div>
-        -->
+        <!-- now strictly shows recipient number only -->
       </div>
 
       <div class="actions">
@@ -299,7 +299,7 @@ window.addEventListener('load', ()=> {
     const last = sessionStorage.getItem('last_tx_success');
     if (last) {
       const data = JSON.parse(last);
-      // data should contain message, amount, network OR the server response shape.
+      // showDetailedSuccess will now strictly show the recipient number in details
       showDetailedSuccess({
         amount: data.amount || data.total || 0,
         network: data.network || '',
@@ -307,7 +307,6 @@ window.addEventListener('load', ()=> {
         recipient: data.recipient || data.phone || null,
         datetime: data.datetime || new Date().toISOString()
       });
-      // remove flag so it won't show again when user refreshes
       sessionStorage.removeItem('last_tx_success');
     }
   } catch(e){
@@ -365,135 +364,11 @@ function showDetailedSuccess(payload){
   /*
     payload fields used:
       - amount (number)
-      - network (string)
       - message (string)
       - recipient (string or phone)
       - datetime (ISO)
+    We now populate detail-list strictly with the recipient number only.
   */
   try {
     const amt = Number(payload.amount) || 0;
-    successAmount.textContent = `₦${amt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-
-    // status text
-    successStatus.textContent = payload.message || 'Successful';
-
-    // build details: intentionally omit bank name and recipient account name (per request)
-    const dt = payload.datetime ? new Date(payload.datetime) : new Date();
-    const dtStr = dt.toLocaleString();
-
-    const details = [
-      { label: 'Order amount', value: `₦${amt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}` },
-      { label: 'Date/Time', value: dtStr },
-      // Sender - if available, show username or fallback
-      { label: 'Sender', value: (payload.sender_name || (getStoredUser() && getStoredUser().username) || '-') },
-      { label: 'Sender Account', value: (payload.sender_account || (getStoredUser() && getStoredUser().phone) || '-') },
-      // Bank name: intentionally omitted (we won't push a row for bank name)
-      // Recipient: show the phone/recipient number instead of account name
-      { label: 'Recipient', value: (payload.recipient_name || '-') }, // keep recipient label but empty if not provided
-      // Recipient Account -> show recipient number (explicit change requested)
-      { label: 'Recipient Account', value: (payload.recipient || payload.recipient_number || payload.phone || '-') },
-      { label: 'Transaction NO.', value: (payload.transaction_no || '-') },
-    ];
-
-    // clear list and render
-    detailList.innerHTML = '';
-    details.forEach(d => {
-      // Skip bank name field if present (we intentionally didn't add bank row above)
-      const div = document.createElement('div');
-      div.className = 'detail-item';
-      div.innerHTML = `<div class="detail-label">${d.label}</div><div class="detail-value">${d.value}</div>`;
-      detailList.appendChild(div);
-    });
-
-    // Show modal
-    successModal.classList.add('show');
-    successModal.style.display = 'flex';
-    successModal.setAttribute('aria-hidden','false');
-    // focus primary action
-    doneBtn.focus();
-  } catch(e){
-    console.error('showDetailedSuccess error', e);
-  }
-}
-function hideDetailedSuccess(){
-  successModal.classList.remove('show');
-  successModal.style.display = 'none';
-  successModal.setAttribute('aria-hidden','true');
-}
-
-/* Confirm -> NEW FLOW:
-   Instead of calling backend immediately, we:
-   1) create a pending_tx object (amount, fee, total, recipient, network)
-   2) store it in sessionStorage under key "pending_tx"
-   3) close the confirmOverlay
-   4) redirect user to authentication.html where they input their 4-digit PIN
-*/
-confirmBtn.addEventListener('click', async () => {
-  // prepare pending transaction
-  const recipient = confirmTo.textContent.trim();
-  const amountText = confirmAmount.textContent.replace(/[^0-9.]/g,'');
-  const amount = Number(amountText) || (Number(selectedAmount) || Number(customAmount.value));
-  const fee = Math.ceil(amount * 0.01);
-  const total = amount + fee;
-  const network = confirmNetwork.textContent.trim();
-
-  const user = getStoredUser();
-  if (!user || !user.phone) {
-    // not logged in — show error
-    showError('You must be logged in to make a purchase.');
-    return;
-  }
-
-  const pending = {
-    phone: user.phone,
-    recipient: recipient,
-    amount: amount,
-    fee: fee,
-    total: total,
-    network: network,
-    product: 'airtime',
-    created_at: new Date().toISOString()
-  };
-
-  // Save to sessionStorage as pending transaction (temporary)
-  try {
-    sessionStorage.setItem('pending_tx', JSON.stringify(pending));
-  } catch(e) {
-    console.error('session storage failed', e);
-    showError('Unable to create pending transaction. Try again.');
-    return;
-  }
-
-  // close the confirm modal so user can see the background (you asked modal should disappear)
-  confirmOverlay.classList.remove('show');
-
-  // redirect to authentication page to collect 4-digit PIN
-  // Mainauthentication.html will complete the pending transaction if PIN verified and then set sessionStorage.last_tx_success
-  window.location.href = 'Mainauthentication.html';
-});
-
-/* close confirm with ESC */
-document.addEventListener('keydown', (e)=> {
-  if (e.key === 'Escape') {
-    confirmOverlay.classList.remove('show');
-    modalOverlay.classList.remove('show');
-    hideDetailedSuccess();
-    hideError();
-  }
-});
-
-/* success/error modal close wiring for click outside */
-document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideDetailedSuccess(); });
-document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
-
-/* small helper: setStoredUser (used above) */
-function setStoredUser(u) { try {
-  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
-  const ev = { type: "airtime_purchase", transaction_for: "airtime", ts: Date.now(), user: u };
-  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
-} catch(e){ console.error(e); }}
-
-/* init finished */
-</script>
-</body>
-</html>
+    successAmount.textContent = `₦${amt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFr
