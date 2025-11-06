@@ -30,8 +30,16 @@ def _now_iso():
 # Create single Flask app and configure CORS
 # -------------------------------------------------
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": os.environ.get("CORS_ORIGINS", "*")}}, supports_credentials=True)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+
+# ✅ Proper CORS setup for session cookies
+frontend_origin = os.environ.get("CORS_ORIGINS", "https://ezehebubechidubem.github.io")
+CORS(app, resources={r"/*": {"origins": frontend_origin}}, supports_credentials=True)
+
+# ✅ Correct cookie settings
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True  # keep True on Render (uses HTTPS)
 
 
 # Now import & register pin blueprint (import below so `app` already exists)
