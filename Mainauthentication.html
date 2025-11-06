@@ -114,8 +114,8 @@
     }
 
     cancelBtn.addEventListener('click', ()=>{
-      // redirect back to airtime (data.html)
-      window.location.href = 'data.html';
+      // redirect back to airtime (changed from data.html to airtime.html as requested)
+      window.location.href = 'airtime.html';
     });
 
     submitBtn.addEventListener('click', async ()=>{
@@ -171,7 +171,8 @@
                 amount: pending.amount,
                 network: pending.network
               }));
-              window.location.href = 'data.html';
+              // redirect to airtime.html after success (changed from data.html)
+              window.location.href = 'airtime.html';
               return;
             } else {
               const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
