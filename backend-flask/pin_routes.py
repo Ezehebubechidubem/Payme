@@ -1,60 +1,91 @@
 # pin_routes.py
-from flask import Blueprint, request, jsonify, session, g
-from utils import get_conn, hash_pin, check_pin, now_iso
-from models import init_tables
-from datetime import datetime, timedelta
 import random
 import traceback
 import os
+from datetime import datetime, timedelta
 
-# jwt helpers (works only if your app initialized flask_jwt_extended.JWTManager)
+from flask import Blueprint, request, jsonify, session, g
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+
+from utils import get_conn, hash_pin, check_pin, now_iso
+from models import init_tables
 
 bp = Blueprint("pin_routes", __name__, url_prefix="/api/pin")
 
 # TTL for 6-digit codes (seconds)
 CODE_TTL_SECONDS = int(os.environ.get("PIN_CODE_TTL", 10 * 60))
 
-# Ensure tables exist (safe no-op if already created)
+# Ensure pin-related tables exist
 try:
     init_tables()
 except Exception:
-    pass
+    # don't crash if init fails here; app will create on next attempt
+    traceback.print_exc()
+
+
+def _row_get(row, key_or_index):
+    """
+    Helper to read either dict-like rows (Postgres RealDictCursor) or sqlite rows.
+    If key_or_index is str, try dict access; otherwise treat as index.
+    """
+    if row is None:
+        return None
+    try:
+        if isinstance(row, dict):
+            return row.get(key_or_index)
+        # sqlite3.Row supports mapping by name, but sometimes it's tuple-like
+        try:
+            return row[key_or_index]
+        except Exception:
+            # fallback: if key_or_index is string, attempt mapping via row[key]
+            if isinstance(key_or_index, str) and hasattr(row, "keys"):
+                try:
+                    return row[key_or_index]
+                except Exception:
+                    pass
+        # last fallback: if index exists
+        if not isinstance(key_or_index, int):
+            return None
+        return row[key_or_index]
+    except Exception:
+        return None
 
 
 def login_required(view):
     """
     Decorator that accepts either:
-     - Authorization: Bearer <JWT token> (preferred)
+     - Authorization: Bearer <JWT token> (preferred, optional)
      - session['user_id'] (legacy)
     On success, stores user row in g.current_user (dict-like).
     """
     from functools import wraps
+
     @wraps(view)
     def wrapped(*args, **kwargs):
         user = None
+
         # 1) try JWT
         try:
             verify_jwt_in_request(optional=True)
             identity = get_jwt_identity()
             if identity:
-                # try to load user row by id
                 with get_conn() as conn:
                     cur = conn.cursor()
-                    cur.execute("SELECT id, username, phone, account_number, balance FROM users WHERE id = ? LIMIT 1", (int(identity),))
+                    cur.execute(
+                        "SELECT id, username, phone, account_number, balance FROM users WHERE id = ? LIMIT 1",
+                        (int(identity),),
+                    )
                     row = cur.fetchone()
                     if row:
-                        # row may be dict-like (PG) or sqlite Row; normalize to dict
                         if isinstance(row, dict):
                             user = row
                         else:
-                            # sqlite row: (id, username, phone, account_number, balance)
                             user = {
                                 "id": row[0],
                                 "username": row[1],
                                 "phone": row[2],
                                 "account_number": row[3],
-                                "balance": row[4]
+                                "balance": row[4],
                             }
         except Exception:
             user = None
@@ -66,7 +97,10 @@ def login_required(view):
                 if user_id:
                     with get_conn() as conn:
                         cur = conn.cursor()
-                        cur.execute("SELECT id, username, phone, account_number, balance FROM users WHERE id = ? LIMIT 1", (int(user_id),))
+                        cur.execute(
+                            "SELECT id, username, phone, account_number, balance FROM users WHERE id = ? LIMIT 1",
+                            (int(user_id),),
+                        )
                         row = cur.fetchone()
                         if row:
                             if isinstance(row, dict):
@@ -77,7 +111,7 @@ def login_required(view):
                                     "username": row[1],
                                     "phone": row[2],
                                     "account_number": row[3],
-                                    "balance": row[4]
+                                    "balance": row[4],
                                 }
             except Exception:
                 user = None
@@ -87,6 +121,7 @@ def login_required(view):
 
         g.current_user = user
         return view(*args, **kwargs)
+
     return wrapped
 
 
@@ -111,10 +146,13 @@ def request_pin_code():
             cur = conn.cursor()
             # delete existing codes for account
             cur.execute("DELETE FROM pin_codes WHERE account_number = ?", (acct,))
-            cur.execute("INSERT INTO pin_codes (account_number, code, expires_at) VALUES (?, ?, ?)", (acct, code, expires_at))
+            cur.execute(
+                "INSERT INTO pin_codes (account_number, code, expires_at) VALUES (?, ?, ?)",
+                (acct, code, expires_at),
+            )
         # Return code for dev/testing (do not do this in production)
         return jsonify({"success": True, "message": "Code generated", "code": code, "expires_at": expires_at}), 200
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return jsonify({"success": False, "message": "Failed to generate code"}), 500
 
@@ -127,7 +165,6 @@ def api_pin_status():
     Returns if the authenticated user has a PIN set and basic lock state.
     Response:
       { hasPin: bool, locked: false, lockedUntil: null, failedAttempts: 0 }
-    Note: we do not track per-user failedAttempts here beyond audit entries; extend if needed.
     """
     user = g.current_user
     try:
@@ -136,13 +173,11 @@ def api_pin_status():
             cur.execute("SELECT id FROM user_pins WHERE user_id = ? LIMIT 1", (user["id"],))
             row = cur.fetchone()
             has_pin = bool(row)
-        # Minimal lock info (expand if you track attempts)
-        return jsonify({
-            "hasPin": has_pin,
-            "locked": False,
-            "lockedUntil": None,
-            "failedAttempts": 0
-        })
+        # Minimal lock info (expand if you track attempts server-side)
+        return (
+            jsonify({"hasPin": has_pin, "locked": False, "lockedUntil": None, "failedAttempts": 0}),
+            200,
+        )
     except Exception:
         traceback.print_exc()
         return jsonify({"success": False, "message": "Server error"}), 500
@@ -180,8 +215,10 @@ def setup_pin():
         try:
             with get_conn() as conn2:
                 c2 = conn2.cursor()
-                c2.execute("INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
-                           (user["id"], event, f"'method':'setup'", now_iso()))
+                c2.execute(
+                    "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                    (user["id"], event, "'method':'setup'", now_iso()),
+                )
         except Exception:
             pass
 
@@ -199,11 +236,7 @@ def pin_associate():
       - user creates 4-digit PIN locally
       - frontend requests backend to associate PIN with account by sending:
             { account_number: "1234567890", code: "123456", pin: "1234" }
-    This endpoint:
-      - validates account exists
-      - checks that pin_codes row exists and not expired
-      - inserts hashed PIN into user_pins for that user_id (single-use)
-      - removes used code from pin_codes
+    This endpoint validates account exists, checks code, then stores hashed PIN for that user.
     """
     data = request.get_json() or {}
     account_number = (data.get("account_number") or "").strip()
@@ -225,7 +258,7 @@ def pin_associate():
             urow = cur.fetchone()
             if not urow:
                 return jsonify({"success": False, "message": "Account not found"}), 404
-            user_id = urow["id"] if isinstance(urow, dict) else urow[0]
+            user_id = _row_get(urow, 0) if not isinstance(urow, dict) else urow.get("id")
 
             # find matching code
             cur.execute("SELECT id, code, expires_at FROM pin_codes WHERE account_number = ? AND code = ? LIMIT 1", (account_number, code))
@@ -233,24 +266,22 @@ def pin_associate():
             if not crow:
                 return jsonify({"success": False, "message": "Invalid or expired code"}), 400
 
-            # parse expiry
-            expires_at = crow["expires_at"] if isinstance(crow, dict) else crow[2]
+            expires_at = _row_get(crow, "expires_at") or _row_get(crow, 2)
             try:
-                from datetime import datetime
                 exp_dt = datetime.fromisoformat(expires_at) if isinstance(expires_at, str) else expires_at
             except Exception:
                 exp_dt = datetime.utcnow() - timedelta(seconds=1)
             if exp_dt < datetime.utcnow():
                 # remove expired
-                code_id = crow["id"] if isinstance(crow, dict) else crow[0]
+                code_id = _row_get(crow, "id") or _row_get(crow, 0)
                 cur.execute("DELETE FROM pin_codes WHERE id = ?", (code_id,))
                 return jsonify({"success": False, "message": "Code expired"}), 400
 
             # delete used code (single use)
-            code_id = crow["id"] if isinstance(crow, dict) else crow[0]
+            code_id = _row_get(crow, "id") or _row_get(crow, 0)
             cur.execute("DELETE FROM pin_codes WHERE id = ?", (code_id,))
 
-        # update user_pins (use a new conn so commit separate)
+        # update user_pins (use separate conn so commit is separate)
         hashed = hash_pin(pin)
         with get_conn() as conn2:
             c2 = conn2.cursor()
@@ -261,8 +292,10 @@ def pin_associate():
             else:
                 c2.execute("INSERT INTO user_pins (user_id, hashed_pin, created_at) VALUES (?, ?, ?)", (user_id, hashed, now_iso()))
             # audit
-            c2.execute("INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
-                       (user_id, "PIN_ASSOCIATE", f"account:{account_number}", now_iso()))
+            c2.execute(
+                "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                (user_id, "PIN_ASSOCIATE", f"account:{account_number}", now_iso()),
+            )
         return jsonify({"success": True, "message": "PIN attached to account successfully"}), 200
 
     except Exception:
@@ -271,33 +304,69 @@ def pin_associate():
 
 
 # ---------------- Verify PIN for transaction ----------------
-@pin_bp.route("/api/pin/verify", methods=["POST"])
+@bp.route("/verify", methods=["POST"])
 def verify_pin():
+    """
+    Body: { account_number: '1234567890', pin: '1234' }
+    Returns success true/false. Stateless: no login required.
+    """
     try:
-        data = request.get_json()
-        account_number = data.get("account_number")
-        pin = data.get("pin")
+        data = request.get_json() or {}
+        account_number = str(data.get("account_number", "")).strip()
+        pin = str(data.get("pin", "")).strip()
 
         if not account_number or not pin:
             return jsonify({"success": False, "message": "Missing account number or PIN"}), 400
 
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("SELECT pin_hash FROM users WHERE account_number = ?", (account_number,))
-        row = cur.fetchone()
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT up.hashed_pin, u.id
+                FROM user_pins up
+                JOIN users u ON u.id = up.user_id
+                WHERE u.account_number = ?
+                LIMIT 1
+                """,
+                (account_number,),
+            )
+            row = cur.fetchone()
 
         if not row:
-            return jsonify({"success": False, "message": "Account not found"}), 404
+            return jsonify({"success": False, "message": "PIN not set for this account"}), 404
 
-        # Assuming pin is stored hashed (bcrypt)
-        stored_hash = row["pin_hash"]
-        if bcrypt.checkpw(pin.encode(), stored_hash.encode()):
-            return jsonify({"success": True, "message": "PIN verified"})
+        # get stored hashed value
+        stored_hash = None
+        if isinstance(row, dict):
+            stored_hash = row.get("hashed_pin")
+            user_id = row.get("id")
+        else:
+            # tuple-like
+            stored_hash = row[0]
+            user_id = row[1] if len(row) > 1 else None
+
+        if not stored_hash:
+            return jsonify({"success": False, "message": "PIN data missing"}), 500
+
+        ok = check_pin(pin, stored_hash)
+
+        # audit the attempt
+        try:
+            with get_conn() as conn2:
+                c2 = conn2.cursor()
+                c2.execute(
+                    "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
+                    (user_id, "PIN_VERIFY_SUCCESS" if ok else "PIN_VERIFY_FAIL", f"account:{account_number}", now_iso()),
+                )
+        except Exception:
+            # audit failure shouldn't break verification
+            traceback.print_exc()
+
+        if ok:
+            return jsonify({"success": True, "message": "PIN verified successfully"}), 200
         else:
             return jsonify({"success": False, "message": "Invalid PIN"}), 401
 
     except Exception as e:
-        print("PIN verify error:", e)
         traceback.print_exc()
-        return jsonify({"success": False, "message": "Server error"}), 500
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
