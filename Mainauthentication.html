@@ -78,7 +78,7 @@
     try {
       const key = `pin_lock_${account_number}`;
       const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : { attemptsLeft: 3, lockedUntil: null };
+      return raw ? JSON.parse(raw) : { attemptsLeft: 10, lockedUntil: null };
     } catch(e){ return { attemptsLeft:3, lockedUntil: null }; }
   }
   function setLockState(account_number, state) {
@@ -115,7 +115,7 @@
 
   cancelBtn.addEventListener('click', ()=>{
     // go back to airtime page without executing
-    window.location.href = 'data.html';
+    window.location.href = 'airtime.html';
   });
 
   submitBtn.addEventListener('click', async ()=>{
@@ -156,7 +156,7 @@
 
       if (res.ok && j.success) {
         // Reset attempts on success
-        setLockState(user.account_number, { attemptsLeft: 3, lockedUntil: null });
+        setLockState(user.account_number, { attemptsLeft: 10, lockedUntil: null });
 
         // PIN verified -> call backend to perform pending transaction
         // For airtime the endpoint is /buy_airtime (expects phone, network, amount, recipient, product in earlier code)
