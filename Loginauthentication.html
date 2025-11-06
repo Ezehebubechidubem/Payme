@@ -11,9 +11,9 @@
     .card{ width:100%; max-width:540px; background:var(--card); border-top-left-radius:18px; border-top-right-radius:18px; padding:18px 16px 28px; box-shadow:0 -12px 40px rgba(0,0,0,0.12); display:flex; flex-direction:column; align-items:center }
     .grab{ width:48px; height:4px; background:#eee; border-radius:2px; margin-bottom:8px }
     .title{ font-weight:700; font-size:18px; margin-top:6px }
-    .desc{ color:var(--muted); font-size:13px; text-align:center }
+    .desc{ color:var(--muted); font-size:13px; text-align:center; margin-bottom:6px }
     .pin-dots{ display:flex; gap:12px; margin:18px 0 }
-    .dot{ width:62px; height:62px; border-radius:10px; border:2px solid #f2f2f2; display:flex; align-items:center; justify-content:center; font-size:28px }
+    .dot{ width:62px; height:62px; border-radius:10px; border:2px solid #f2f2f2; display:flex; align-items:center; justify-content:center; font-size:28px; user-select:none }
     .dot.filled{ border-color:var(--accent); background:#f6fffb }
     .keypad{ width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:8px }
     .key{ background:#fff; border-radius:10px; height:72px; display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 0 0 1px #f2f2f2 inset; cursor:pointer; user-select:none }
@@ -22,33 +22,36 @@
     .hidden{ display:none }
     .confirm-btn{ background:var(--accent); color:#fff; border:0; border-radius:10px; width:100%; max-width:300px; padding:14px 0; font-size:16px; font-weight:600; margin-top:20px; cursor:pointer; display:none }
     .confirm-btn[disabled]{ opacity:0.6; cursor:not-allowed }
+    .note { font-size:13px; color:#9a9a9a; margin-top:8px; text-align:center; max-width:420px; }
   </style>
 </head>
 <body>
 <div class="sheet" role="dialog" aria-modal="true" aria-label="Create Payment PIN">
-  <div class="card">
-    <div class="grab"></div>
+  <div class="card" role="document">
+    <div class="grab" aria-hidden="true"></div>
+
     <div class="title" id="headerTitle">Create your 4-digit payment PIN</div>
     <div class="desc" id="headerDesc">You will use this PIN to confirm payments and transactions.</div>
 
-    <div class="pin-dots" id="pinDots">
-      <div class="dot" data-index="0"></div>
-      <div class="dot" data-index="1"></div>
-      <div class="dot" data-index="2"></div>
-      <div class="dot" data-index="3"></div>
+    <div class="pin-dots" id="pinDots" aria-hidden="false">
+      <div class="dot" data-index="0" aria-hidden="true"></div>
+      <div class="dot" data-index="1" aria-hidden="true"></div>
+      <div class="dot" data-index="2" aria-hidden="true"></div>
+      <div class="dot" data-index="3" aria-hidden="true"></div>
     </div>
 
     <div id="message" class="muted">Type a 4-digit PIN</div>
-    <div id="error" class="danger hidden" role="alert"></div>
+    <div id="error" class="danger hidden" role="alert" aria-live="assertive"></div>
 
-    <div class="keypad" id="keypad">
-      <div class="key">1</div><div class="key">2</div><div class="key">3</div>
-      <div class="key">4</div><div class="key">5</div><div class="key">6</div>
-      <div class="key">7</div><div class="key">8</div><div class="key">9</div>
-      <div class="key" id="blank"></div><div class="key">0</div><div class="key" id="back">⌫</div>
+    <div class="keypad" id="keypad" role="group" aria-label="PIN keypad">
+      <div class="key" role="button" tabindex="0">1</div><div class="key" role="button" tabindex="0">2</div><div class="key" role="button" tabindex="0">3</div>
+      <div class="key" role="button" tabindex="0">4</div><div class="key" role="button" tabindex="0">5</div><div class="key" role="button" tabindex="0">6</div>
+      <div class="key" role="button" tabindex="0">7</div><div class="key" role="button" tabindex="0">8</div><div class="key" role="button" tabindex="0">9</div>
+      <div class="key" id="blank" aria-hidden="true"></div><div class="key" role="button" tabindex="0">0</div><div class="key" id="back" role="button" tabindex="0" aria-label="Backspace">⌫</div>
     </div>
 
-    <button class="confirm-btn" id="confirmBtn" aria-disabled="false">Confirm PIN</button>
+    <button class="confirm-btn" id="confirmBtn" aria-disabled="false" aria-label="Confirm PIN">Confirm PIN</button>
+    <div class="note" id="serverNote" aria-hidden="true"></div>
   </div>
 </div>
 
@@ -65,27 +68,54 @@ const message     = document.getElementById('message');
 const errorEl     = document.getElementById('error');
 const keypad      = document.getElementById('keypad');
 const confirmBtn  = document.getElementById('confirmBtn');
+const serverNote  = document.getElementById('serverNote');
 
-let mode = 'create';
+let mode = 'create';   // 'create' -> initial; 'confirm' -> confirmation step
 let firstPin = null;
 let current = '';
 
+/* ==== UI helpers ==== */
 function refreshDots(){
   pinDotsEls.forEach((d,i)=>{
     const char = current[i] || '';
     d.classList.toggle('filled', !!char);
     d.textContent = char ? '•' : '';
   });
+  // Show confirm button only in confirmation step when 4 digits typed
   confirmBtn.style.display = (mode === 'confirm' && current.length === 4) ? 'block' : 'none';
   confirmBtn.disabled = false;
 }
-function showError(t){ errorEl.textContent = t; errorEl.classList.remove('hidden'); }
-function clearError(){ errorEl.textContent=''; errorEl.classList.add('hidden'); }
+function showError(t){
+  errorEl.textContent = t || '';
+  errorEl.classList.remove('hidden');
+}
+function clearError(){
+  errorEl.textContent = '';
+  errorEl.classList.add('hidden');
+}
+function setNote(t){
+  serverNote.textContent = t || '';
+  serverNote.style.display = t ? 'block' : 'none';
+  serverNote.setAttribute('aria-hidden', t ? 'false' : 'true');
+}
 
-/* ==== Keyboard ==== */
+/* ==== Keyboard handling (click & keyboard accessibility) ==== */
 keypad.addEventListener('click', ev=>{
   const k = ev.target;
   if (!k.classList.contains('key')) return;
+  handleKey(k);
+});
+keypad.addEventListener('keydown', ev=>{
+  // support Enter/Space on focused key elements
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    const k = document.activeElement;
+    if (k && k.classList.contains('key')) {
+      ev.preventDefault();
+      handleKey(k);
+    }
+  }
+});
+function handleKey(k){
   if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
   if (k.id === 'blank') return;
   if (current.length >= 4) return;
@@ -97,23 +127,37 @@ keypad.addEventListener('click', ev=>{
     headerTitle.textContent = 'Confirm your PIN';
     headerDesc.textContent = 'Re-enter the 4-digit PIN to confirm';
     message.textContent = 'Confirm PIN';
+    clearError();
     refreshDots();
   }
-});
+}
 
-/* ==== Session check using cookies ==== */
+/* ==== Session check using cookies (do not redirect on failure) ==== */
 (async function checkSession(){
   try {
     const res = await fetch(`${API_BASE}/api/pin/status`, {
       method: 'GET',
-      credentials: 'include', // IMPORTANT
+      credentials: 'include', // IMPORTANT: include session cookie
       headers: { 'Accept': 'application/json' }
     });
+
     if (res.status === 401) {
-      console.warn('User not logged in — they can still enter PIN but saving will fail.');
+      // not logged in — don't redirect, just inform user saving will fail unless they login
+      setNote('Not authenticated. Please log in if you want to save the PIN. (You may continue to type the PIN but saving will fail until you are logged in.)');
       return;
     }
+
+    if (!res.ok) {
+      // server error or network issue — show a subtle non-blocking note
+      setNote('Could not verify session (server unavailable). You can still try to save the PIN.');
+      return;
+    }
+
+    // session ok, hide any note
+    setNote('');
   } catch(err){
+    // network issue — allow user to continue
+    setNote('Network issue while checking session. Saving might fail.');
     console.warn('Session check failed:', err);
   }
 })();
@@ -123,6 +167,7 @@ confirmBtn.addEventListener('click', async ()=>{
   clearError();
   if (current !== firstPin) {
     showError('PINs do not match. Try again.');
+    // reset flow
     mode='create'; firstPin=null; current='';
     headerTitle.textContent='Create your 4-digit payment PIN';
     headerDesc.textContent='You will use this PIN to confirm payments and transactions.';
@@ -131,35 +176,39 @@ confirmBtn.addEventListener('click', async ()=>{
     return;
   }
 
+  // UI feedback
   message.textContent = 'Saving PIN...';
   confirmBtn.disabled = true;
+  setNote(''); // clear any previous notes
 
   try {
     const res = await fetch(`${API_BASE}/api/pin/setup`, {
       method: 'POST',
-      credentials: 'include', // <-- SEND SESSION COOKIE
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // <-- SEND SESSION COOKIE so backend can check session
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ pin: current })
     });
 
     const j = await res.json().catch(()=>({ success:false }));
 
     if (res.ok && j.success) {
+      // success — stay or redirect to the success page
       message.textContent = 'PIN created successfully. Redirecting...';
       clearError();
-      setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 800);
+      setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 700);
       return;
     }
 
-    // For session auth, if cookie is missing or expired:
+    // If not authorized, show clear message but do NOT redirect
     if (res.status === 401) {
-      showError('You must be logged in before setting a PIN.');
+      showError('You must be logged in before setting a PIN. Please log in and try again.');
       confirmBtn.disabled = false;
       message.textContent = 'Confirm PIN';
       return;
     }
 
-    showError(j.message || 'Failed to save PIN');
+    // Other server errors: show returned message or generic
+    showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
     confirmBtn.disabled = false;
     message.textContent = 'Confirm PIN';
   } catch(e){
@@ -170,6 +219,7 @@ confirmBtn.addEventListener('click', async ()=>{
   }
 });
 
+/* initial UI render */
 refreshDots();
 </script>
 </body>
