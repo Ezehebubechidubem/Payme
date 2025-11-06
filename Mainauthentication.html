@@ -226,9 +226,35 @@
     }
 
     cancelBtn.addEventListener('click', ()=>{
-      // redirect back to airtime page
+      // redirect back to airtime page (unchanged)
       window.location.href = 'airtime.html';
     });
+
+    // Determine return URL (last page before Mainauthentication)
+    function getReturnUrl() {
+      try {
+        // 1) explicit override (some pages may set this before redirecting)
+        const explicit = sessionStorage.getItem('return_to');
+        if (explicit) return explicit;
+
+        // 2) browser referrer (should normally be the previous page)
+        if (document.referrer && document.referrer !== '') return document.referrer;
+
+        // 3) fallback to pending_tx product -> route to corresponding page
+        const p = sessionStorage.getItem('pending_tx');
+        if (p) {
+          try {
+            const parsed = JSON.parse(p);
+            if (parsed && parsed.product) {
+              if (parsed.product === 'data') return 'data.html';
+              if (parsed.product === 'airtime') return 'airtime.html';
+            }
+          } catch(e){}
+        }
+      } catch(e){}
+      // final fallback
+      return 'airtime.html';
+    }
 
     submitBtn.addEventListener('click', async ()=>{
       clearError();
@@ -303,8 +329,10 @@
                 recipient: pending.recipient,
                 datetime: new Date().toISOString()
               }));
-              // redirect to airtime page after success
-              window.location.href = 'airtime.html';
+
+              // redirect to the previous page the user was on (instead of fixed airtime.html)
+              const returnUrl = getReturnUrl();
+              window.location.href = returnUrl;
               return;
             } else {
               const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
