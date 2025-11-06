@@ -1,0 +1,328 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PayMe — Authenticate Transaction</title>
+  <style>
+    :root { --bg:#fafafa; --card:#fff; --accent:#00a884; --danger:#d9534f; --muted:#7a7a7a; }
+    html,body{ height:100%; margin:0; font-family:system-ui,Arial; background:var(--bg); }
+    .sheet{ position:fixed; left:0; right:0; top:0; bottom:0; display:flex; align-items:center; justify-content:center; padding:16px; }
+    .card{ width:100%; max-width:520px; background:var(--card); border-radius:14px; padding:20px; box-shadow:0 12px 40px rgba(0,0,0,0.12); display:flex; flex-direction:column; align-items:center }
+    .title{ font-weight:700; font-size:18px; margin-top:6px }
+    .desc{ color:var(--muted); font-size:13px; text-align:center; margin-bottom:12px }
+    .pin-dots{ display:flex; gap:12px; margin:12px 0 18px; }
+    .dot{ width:62px; height:62px; border-radius:10px; border:2px solid #f2f2f2; display:flex; align-items:center; justify-content:center; font-size:28px; user-select:none }
+    .dot.filled{ border-color:var(--accent); background:#f6fffb }
+    .keypad{ width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:8px }
+    .key{ background:#fff; border-radius:10px; height:64px; display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 0 0 1px #f2f2f2 inset; cursor:pointer; user-select:none }
+    .key[aria-disabled="true"]{ opacity:0.45; cursor:not-allowed }
+    .muted{ color:var(--muted); font-size:13px; margin-top:8px; text-align:center }
+    .danger{ color:var(--danger); font-weight:700; margin-top:8px; text-align:center }
+    .confirm-btn{ background:var(--accent); color:#fff; border:0; border-radius:10px; width:100%; max-width:320px; padding:12px 0; font-size:15px; font-weight:700; margin-top:14px; cursor:pointer; display:none }
+    .confirm-btn[disabled]{ opacity:0.6; cursor:not-allowed }
+    .small{ font-size:12px; color:#777; margin-top:8px }
+    .spinner{ display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; margin-left:8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Authenticate transaction">
+    <div class="card" role="document">
+      <div class="title">Enter your 4-digit payment PIN</div>
+      <div id="desc" class="desc">Confirm the PIN you created to authorize this transaction.</div>
+
+      <div class="pin-dots" id="pinDots" aria-hidden="false">
+        <div class="dot" data-index="0" aria-hidden="true"></div>
+        <div class="dot" data-index="1" aria-hidden="true"></div>
+        <div class="dot" data-index="2" aria-hidden="true"></div>
+        <div class="dot" data-index="3" aria-hidden="true"></div>
+      </div>
+
+      <div id="message" class="muted">Type your 4-digit PIN</div>
+      <div id="error" class="danger" style="display:none" role="alert"></div>
+
+      <div class="keypad" id="keypad" role="group" aria-label="PIN keypad">
+        <div class="key" role="button" tabindex="0">1</div><div class="key" role="button" tabindex="0">2</div><div class="key" role="button" tabindex="0">3</div>
+        <div class="key" role="button" tabindex="0">4</div><div class="key" role="button" tabindex="0">5</div><div class="key" role="button" tabindex="0">6</div>
+        <div class="key" role="button" tabindex="0">7</div><div class="key" role="button" tabindex="0">8</div><div class="key" role="button" tabindex="0">9</div>
+        <div class="key" id="blank" aria-hidden="true"></div><div class="key" role="button" tabindex="0">0</div><div class="key" id="back" role="button" tabindex="0" aria-label="Backspace">⌫</div>
+      </div>
+
+      <button id="submitBtn" class="confirm-btn" aria-disabled="false">Authorize</button>
+      <div id="lockNote" class="small" style="display:none"></div>
+    </div>
+  </div>
+
+<script>
+/* ==== Config ==== */
+const API_BASE = 'https://payme-update.onrender.com';
+const VERIFY_ENDPOINT = `${API_BASE}/api/pin/verify`;
+const RETURN_PARAM = 'return_url'; // expected query param that contains where to go back
+const DEFAULT_RETURN = 'data.html'; // fallback
+
+const MAX_ATTEMPTS = 3;
+const LOCK_MS = 4 * 60 * 60 * 1000; // 4 hours in ms
+
+/* ==== DOM refs ==== */
+const pinDotsEls = Array.from(document.querySelectorAll('.dot'));
+const keypad = document.getElementById('keypad');
+const submitBtn = document.getElementById('submitBtn');
+const messageEl = document.getElementById('message');
+const errorEl = document.getElementById('error');
+const lockNote = document.getElementById('lockNote');
+const descEl = document.getElementById('desc');
+
+let current = ''; // holds typed digits
+let accountNumber = null;
+let returnUrl = new URLSearchParams(window.location.search).get(RETURN_PARAM) || DEFAULT_RETURN;
+let lockTimerInterval = null;
+
+/* ===== Storage helpers (per-account) ===== */
+function attemptsKey(acct){ return `pin_attempts_${acct}`; }
+function getAttemptState(acct){
+  try {
+    const raw = localStorage.getItem(attemptsKey(acct)); 
+    return raw ? JSON.parse(raw) : { count: 0, lockUntil: null };
+  } catch(e){ return { count:0, lockUntil:null }; }
+}
+function setAttemptState(acct, state){
+  try { localStorage.setItem(attemptsKey(acct), JSON.stringify(state)); } catch(e){}
+}
+function resetAttempts(acct){
+  setAttemptState(acct, { count: 0, lockUntil: null });
+}
+
+/* ==== UI helpers ==== */
+function refreshDots(){
+  pinDotsEls.forEach((d,i)=>{
+    const char = current[i] || '';
+    d.classList.toggle('filled', !!char);
+    d.textContent = char ? '•' : '';
+  });
+  submitBtn.style.display = (current.length === 4) ? 'block' : 'none';
+}
+function showError(text){
+  errorEl.style.display = text ? 'block' : 'none';
+  errorEl.textContent = text || '';
+}
+function setMessage(text){ messageEl.textContent = text || ''; }
+function setLockNote(text){
+  lockNote.style.display = text ? 'block' : 'none';
+  lockNote.textContent = text || '';
+}
+
+/* ==== Keyboard handling ==== */
+keypad.addEventListener('click', ev=>{
+  const k = ev.target;
+  if (!k.classList.contains('key')) return;
+  handleKey(k);
+});
+keypad.addEventListener('keydown', ev=>{
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    const k = document.activeElement;
+    if (k && k.classList.contains('key')) {
+      ev.preventDefault();
+      handleKey(k);
+    }
+  }
+});
+function handleKey(k){
+  if (k.id === 'back') { current = current.slice(0,-1); showError(''); refreshDots(); return; }
+  if (k.id === 'blank') return;
+  if (current.length >= 4) return;
+  current += k.textContent.trim();
+  refreshDots();
+}
+
+/* ==== Initialization ==== */
+function safeGetLocalUser(){
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+
+function checkLockAndUpdateUI(){
+  if (!accountNumber) return;
+  const st = getAttemptState(accountNumber);
+  if (st.lockUntil){
+    const until = new Date(st.lockUntil).getTime();
+    const now = Date.now();
+    if (now < until){
+      // locked
+      showError('');
+      startLockCountdown(until);
+      disableInputs(true);
+      return true;
+    } else {
+      // expired
+      resetAttempts(accountNumber);
+    }
+  }
+  disableInputs(false);
+  return false;
+}
+
+function disableInputs(yes){
+  const keys = keypad.querySelectorAll('.key');
+  keys.forEach(k => {
+    if (yes) {
+      k.setAttribute('aria-disabled','true');
+      k.tabIndex = -1;
+    } else {
+      k.removeAttribute('aria-disabled');
+      k.tabIndex = 0;
+    }
+  });
+  submitBtn.disabled = yes;
+  submitBtn.style.display = (current.length === 4 && !yes) ? 'block' : 'none';
+}
+
+/* Countdown logic */
+function startLockCountdown(untilTs){
+  clearInterval(lockTimerInterval);
+  function tick(){
+    const now = Date.now();
+    const rem = untilTs - now;
+    if (rem <= 0){
+      clearInterval(lockTimerInterval);
+      setLockNote('');
+      resetAttempts(accountNumber);
+      disableInputs(false);
+      showError('');
+      return;
+    }
+    const hrs = Math.floor(rem / (1000*60*60));
+    const mins = Math.floor((rem % (1000*60*60)) / (1000*60));
+    const secs = Math.floor((rem % (1000*60)) / 1000);
+    setLockNote(`Too many failed attempts. Transactions locked for ${hrs}h ${mins}m ${secs}s`);
+  }
+  tick();
+  lockTimerInterval = setInterval(tick, 1000);
+}
+
+/* ==== Submit (verify) ==== */
+submitBtn.addEventListener('click', async ()=>{
+  showError('');
+  setMessage('Verifying PIN...');
+  submitBtn.disabled = true;
+
+  // Defensive: ensure accountNumber
+  if (!accountNumber){
+    showError('No account found. Please login and try again.');
+    submitBtn.disabled = false;
+    setMessage('');
+    current = ''; refreshDots();
+    return;
+  }
+
+  // Build payload
+  const payload = { account_number: accountNumber, pin: current };
+
+  try {
+    const res = await fetch(VERIFY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(payload),
+      // pin_routes.verify is stateless; no credentials required. We use this path so it works server-side.
+    });
+
+    const j = await res.json().catch(()=>({ success:false }));
+
+    // Clear sensitive variable ASAP
+    current = '';
+    refreshDots();
+
+    if (res.ok && j.success){
+      // success -> reset attempts and redirect back telling caller to continue
+      resetAttempts(accountNumber);
+      // redirect back to caller page with flag so it can execute the transaction
+      const sep = returnUrl.includes('?') ? '&' : '?';
+      window.location.href = `${returnUrl}${sep}pin_ok=1`;
+      return;
+    }
+
+    // failure path
+    // increment client-side attempts and lock if needed
+    const st = getAttemptState(accountNumber);
+    st.count = (st.count || 0) + 1;
+    if (st.count >= MAX_ATTEMPTS){
+      st.lockUntil = new Date(Date.now() + LOCK_MS).toISOString();
+      setAttemptState(accountNumber, st);
+      // lock UI
+      checkLockAndUpdateUI();
+      showError('Wrong PIN. Too many failed attempts — transactions locked for 4 hours.');
+    } else {
+      setAttemptState(accountNumber, st);
+      const remaining = MAX_ATTEMPTS - st.count;
+      showError((j.message && j.message !== '') ? j.message : `Wrong PIN. ${remaining} attempt(s) left.`);
+    }
+    setMessage('');
+    submitBtn.disabled = false;
+  } catch (err){
+    console.error('verify error', err);
+    showError('Network error. Please try again.');
+    setMessage('');
+    submitBtn.disabled = false;
+    current = ''; refreshDots();
+  } finally {
+    // ensure sensitive var cleared
+    current = '';
+    refreshDots();
+  }
+});
+
+/* ==== On load ==== */
+(function init(){
+  const localUser = safeGetLocalUser();
+  if (!localUser || !localUser.account_number){
+    // no local user -> require login
+    descEl.textContent = 'You need to be logged in to authenticate transactions. Please login and try again.';
+    showError('');
+    setMessage('');
+    // Disable inputs
+    disableInputs(true);
+    // Optionally provide a redirect link (we won't auto-redirect)
+    const loginHint = document.createElement('div');
+    loginHint.className = 'small';
+    loginHint.innerHTML = 'Not logged in. <a href="paymelogin.html">Login</a>';
+    document.querySelector('.card').appendChild(loginHint);
+    return;
+  }
+
+  accountNumber = localUser.account_number;
+  // safety: ensure string
+  accountNumber = String(accountNumber);
+
+  // Check lock state and update UI
+  const locked = checkLockAndUpdateUI();
+  if (!locked){
+    disableInputs(false);
+    setMessage('Type your 4-digit PIN');
+  }
+
+  // keyboard accessibility: allow number keys on physical keyboard
+  window.addEventListener('keydown', (e)=>{
+    if (e.key >= '0' && e.key <= '9'){
+      // find visible keypad key
+      if (document.activeElement && document.activeElement.classList.contains('key')) return;
+      const keys = Array.from(document.querySelectorAll('.key')).filter(k => !k.id && k.textContent.trim() === e.key);
+      if (keys.length) handleKey(keys[0]);
+    } else if (e.key === 'Backspace' || e.key === 'Delete'){
+      const back = document.getElementById('back');
+      if (back) handleKey(back);
+    }
+  });
+
+  // wire submit to Enter when 4 digits typed
+  const observer = new MutationObserver(()=> {
+    if (current.length === 4 && !submitBtn.disabled) submitBtn.focus();
+  });
+  observer.observe(document.getElementById('pinDots'), { childList:true, subtree:true, characterData:true });
+
+  refreshDots();
+})();
+</script>
+</body>
+</html>
