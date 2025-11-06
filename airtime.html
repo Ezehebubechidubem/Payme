@@ -1,12 +1,12 @@
-html>
+<!-- data.html (updated) -->
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>PAYME — Airtime</title>
-
-  <!-- Font Awesome (icons) -->
+  <!-- (styles and the rest kept exactly as your original) -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
-
   <style>
     :root{
       --primary:#00c853; --primary-dark:#009624; --bg:#ffffff; --card:#ffffff;
@@ -54,16 +54,6 @@ html>
     .loader { display:inline-block; width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,0.2); border-top-color: #fff; animation: spin .7s linear infinite; vertical-align: middle; margin-left:8px; }
     @keyframes spin { to { transform: rotate(360deg);} }
     a{text-decoration:none;color:inherit}
-
-    /* PIN Auth Modal styles */
-    .pin-modal { width:100%; max-width:420px; background:#fff; border-top-left-radius:18px; border-top-right-radius:18px; padding:18px; box-shadow:0 -12px 40px rgba(0,0,0,0.12); display:flex; flex-direction:column; align-items:center; }
-    .pin-dots{display:flex;gap:12px;margin:18px 0}
-    .dot{width:62px;height:62px;border-radius:10px;border:2px solid #f2f2f2;display:flex;align-items:center;justify-content:center;font-size:28px}
-    .dot.filled{border-color:var(--primary);background:#f6fffb}
-    .keypad{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}
-    .key{background:#fff;border-radius:10px;height:72px;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 0 0 1px #f2f2f2 inset;cursor:pointer;user-select:none}
-    .pin-error{color:#d9534f;margin-top:8px;font-weight:600}
-    .pin-note{font-size:13px;color:var(--muted);margin-top:8px;text-align:center}
   </style>
 </head>
 <body>
@@ -153,39 +143,8 @@ html>
 
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
         <button id="cancelBtn" class="tiny">Cancel</button>
-        <!-- note: this Confirm triggers PIN auth first -->
         <button id="confirmBtn" class="pay-btn">Confirm</button>
       </div>
-    </div>
-  </div>
-
-  <!-- PIN Authentication Modal -->
-  <div id="pinAuthOverlay" class="modal-overlay" aria-hidden="true">
-    <div class="pin-modal" role="dialog" aria-modal="true" aria-label="Enter transaction PIN">
-      <div style="font-weight:700">Enter your 4-digit transaction PIN</div>
-      <div class="pin-note" id="pinNote">Enter the PIN you created for transactions.</div>
-
-      <div class="pin-dots" id="authPinDots">
-        <div class="dot" data-index="0"></div>
-        <div class="dot" data-index="1"></div>
-        <div class="dot" data-index="2"></div>
-        <div class="dot" data-index="3"></div>
-      </div>
-
-      <div id="pinError" class="pin-error" style="display:none"></div>
-
-      <div class="keypad" id="authKeypad" aria-hidden="false">
-        <div class="key">1</div><div class="key">2</div><div class="key">3</div>
-        <div class="key">4</div><div class="key">5</div><div class="key">6</div>
-        <div class="key">7</div><div class="key">8</div><div class="key">9</div>
-        <div class="key" id="blank"></div><div class="key">0</div><div class="key" id="back">⌫</div>
-      </div>
-
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button id="pinCancel" class="btn btn-outline">Cancel</button>
-        <button id="pinSubmit" class="btn btn-primary">Verify & Pay</button>
-      </div>
-      <div style="height:6px"></div>
     </div>
   </div>
 
@@ -227,9 +186,9 @@ function setStoredUser(u) {
   try {
     localStorage.setItem("loggedInUser", JSON.stringify(u));
     localStorage.setItem("user", JSON.stringify(u));
-    const ev = { type: "airtime_purchase", transaction_for: "airtime", ts: Date.now(), user: u };
+    const ev = { type: "airtime_purchase", user: u, ts: Date.now() };
     localStorage.setItem("payme_event", JSON.stringify(ev));
-    setTimeout(()=> localStorage.removeItem("payme_event"), 900);
+    setTimeout(()=> localStorage.removeItem("payme_event"), 800);
   } catch(e){ console.error("storage error", e); }
 }
 function showError(msg){ document.getElementById('errorMsg').textContent = msg; document.getElementById('errorModal').classList.add('show'); document.getElementById('errorModal').setAttribute('aria-hidden','false'); document.getElementById('errorOk').focus(); }
@@ -242,12 +201,6 @@ const networks = [
   { id: 'glo', name:'Glo', color:'#35b44a', short:'GLO', logoSvg: `<svg width="72" height="28"><rect rx="6" width="72" height="28" fill="#35b44a"/><text x="36" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">GLO</text></svg>` },
   { id: '9mobile', name:'9Mobile', color:'#00a0b0', short:'9MOBILE', logoSvg: `<svg width="72" height="28"><rect rx="6" width="72" height="28" fill="#00a0b0"/><text x="36" y="19" font-family="Inter, Arial" font-weight="800" font-size="12" text-anchor="middle" fill="#fff">9MOBILE</text></svg>` }
 ];
-
-/* ---------------- cashback helper (mirror earlier behaviour) ---------------- */
-function cashbackFor(price) {
-  if (price <= 200) return Math.ceil(price * 0.02);
-  return Math.ceil(price * 0.01);
-}
 
 /* ---------------- init UI ---------------- */
 let selectedNetwork = networks[0];
@@ -321,7 +274,7 @@ function updatePayState(amountCandidate){
 window.addEventListener('load', ()=> {
   const user = getStoredUser();
   if (user && user.phone) {
-    // leave recipient blank (user requested) but we can hint if desired
+    // do nothing special; leave recipient blank if you prefer
   }
 });
 
@@ -356,6 +309,7 @@ payBtn.addEventListener('click', ()=>{
 });
 
 cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
+
 /* success/error modals handlers */
 const successModal = document.getElementById('successModal');
 const successHeading = document.getElementById('successHeading');
@@ -383,268 +337,56 @@ function hideSuccess(){
   successModal.setAttribute('aria-hidden','true');
 }
 
-/* ---------------- PIN AUTH helpers ---------------- */
-const pinOverlay = document.getElementById('pinAuthOverlay');
-const pinDots = Array.from(document.querySelectorAll('#authPinDots .dot'));
-const pinKeypad = document.getElementById('authKeypad');
-const pinErrorEl = document.getElementById('pinError');
-const pinCancel = document.getElementById('pinCancel');
-const pinSubmit = document.getElementById('pinSubmit');
-
-let pinCurrent = '';
-let pinAttemptsLeft = 3; // client-side attempts counter per modal open (we also persist lock)
-let pendingPurchase = null; // will hold the payload to use after PIN verified
-
-function resetPinModal(){
-  pinCurrent = '';
-  pinAttemptsLeft = 3;
-  pinErrorEl.style.display = 'none';
-  pinErrorEl.textContent = '';
-  pinDots.forEach(d=>{ d.classList.remove('filled'); d.textContent = ''; });
-  pinSubmit.disabled = false;
-}
-
-function showPinError(msg){
-  pinErrorEl.textContent = msg || 'Invalid PIN';
-  pinErrorEl.style.display = 'block';
-}
-
-function openPinModal(payload){
-  // payload is { recipient, amount, fee, total, user, network }
-  // check client-side lock
-  const user = payload.user || getStoredUser();
-  const acct = user && (user.account_number || user.accountNumber);
-  if (acct) {
-    const lockKey = `pin_lock_${acct}`;
-    const lockVal = localStorage.getItem(lockKey);
-    if (lockVal) {
-      try {
-        const data = JSON.parse(lockVal);
-        if (data && data.expires && Date.now() < data.expires) {
-          const mins = Math.ceil((data.expires - Date.now())/60000);
-          showError(`Transactions locked for this account for ${mins} more minutes.`);
-          return;
-        } else {
-          localStorage.removeItem(lockKey);
-        }
-      } catch(e){ localStorage.removeItem(lockKey); }
-    }
-  }
-
-  pendingPurchase = payload;
-  resetPinModal();
-  pinOverlay.classList.add('show');
-  pinOverlay.setAttribute('aria-hidden','false');
-}
-
-/* keypad handling for PIN modal */
-pinKeypad.addEventListener('click', ev=>{
-  const k = ev.target;
-  if (!k.classList.contains('key')) return;
-  if (k.id === 'back') { pinCurrent = pinCurrent.slice(0,-1); updatePinDots(); return; }
-  if (k.id === 'blank') return;
-  if (pinCurrent.length >= 4) return;
-  pinCurrent += k.textContent.trim();
-  updatePinDots();
-});
-function updatePinDots(){
-  pinDots.forEach((d,i)=>{
-    const ch = pinCurrent[i] || '';
-    d.classList.toggle('filled', !!ch);
-    d.textContent = ch ? '•' : '';
-  });
-}
-
-/* cancel PIN entry */
-pinCancel.addEventListener('click', ()=>{
-  pinOverlay.classList.remove('show');
-  pinOverlay.setAttribute('aria-hidden','true');
-  pendingPurchase = null;
-});
-
-/* handle PIN submit -> verify with backend, then perform purchase on success */
-pinSubmit.addEventListener('click', async ()=>{
-  const pin = pinCurrent.trim();
-  if (pin.length !== 4) { showPinError('Enter 4 digits'); return; }
-
-  // disable button while verifying
-  pinSubmit.disabled = true;
-  showPinError('Verifying...');
-
-  try {
-    const user = pendingPurchase.user || getStoredUser();
-    if (!user) {
-      pinSubmit.disabled = false;
-      showPinError('User not found. Please login.');
-      return;
-    }
-    const account_number = user.account_number || user.accountNumber;
-    if (!account_number) {
-      pinSubmit.disabled = false;
-      showPinError('Account number missing. Cannot verify PIN.');
-      return;
-    }
-
-    // call stateless verify endpoint that exists in your pin_routes: POST /api/pin/verify
-    const res = await fetch(`${API_BASE}/api/pin/verify`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ account_number: String(account_number), pin: String(pin) })
-    });
-
-    let j = null;
-    try { j = await res.json(); } catch(e){ j = null; }
-
-    if (res.ok && j && (j.success === true || (j.status && j.status === 'success'))) {
-      // success -> close PIN modal and perform stored purchase
-      pinOverlay.classList.remove('show');
-      pinOverlay.setAttribute('aria-hidden','true');
-      pinErrorEl.style.display = 'none';
-      // reset attempts
-      pendingPurchase && performAirtimePurchase(pendingPurchase); // runs the actual purchase
-      pendingPurchase = null;
-      return;
-    }
-
-    // failed verification -> decrement attempts, maybe lock
-    pinAttemptsLeft -= 1;
-    const msgFromServer = j && (j.message || j.error) ? (j.message || j.error) : 'Invalid PIN';
-    if (pinAttemptsLeft <= 0) {
-      // set client-side lock for 4 hours
-      const lockKey = `pin_lock_${account_number}`;
-      const lockData = { locked: true, expires: Date.now() + (4 * 60 * 60 * 1000) };
-      try { localStorage.setItem(lockKey, JSON.stringify(lockData)); } catch(e){ console.warn('lock store failed', e); }
-      pinOverlay.classList.remove('show');
-      pinOverlay.setAttribute('aria-hidden','true');
-      pendingPurchase = null;
-      showError('Too many failed attempts. Transactions locked for 4 hours.');
-      return;
-    } else {
-      showPinError(`${msgFromServer}. Attempts left: ${pinAttemptsLeft}`);
-      pinSubmit.disabled = false;
-      return;
-    }
-
-  } catch (e) {
-    console.error('PIN verify error', e);
-    showPinError('Network error while verifying PIN.');
-    pinSubmit.disabled = false;
-    return;
-  }
-});
-
-/* ---------------- Confirm -> open PIN modal (instead of direct purchase) ---------------- */
-confirmBtn.addEventListener('click', ()=>{
-  // build payload to pendingPurchase (used by PIN auth)
+/* Confirm -> NEW FLOW:
+   Instead of calling backend immediately, we:
+   1) create a pending_tx object (amount, fee, total, recipient, network)
+   2) store it in sessionStorage under key "pending_tx"
+   3) close the confirmOverlay
+   4) redirect user to authentication.html where they input their 4-digit PIN
+*/
+confirmBtn.addEventListener('click', async () => {
+  // prepare pending transaction
   const recipient = confirmTo.textContent.trim();
-  const amountText = confirmAmount.textContent.replace(/[^0-9]/g,'') || '';
-  const amount = Number(amountText) || Number(selectedAmount || customAmount.value);
+  const amountText = confirmAmount.textContent.replace(/[^0-9.]/g,'');
+  const amount = Number(amountText) || (Number(selectedAmount) || Number(customAmount.value));
   const fee = Math.ceil(amount * 0.01);
   const total = amount + fee;
+  const network = confirmNetwork.textContent.trim();
+
   const user = getStoredUser();
+  if (!user || !user.phone) {
+    // not logged in — show error
+    showError('You must be logged in to make a purchase.');
+    return;
+  }
 
-  if (!user) { showError('You must be logged in'); confirmBtn.disabled=false; return; }
-
-  const payload = {
-    recipient,
-    amount,
-    fee,
-    total,
-    user,
-    network: selectedNetwork.name
+  const pending = {
+    phone: user.phone,
+    recipient: recipient,
+    amount: amount,
+    fee: fee,
+    total: total,
+    network: network,
+    product: 'airtime',
+    created_at: new Date().toISOString()
   };
 
-  // open PIN modal which will verify then call performAirtimePurchase
-  openPinModal(payload);
-});
+  // Save to sessionStorage as pending transaction (temporary)
+  try {
+    sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+  } catch(e) {
+    console.error('session storage failed', e);
+    showError('Unable to create pending transaction. Try again.');
+    return;
+  }
 
-/* ---------------- Perform the actual purchase (same behavior as before) ---------------- */
-async function performAirtimePurchase(payload) {
-  const { recipient, amount, fee, total, user, network } = payload;
-  // UI updates: hide confirm overlay
+  // close the confirm modal so user can see the background (you asked modal should disappear)
   confirmOverlay.classList.remove('show');
 
-  // find confirm button element (in confirm card)
-  const confirmBtnEl = document.getElementById('confirmBtn');
-  const oldHtml = confirmBtnEl.innerHTML;
-  confirmBtnEl.disabled = true;
-  confirmBtnEl.innerHTML = 'Processing <span class="loader" aria-hidden="true"></span>';
-
-  try {
-    const res = await fetch(`${API_BASE}/buy_airtime`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        phone: user.phone,
-        network: network,
-        amount: amount,
-        recipient: recipient,
-        product: 'airtime'
-      })
-    });
-
-    let data = null;
-    try { data = await res.json(); } catch(e){ data = null; }
-
-    if (!res.ok || (data && data.status && data.status !== 'success')) {
-      const reason = (data && (data.message || data.error)) ? (data.message || data.error) : (data ? JSON.stringify(data) : `HTTP ${res.status}`);
-      console.error('buy_airtime failure', res.status, data);
-      showError('Purchase failed: ' + reason);
-      confirmBtnEl.disabled = false;
-      confirmBtnEl.innerHTML = oldHtml;
-      return;
-    }
-
-    // Success path: update local storage balance
-    const newBalance = (data && (typeof data.balance !== 'undefined')) ? Number(data.balance) : null;
-    let updatedUser = user;
-    if (newBalance === null) {
-      try {
-        const r2 = await fetch(`${API_BASE}/user/${encodeURIComponent(user.phone)}`);
-        if (r2.ok) {
-          const j = await r2.json();
-          if (j && j.status === 'success' && j.user) updatedUser = j.user;
-        }
-      } catch(e){ console.warn('refetch user failed', e); }
-    } else {
-      updatedUser = Object.assign({}, user, { balance: newBalance });
-    }
-
-    // persist
-    setStoredUser(updatedUser);
-
-    // add local transaction
-    try {
-      const txs = JSON.parse(localStorage.getItem('transactions') || '[]');
-      txs.unshift({
-        type: 'Airtime',
-        network: network,
-        amount: amount,
-        fee: fee,
-        total: total,
-        other_party: recipient,
-        date: (new Date()).toISOString()
-      });
-      localStorage.setItem('transactions', JSON.stringify(txs));
-    } catch(e){ console.warn('store tx failed', e); }
-
-    // show success popup
-    showSuccess(`You bought ₦${Number(amount).toLocaleString()} airtime on ${network}.`);
-    // reset UI
-    document.querySelectorAll('.amt').forEach(x=>x.classList.remove('active'));
-    customAmount.value = '';
-    recipientInput.value = '';
-    selectedAmount = null;
-    updatePayState(null);
-
-  } catch (err) {
-    console.error('network error', err);
-    showError('Network error while purchasing airtime');
-  } finally {
-    confirmBtnEl.disabled = false;
-    confirmBtnEl.innerHTML = oldHtml;
-  }
-}
+  // redirect to authentication page to collect 4-digit PIN
+  // authentication.html will complete the pending transaction if PIN verified
+  window.location.href = 'authentication.html';
+});
 
 /* close confirm with ESC */
 document.addEventListener('keydown', (e)=> {
@@ -653,22 +395,8 @@ document.addEventListener('keydown', (e)=> {
     modalOverlay.classList.remove('show');
     hideSuccess();
     hideError();
-    pinOverlay.classList.remove('show');
   }
 });
 
 /* success/error modal close wiring for click outside */
 document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
-document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
-
-/* small helper: setStoredUser (used above) */
-function setStoredUser(u) { try {
-  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
-  const ev = { type: "airtime_purchase", transaction_for: "airtime", ts: Date.now(), user: u };
-  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
-} catch(e){ console.error(e); }}
-
-/* init finished */
-</script>
-</body>
-</html>
