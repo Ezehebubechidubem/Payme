@@ -1,4 +1,4 @@
-<!-- data.html (updated) -->
+<!-- data.html (updated — only success modal + small init logic changed; everything else kept) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -42,15 +42,23 @@
     .confirm-overlay.show{display:flex}
     .confirm-card{background:#fff;padding:16px;border-radius:12px;width:92%;max-width:420px}
     .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0e9f72;color:#fff;padding:10px 14px;border-radius:999px;display:none}
+    /* --- UPDATED success modal (richer) --- */
     .success-modal { position: fixed; inset: 0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.45); z-index:100; }
-    .success-card { background:#fff; border-radius:12px; padding:18px; width:92%; max-width:420px; text-align:center; box-shadow: 0 18px 40px rgba(10,20,30,0.12); }
+    .success-card { background:#fff; border-radius:12px; padding:18px; width:92%; max-width:480px; text-align:center; box-shadow: 0 18px 40px rgba(10,20,30,0.12); }
     .success-badge { width:68px;height:68px;border-radius:999px; display:inline-grid; place-items:center; color:#fff; font-size:32px; margin-bottom:10px; background:linear-gradient(135deg,#00c853,#43a047); }
-    .error-badge { background:linear-gradient(135deg,#f44336,#e53935); }
-    .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+    .success-title { font-weight:700; font-size:20px; margin-bottom:6px; color:var(--primary); }
+    .success-amount { font-size:34px; font-weight:800; margin:6px 0; }
+    .success-pill { display:inline-block; padding:6px 10px; border-radius:10px; background:#e8f9f3; color:#047a54; font-weight:700; margin-bottom:12px; }
+    .detail-list { text-align:left; margin-top:12px; }
+    .detail-item { display:flex; justify-content:space-between; padding:10px 12px; background:#fbfbfb; border-radius:10px; margin-bottom:10px; }
+    .detail-label { color:var(--muted); font-size:13px; }
+    .detail-value { font-weight:700; }
+    .actions { display:flex; gap:10px; justify-content:center; margin-top:14px; }
     .btn { padding:10px 12px; border-radius:8px; font-weight:700; border:0; cursor:pointer; }
     .btn-outline { background:#fff; border:1px solid #ddd; color:#333 }
     .btn-primary { background:var(--primary); color:#fff }
-    .muted-note{font-size:12px;color:#888;margin-top:8px}
+    .error-badge { background:linear-gradient(135deg,#f44336,#e53935); }
+    /* end updated modal */
     .loader { display:inline-block; width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,0.2); border-top-color: #fff; animation: spin .7s linear infinite; vertical-align: middle; margin-left:8px; }
     @keyframes spin { to { transform: rotate(360deg);} }
     a{text-decoration:none;color:inherit}
@@ -148,12 +156,21 @@
     </div>
   </div>
 
-  <!-- success popup -->
+  <!-- UPDATED success popup (detailed) -->
   <div id="successModal" class="success-modal" aria-hidden="true">
-    <div class="success-card">
-      <div class="success-badge">✓</div>
-      <h3 id="successHeading">Payment successful</h3>
-      <p id="successMsg">Your airtime purchase was successful.</p>
+    <div class="success-card" role="dialog" aria-modal="true" aria-labelledby="successHeading">
+      <div class="success-badge">₦</div>
+      <div class="success-title" id="successHeading">Money received</div>
+      <div class="success-amount" id="successAmount">₦0.00</div>
+      <div class="success-pill" id="successStatus">Successful</div>
+
+      <div class="detail-list" id="detailList">
+        <!-- populated dynamically -->
+        <!-- example detail-item:
+        <div class="detail-item"><div class="detail-label">Order amount</div><div class="detail-value">₦1,000.00</div></div>
+        -->
+      </div>
+
       <div class="actions">
         <button id="viewTxBtn" class="btn btn-outline">View Transactions</button>
         <button id="doneBtn" class="btn btn-primary">Done</button>
@@ -161,7 +178,7 @@
     </div>
   </div>
 
-  <!-- error popup -->
+  <!-- error popup (kept) -->
   <div id="errorModal" class="success-modal" aria-hidden="true">
     <div class="success-card">
       <div class="success-badge error-badge">✕</div>
@@ -276,6 +293,26 @@ window.addEventListener('load', ()=> {
   if (user && user.phone) {
     // do nothing special; leave recipient blank if you prefer
   }
+
+  // If we returned from Mainauthentication with success flag, show detailed success modal.
+  try {
+    const last = sessionStorage.getItem('last_tx_success');
+    if (last) {
+      const data = JSON.parse(last);
+      // data should contain message, amount, network OR the server response shape.
+      showDetailedSuccess({
+        amount: data.amount || data.total || 0,
+        network: data.network || '',
+        message: data.message || 'Airtime purchased successfully',
+        recipient: data.recipient || data.phone || null,
+        datetime: data.datetime || new Date().toISOString()
+      });
+      // remove flag so it won't show again when user refreshes
+      sessionStorage.removeItem('last_tx_success');
+    }
+  } catch(e){
+    console.warn('no last_tx_success or invalid', e);
+  }
 });
 
 /* ---------------- Pay flow ---------------- */
@@ -310,28 +347,75 @@ payBtn.addEventListener('click', ()=>{
 
 cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
 
-/* success/error modals handlers */
+/* success/error modals handlers (UPDATED success handlers) */
 const successModal = document.getElementById('successModal');
-const successHeading = document.getElementById('successHeading');
-const successMsg = document.getElementById('successMsg');
+const detailList = document.getElementById('detailList');
+const successAmount = document.getElementById('successAmount');
+const successStatus = document.getElementById('successStatus');
 const viewTxBtn = document.getElementById('viewTxBtn');
 const doneBtn = document.getElementById('doneBtn');
 
 document.getElementById('errorOk').addEventListener('click', hideError);
 document.getElementById('errorModal').addEventListener('click', (e)=> { if(e.target === document.getElementById('errorModal')) hideError(); });
 
-viewTxBtn.addEventListener('click', ()=> { hideSuccess(); window.location.href = 'transactions.html'; });
-doneBtn.addEventListener('click', ()=> { hideSuccess(); /* stay on page */ });
+viewTxBtn.addEventListener('click', ()=> { hideDetailedSuccess(); window.location.href = 'transactions.html'; });
+doneBtn.addEventListener('click', ()=> { hideDetailedSuccess(); /* stay on page */ });
 
-function showSuccess(msg){
-  successHeading.textContent = 'Payment successful';
-  successMsg.textContent = msg || 'Your purchase was successful.';
-  successModal.classList.add('show');
-  successModal.style.display = 'flex';
-  successModal.setAttribute('aria-hidden','false');
-  doneBtn.focus();
+function showDetailedSuccess(payload){
+  /*
+    payload fields used:
+      - amount (number)
+      - network (string)
+      - message (string)
+      - recipient (string or phone)
+      - datetime (ISO)
+  */
+  try {
+    const amt = Number(payload.amount) || 0;
+    successAmount.textContent = `₦${amt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+    // status text
+    successStatus.textContent = payload.message || 'Successful';
+
+    // build details: intentionally omit bank name and recipient account name (per request)
+    const dt = payload.datetime ? new Date(payload.datetime) : new Date();
+    const dtStr = dt.toLocaleString();
+
+    const details = [
+      { label: 'Order amount', value: `₦${amt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}` },
+      { label: 'Date/Time', value: dtStr },
+      // Sender - if available, show username or fallback
+      { label: 'Sender', value: (payload.sender_name || (getStoredUser() && getStoredUser().username) || '-') },
+      { label: 'Sender Account', value: (payload.sender_account || (getStoredUser() && getStoredUser().phone) || '-') },
+      // Bank name: intentionally omitted (we won't push a row for bank name)
+      // Recipient: show the phone/recipient number instead of account name
+      { label: 'Recipient', value: (payload.recipient_name || '-') }, // keep recipient label but empty if not provided
+      // Recipient Account -> show recipient number (explicit change requested)
+      { label: 'Recipient Account', value: (payload.recipient || payload.recipient_number || payload.phone || '-') },
+      { label: 'Transaction NO.', value: (payload.transaction_no || '-') },
+    ];
+
+    // clear list and render
+    detailList.innerHTML = '';
+    details.forEach(d => {
+      // Skip bank name field if present (we intentionally didn't add bank row above)
+      const div = document.createElement('div');
+      div.className = 'detail-item';
+      div.innerHTML = `<div class="detail-label">${d.label}</div><div class="detail-value">${d.value}</div>`;
+      detailList.appendChild(div);
+    });
+
+    // Show modal
+    successModal.classList.add('show');
+    successModal.style.display = 'flex';
+    successModal.setAttribute('aria-hidden','false');
+    // focus primary action
+    doneBtn.focus();
+  } catch(e){
+    console.error('showDetailedSuccess error', e);
+  }
 }
-function hideSuccess(){
+function hideDetailedSuccess(){
   successModal.classList.remove('show');
   successModal.style.display = 'none';
   successModal.setAttribute('aria-hidden','true');
@@ -384,7 +468,7 @@ confirmBtn.addEventListener('click', async () => {
   confirmOverlay.classList.remove('show');
 
   // redirect to authentication page to collect 4-digit PIN
-  // authentication.html will complete the pending transaction if PIN verified
+  // Mainauthentication.html will complete the pending transaction if PIN verified and then set sessionStorage.last_tx_success
   window.location.href = 'Mainauthentication.html';
 });
 
@@ -393,13 +477,13 @@ document.addEventListener('keydown', (e)=> {
   if (e.key === 'Escape') {
     confirmOverlay.classList.remove('show');
     modalOverlay.classList.remove('show');
-    hideSuccess();
+    hideDetailedSuccess();
     hideError();
   }
 });
 
 /* success/error modal close wiring for click outside */
-document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
+document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideDetailedSuccess(); });
 document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
 
 /* small helper: setStoredUser (used above) */
