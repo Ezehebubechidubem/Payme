@@ -55,8 +55,7 @@
 <script>
 /* ==== Config ==== */
 const API_BASE = 'https://payme-update.onrender.com'; // your backend
-const PIN_PAGE_REDIRECT = 'paymelogin.html';         // where to send after success
-const REGISTER_PAGE = 'paymeregister.html';          // kept for manual navigation if you want
+const PIN_PAGE_REDIRECT = 'paymelogin.html';          // after successful PIN setup
 
 /* ==== UI refs ==== */
 const headerTitle = document.getElementById('headerTitle');
@@ -67,11 +66,10 @@ const errorEl     = document.getElementById('error');
 const keypad      = document.getElementById('keypad');
 const confirmBtn  = document.getElementById('confirmBtn');
 
-let mode = 'create';   // 'create' -> initial, 'confirm' -> confirmation step
+let mode = 'create';
 let firstPin = null;
 let current = '';
 
-/* ==== UI helpers ==== */
 function refreshDots(){
   pinDotsEls.forEach((d,i)=>{
     const char = current[i] || '';
@@ -81,16 +79,10 @@ function refreshDots(){
   confirmBtn.style.display = (mode === 'confirm' && current.length === 4) ? 'block' : 'none';
   confirmBtn.disabled = false;
 }
-function showError(t){
-  errorEl.textContent = t || '';
-  errorEl.classList.remove('hidden');
-}
-function clearError(){
-  errorEl.textContent = '';
-  errorEl.classList.add('hidden');
-}
+function showError(t){ errorEl.textContent = t; errorEl.classList.remove('hidden'); }
+function clearError(){ errorEl.textContent=''; errorEl.classList.add('hidden'); }
 
-/* Keyboard handling */
+/* ==== Keyboard ==== */
 keypad.addEventListener('click', ev=>{
   const k = ev.target;
   if (!k.classList.contains('key')) return;
@@ -105,52 +97,24 @@ keypad.addEventListener('click', ev=>{
     headerTitle.textContent = 'Confirm your PIN';
     headerDesc.textContent = 'Re-enter the 4-digit PIN to confirm';
     message.textContent = 'Confirm PIN';
-    clearError();
-    refreshDots();
-  } else if (mode === 'confirm' && current.length === 4) {
-    // show confirm button by refreshDots
     refreshDots();
   }
 });
 
-/* ==== Auth/session helpers (use cookies/session) ==== */
-function clearAuthAndRedirect() {
-  try { localStorage.removeItem('user'); localStorage.removeItem('token'); } catch(e){}
-  // NOTE: we intentionally do NOT auto-redirect on auth failure per your request.
-  // Manual navigation to REGISTER_PAGE is left available if you want to call it elsewhere.
-}
-
-/* Build headers (no Authorization — we rely on session cookie) */
-function baseHeaders() {
-  return { 'Accept': 'application/json', 'Content-Type': 'application/json' };
-}
-
-/* ==== On load: verify session using /api/pin/status (credentials included) ==== */
+/* ==== Session check using cookies ==== */
 (async function checkSession(){
   try {
     const res = await fetch(`${API_BASE}/api/pin/status`, {
       method: 'GET',
-      credentials: 'include',
+      credentials: 'include', // IMPORTANT
       headers: { 'Accept': 'application/json' }
     });
-
     if (res.status === 401) {
-      // User not authenticated but we won't redirect
-      showError('Not authenticated. Please login to save the PIN (you can continue but saving will fail until you login).');
+      console.warn('User not logged in — they can still enter PIN but saving will fail.');
       return;
     }
-
-    if (!res.ok) {
-      console.warn('pin status check returned', res.status);
-      return;
-    }
-
-    // optional: success message if authenticated
-    const j = await res.json().catch(()=>({}));
-    if (j?.success) clearError();
-
   } catch(err){
-    console.warn('session check error', err);
+    console.warn('Session check failed:', err);
   }
 })();
 
@@ -159,8 +123,7 @@ confirmBtn.addEventListener('click', async ()=>{
   clearError();
   if (current !== firstPin) {
     showError('PINs do not match. Try again.');
-    // reset flow
-    mode='create'; firstPin=null; current=''; 
+    mode='create'; firstPin=null; current='';
     headerTitle.textContent='Create your 4-digit payment PIN';
     headerDesc.textContent='You will use this PIN to confirm payments and transactions.';
     message.textContent='Type a 4-digit PIN';
@@ -168,49 +131,45 @@ confirmBtn.addEventListener('click', async ()=>{
     return;
   }
 
-  // UI
   message.textContent = 'Saving PIN...';
   confirmBtn.disabled = true;
 
   try {
     const res = await fetch(`${API_BASE}/api/pin/setup`, {
       method: 'POST',
-      credentials: 'include',           // IMPORTANT: rely on session cookie from /login
-      headers: baseHeaders(),
+      credentials: 'include', // <-- SEND SESSION COOKIE
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin: current })
     });
 
+    const j = await res.json().catch(()=>({ success:false }));
+
+    if (res.ok && j.success) {
+      message.textContent = 'PIN created successfully. Redirecting...';
+      clearError();
+      setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 800);
+      return;
+    }
+
+    // For session auth, if cookie is missing or expired:
     if (res.status === 401) {
-      // Do NOT redirect — show error and let user decide how to proceed (e.g., login)
-      showError('Authentication expired or not logged in. Please login and try again.');
+      showError('You must be logged in before setting a PIN.');
       confirmBtn.disabled = false;
       message.textContent = 'Confirm PIN';
       return;
     }
 
-    const j = await res.json().catch(()=>({ success:false, message: 'Invalid server response' }));
-
-    if (res.ok && j.success) {
-      message.textContent = 'PIN created successfully. Redirecting...';
-      clearError();
-      setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 900);
-      return;
-    }
-
-    // non-OK: show server message if available
-    showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
+    showError(j.message || 'Failed to save PIN');
     confirmBtn.disabled = false;
     message.textContent = 'Confirm PIN';
-
   } catch(e){
-    console.error('pin setup error', e);
-    showError('Network error, please try again.');
+    console.error('PIN setup error', e);
+    showError('Network error. Please try again.');
     confirmBtn.disabled = false;
     message.textContent = 'Confirm PIN';
   }
 });
 
-/* initial UI render */
 refreshDots();
 </script>
 </body>
