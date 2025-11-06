@@ -58,8 +58,10 @@
 (function(){
   // config
   const API_BASE = "https://payme-update.onrender.com";
-  const MAX_ATTEMPTS = 10; // per your request
+  const MAX_ATTEMPTS = 10; // per request
   const ATTEMPT_KEY_PREFIX = "pin_attempts_"; // localStorage key prefix
+  const REDIRECT_ON_CANCEL = "airtime.html";
+  const REDIRECT_ON_SUCCESS = "airtime.html";
 
   // DOM refs
   const keypad = document.getElementById('keypad');
@@ -162,9 +164,9 @@
     refreshDots();
   }
 
-  // Cancel goes back to data.html (unchanged)
+  // Cancel goes back to airtime.html
   cancelBtn.addEventListener('click', ()=> {
-    window.location.href = 'data.html';
+    window.location.href = REDIRECT_ON_CANCEL;
   });
 
   // Submit / verify flow
@@ -199,7 +201,7 @@
         body: JSON.stringify(payload)
       });
 
-      // try parse json
+      // parse json (fallback safe)
       const j = await res.json().catch(()=>({ success:false }));
 
       if (res.ok && j.success) {
@@ -224,15 +226,16 @@
           const execJson = await execRes.json().catch(()=>null);
 
           if (execRes.ok && execJson && execJson.status === 'success') {
-            // success: clear pending, store last_tx_success, redirect back
+            // success: clear pending, store last_tx_success, redirect back to airtime.html
             clearPending();
             sessionStorage.setItem('last_tx_success', JSON.stringify({
               message: execJson.message || 'Airtime purchased successfully',
               amount: pending.amount,
               network: pending.network
             }));
-            // small delay for UX
-            window.location.href = 'data.html';
+
+            // redirect to airtime.html
+            window.location.href = REDIRECT_ON_SUCCESS;
             return;
           } else {
             const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
