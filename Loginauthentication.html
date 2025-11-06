@@ -1,136 +1,226 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PayMe — Login</title>
+  <title>Payme — Create Payment PIN</title>
   <style>
-    :root { --bg:#f4f6f8; --card:#fff; --accent:#00c853; --accent-dark:#009624; --muted:#666; }
-    body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; font-family:system-ui,Arial; background:var(--bg); }
-    .card{ width:100%; max-width:420px; background:var(--card); padding:20px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.08); }
-    h1{ margin:0 0 12px; font-size:20px; text-align:center }
-    label{ display:block; font-size:13px; color:var(--muted); margin-top:10px; margin-bottom:6px; }
-    input{ width:100%; padding:12px; border-radius:8px; border:1px solid #e6e6e6; font-size:15px; box-sizing:border-box; }
-    button{ width:100%; margin-top:16px; padding:12px; border-radius:8px; border:0; background:var(--accent); color:#fff; font-weight:700; cursor:pointer }
-    button:disabled{ opacity:0.6; cursor:not-allowed }
-    .muted{ color:var(--muted); font-size:13px; margin-top:10px; text-align:center }
-    .error{ color:#d32f2f; font-weight:600; margin-top:10px; text-align:center }
-    .success{ color:#007e33; font-weight:700; margin-top:10px; text-align:center }
-    a.link{ color:var(--accent); text-decoration:none; font-weight:600 }
+    :root { --bg:#fafafa; --card:#fff; --accent:#00a884; --danger:#d9534f; --muted:#7a7a7a; }
+    html,body{ height:100%; margin:0; font-family:system-ui,Arial; background:var(--bg); }
+    .sheet{ position:fixed; left:0; right:0; top:0; bottom:0; display:flex; align-items:flex-end; justify-content:center; }
+    .card{ width:100%; max-width:540px; background:var(--card); border-top-left-radius:18px; border-top-right-radius:18px; padding:18px 16px 28px; box-shadow:0 -12px 40px rgba(0,0,0,0.12); display:flex; flex-direction:column; align-items:center }
+    .grab{ width:48px; height:4px; background:#eee; border-radius:2px; margin-bottom:8px }
+    .title{ font-weight:700; font-size:18px; margin-top:6px }
+    .desc{ color:var(--muted); font-size:13px; text-align:center; margin-bottom:6px }
+    .pin-dots{ display:flex; gap:12px; margin:18px 0 }
+    .dot{ width:62px; height:62px; border-radius:10px; border:2px solid #f2f2f2; display:flex; align-items:center; justify-content:center; font-size:28px; user-select:none }
+    .dot.filled{ border-color:var(--accent); background:#f6fffb }
+    .keypad{ width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:8px }
+    .key{ background:#fff; border-radius:10px; height:72px; display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 0 0 1px #f2f2f2 inset; cursor:pointer; user-select:none }
+    .muted{ color:var(--muted); font-size:13px; margin-top:6px }
+    .danger{ color:var(--danger); font-weight:600; margin-top:6px }
+    .hidden{ display:none }
+    .confirm-btn{ background:var(--accent); color:#fff; border:0; border-radius:10px; width:100%; max-width:300px; padding:14px 0; font-size:16px; font-weight:600; margin-top:20px; cursor:pointer; display:none }
+    .confirm-btn[disabled]{ opacity:0.6; cursor:not-allowed }
+    .note { font-size:13px; color:#9a9a9a; margin-top:8px; text-align:center; max-width:420px; }
   </style>
 </head>
 <body>
-  <div class="card" role="main" aria-labelledby="title">
-    <h1 id="title">Login to PayMe</h1>
+<div class="sheet" role="dialog" aria-modal="true" aria-label="Create Payment PIN">
+  <div class="card" role="document">
+    <div class="grab" aria-hidden="true"></div>
 
-    <form id="loginForm" autocomplete="on">
-      <label for="login">Username or Phone</label>
-      <input id="login" name="login" type="text" placeholder="username or 081XXXXXXXX" required autocomplete="username">
+    <div class="title" id="headerTitle">Create your 4-digit payment PIN</div>
+    <div class="desc" id="headerDesc">You will use this PIN to confirm payments and transactions.</div>
 
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" placeholder="your password" required autocomplete="current-password">
-
-      <button id="submitBtn" type="submit">Login</button>
-    </form>
-
-    <div id="msg" class="muted" aria-live="polite"></div>
-    <div id="err" class="error" role="alert" style="display:none"></div>
-
-    <div class="muted" style="margin-top:12px">
-      No account? <a class="link" href="paymeregister.html">Register</a>
+    <div class="pin-dots" id="pinDots" aria-hidden="false">
+      <div class="dot" data-index="0" aria-hidden="true"></div>
+      <div class="dot" data-index="1" aria-hidden="true"></div>
+      <div class="dot" data-index="2" aria-hidden="true"></div>
+      <div class="dot" data-index="3" aria-hidden="true"></div>
     </div>
+
+    <div id="message" class="muted">Type a 4-digit PIN</div>
+    <div id="error" class="danger hidden" role="alert" aria-live="assertive"></div>
+
+    <div class="keypad" id="keypad" role="group" aria-label="PIN keypad">
+      <div class="key" role="button" tabindex="0">1</div><div class="key" role="button" tabindex="0">2</div><div class="key" role="button" tabindex="0">3</div>
+      <div class="key" role="button" tabindex="0">4</div><div class="key" role="button" tabindex="0">5</div><div class="key" role="button" tabindex="0">6</div>
+      <div class="key" role="button" tabindex="0">7</div><div class="key" role="button" tabindex="0">8</div><div class="key" role="button" tabindex="0">9</div>
+      <div class="key" id="blank" aria-hidden="true"></div><div class="key" role="button" tabindex="0">0</div><div class="key" id="back" role="button" tabindex="0" aria-label="Backspace">⌫</div>
+    </div>
+
+    <button class="confirm-btn" id="confirmBtn" aria-disabled="false" aria-label="Confirm PIN">Confirm PIN</button>
+    <div class="note" id="serverNote" aria-hidden="true"></div>
   </div>
+</div>
 
 <script>
-/* ===== CONFIG ===== */
-const API_BASE = 'https://payme-update.onrender.com'; // backend URL
-const ON_SUCCESS_REDIRECT = 'create-pin.html';        // change to your PIN page or home
+/* ==== Config ==== */
+const API_BASE = 'https://payme-update.onrender.com'; // your backend (as requested)
+const PIN_PAGE_REDIRECT = 'paymelogin.html';          // after successful PIN setup
 
-/* ===== DOM ===== */
-const form = document.getElementById('loginForm');
-const loginInput = document.getElementById('login');
-const pwdInput = document.getElementById('password');
-const submitBtn = document.getElementById('submitBtn');
-const msgEl = document.getElementById('msg');
-const errEl = document.getElementById('err');
+/* ==== UI refs ==== */
+const headerTitle = document.getElementById('headerTitle');
+const headerDesc  = document.getElementById('headerDesc');
+const pinDotsEls  = Array.from(document.querySelectorAll('.dot'));
+const message     = document.getElementById('message');
+const errorEl     = document.getElementById('error');
+const keypad      = document.getElementById('keypad');
+const confirmBtn  = document.getElementById('confirmBtn');
+const serverNote  = document.getElementById('serverNote');
 
-function setLoading(on){
-  if(on){
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Logging in...';
-  } else {
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Login';
-  }
+let mode = 'create';   // 'create' -> initial; 'confirm' -> confirmation step
+let firstPin = null;
+let current = '';
+
+/* ==== UI helpers ==== */
+function refreshDots(){
+  pinDotsEls.forEach((d,i)=>{
+    const char = current[i] || '';
+    d.classList.toggle('filled', !!char);
+    d.textContent = char ? '•' : '';
+  });
+  // Show confirm button only in confirmation step when 4 digits typed
+  confirmBtn.style.display = (mode === 'confirm' && current.length === 4) ? 'block' : 'none';
+  confirmBtn.disabled = false;
 }
-
-function showError(text){
-  errEl.style.display = 'block';
-  errEl.textContent = text || 'Login failed';
+function showError(t){
+  errorEl.textContent = t || '';
+  errorEl.classList.remove('hidden');
 }
 function clearError(){
-  errEl.style.display = 'none';
-  errEl.textContent = '';
+  errorEl.textContent = '';
+  errorEl.classList.add('hidden');
+}
+function setNote(t){
+  serverNote.textContent = t || '';
+  serverNote.style.display = t ? 'block' : 'none';
+  serverNote.setAttribute('aria-hidden', t ? 'false' : 'true');
 }
 
-/* ===== Handle submit ===== */
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  clearError();
-  msgEl.textContent = '';
-  const login = (loginInput.value || '').trim();
-  const password = pwdInput.value || '';
-
-  if(!login || !password){
-    showError('Please enter both login and password');
-    return;
+/* ==== Keyboard handling (click & keyboard accessibility) ==== */
+keypad.addEventListener('click', ev=>{
+  const k = ev.target;
+  if (!k.classList.contains('key')) return;
+  handleKey(k);
+});
+keypad.addEventListener('keydown', ev=>{
+  // support Enter/Space on focused key elements
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    const k = document.activeElement;
+    if (k && k.classList.contains('key')) {
+      ev.preventDefault();
+      handleKey(k);
+    }
   }
+});
+function handleKey(k){
+  if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
+  if (k.id === 'blank') return;
+  if (current.length >= 4) return;
+  current += k.textContent.trim();
+  refreshDots();
 
-  setLoading(true);
+  if (current.length === 4 && mode === 'create') {
+    firstPin = current; current = ''; mode = 'confirm';
+    headerTitle.textContent = 'Confirm your PIN';
+    headerDesc.textContent = 'Re-enter the 4-digit PIN to confirm';
+    message.textContent = 'Confirm PIN';
+    clearError();
+    refreshDots();
+  }
+}
+
+/* ==== Session check using cookies (do not redirect on failure) ==== */
+(async function checkSession(){
   try {
-    const res = await fetch(`${API_BASE}/login`, {
-      method: 'POST',
-      credentials: 'include',            // IMPORTANT: allow session cookie from server
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ login, password })
+    const res = await fetch(`${API_BASE}/api/pin/status`, {
+      method: 'GET',
+      credentials: 'include', // IMPORTANT: include session cookie
+      headers: { 'Accept': 'application/json' }
     });
 
-    let j = null;
-    try { j = await res.json(); } catch(e){ j = null; }
-
-    if (res.ok && j && j.status === 'success' && j.user) {
-      // backend set session cookie + returned user object
-      // store user locally (your other pages expect "user" / "loggedInUser")
-      try {
-        localStorage.setItem('user', JSON.stringify(j.user));
-        localStorage.setItem('loggedInUser', JSON.stringify(j.user));
-      } catch (e) { /* ignore storage errors */ }
-
-      msgEl.textContent = 'Login successful — redirecting...';
-      // short delay for UX, then redirect
-      setTimeout(()=> window.location.href = ON_SUCCESS_REDIRECT, 600);
+    if (res.status === 401) {
+      // not logged in — don't redirect, just inform user saving will fail unless they login
+      setNote('Not authenticated. Please log in if you want to save the PIN. (You may continue to type the PIN but saving will fail until you are logged in.)');
       return;
     }
 
-    // Not ok: show friendly message derived from JSON or status code
-    if (j && j.message) {
-      showError(j.message);
-    } else if (res.status === 401) {
-      showError('Invalid credentials — please check username/phone and password');
-    } else {
-      showError('Server error — try again later');
+    if (!res.ok) {
+      // server error or network issue — show a subtle non-blocking note
+      setNote('Could not verify session (server unavailable). You can still try to save the PIN.');
+      return;
     }
 
-  } catch (err) {
-    console.error('Login error', err);
-    showError('Network error — check your connection and try again');
-  } finally {
-    setLoading(false);
+    // session ok, hide any note
+    setNote('');
+  } catch(err){
+    // network issue — allow user to continue
+    setNote('Network issue while checking session. Saving might fail.');
+    console.warn('Session check failed:', err);
+  }
+})();
+
+/* ==== Submit PIN ==== */
+confirmBtn.addEventListener('click', async ()=>{
+  clearError();
+  if (current !== firstPin) {
+    showError('PINs do not match. Try again.');
+    // reset flow
+    mode='create'; firstPin=null; current='';
+    headerTitle.textContent='Create your 4-digit payment PIN';
+    headerDesc.textContent='You will use this PIN to confirm payments and transactions.';
+    message.textContent='Type a 4-digit PIN';
+    refreshDots();
+    return;
+  }
+
+  // UI feedback
+  message.textContent = 'Saving PIN...';
+  confirmBtn.disabled = true;
+  setNote(''); // clear any previous notes
+
+  try {
+    const res = await fetch(`${API_BASE}/api/pin/setup`, {
+      method: 'POST',
+      credentials: 'include', // <-- SEND SESSION COOKIE so backend can check session
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ pin: current })
+    });
+
+    const j = await res.json().catch(()=>({ success:false }));
+
+    if (res.ok && j.success) {
+      // success — stay or redirect to the success page
+      message.textContent = 'PIN created successfully. Redirecting...';
+      clearError();
+      setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 700);
+      return;
+    }
+
+    // If not authorized, show clear message but do NOT redirect
+    if (res.status === 401) {
+      showError('You must be logged in before setting a PIN. Please log in and try again.');
+      confirmBtn.disabled = false;
+      message.textContent = 'Confirm PIN';
+      return;
+    }
+
+    // Other server errors: show returned message or generic
+    showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
+    confirmBtn.disabled = false;
+    message.textContent = 'Confirm PIN';
+  } catch(e){
+    console.error('PIN setup error', e);
+    showError('Network error. Please try again.');
+    confirmBtn.disabled = false;
+    message.textContent = 'Confirm PIN';
   }
 });
 
-/* Autofocus */
-window.addEventListener('load', ()=> loginInput.focus());
+/* initial UI render */
+refreshDots();
 </script>
 </body>
 </html>
