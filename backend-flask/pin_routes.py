@@ -271,68 +271,33 @@ def pin_associate():
 
 
 # ---------------- Verify PIN for transaction ----------------
-# ---------------- Verify PIN for transaction ----------------
-# ---------------- Verify PIN for transaction ----------------
-@bp.route("/verify", methods=["POST"])
+@pin_bp.route("/api/pin/verify", methods=["POST"])
 def verify_pin():
-    """
-    Verify a user's PIN for transaction or authentication.
-    Body: { "account_number": "1234567890", "pin": "1234" }
-    """
     try:
-        data = request.get_json(force=True)
-        account_number = str(data.get("account_number", "")).strip()
-        pin = str(data.get("pin", "")).strip()
+        data = request.get_json()
+        account_number = data.get("account_number")
+        pin = data.get("pin")
 
         if not account_number or not pin:
             return jsonify({"success": False, "message": "Missing account number or PIN"}), 400
 
-        with get_conn() as conn:
-            cur = conn.cursor()
-            # ✅ Find user_id for given account
-            cur.execute("SELECT id FROM users WHERE account_number = ? LIMIT 1", (account_number,))
-            urow = cur.fetchone()
-            if not urow:
-                return jsonify({"success": False, "message": "Account not found"}), 404
+        conn = get_db()
+        cur = conn.cursor()
 
-            user_id = urow["id"] if isinstance(urow, dict) else urow[0]
+        cur.execute("SELECT pin_hash FROM users WHERE account_number = ?", (account_number,))
+        row = cur.fetchone()
 
-            # ✅ Fetch stored hashed PIN from user_pins
-            cur.execute("SELECT hashed_pin FROM user_pins WHERE user_id = ? LIMIT 1", (user_id,))
-            prow = cur.fetchone()
-            if not prow:
-                return jsonify({"success": False, "message": "No PIN found for this account"}), 404
+        if not row:
+            return jsonify({"success": False, "message": "Account not found"}), 404
 
-            stored_hash = prow["hashed_pin"] if isinstance(prow, dict) else prow[0]
-
-        # ✅ Check PIN hash
-        if not check_pin(pin, stored_hash):
-            # Record failure
-            try:
-                with get_conn() as conn2:
-                    c2 = conn2.cursor()
-                    c2.execute(
-                        "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
-                        (user_id, "PIN_VERIFY_FAIL", f"account:{account_number}", now_iso())
-                    )
-            except Exception:
-                pass
+        # Assuming pin is stored hashed (bcrypt)
+        stored_hash = row["pin_hash"]
+        if bcrypt.checkpw(pin.encode(), stored_hash.encode()):
+            return jsonify({"success": True, "message": "PIN verified"})
+        else:
             return jsonify({"success": False, "message": "Invalid PIN"}), 401
 
-        # ✅ Log success
-        try:
-            with get_conn() as conn3:
-                c3 = conn3.cursor()
-                c3.execute(
-                    "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
-                    (user_id, "PIN_VERIFY_SUCCESS", f"account:{account_number}", now_iso())
-                )
-        except Exception:
-            pass
-
-        print(f"✅ PIN verified successfully for {account_number}", flush=True)
-        return jsonify({"success": True, "message": "PIN verified successfully"}), 200
-
     except Exception as e:
+        print("PIN verify error:", e)
         traceback.print_exc()
-        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+        return jsonify({"success": False, "message": "Server error"}), 500
