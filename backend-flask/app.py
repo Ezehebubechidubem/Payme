@@ -11,8 +11,7 @@ from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, make_response, session
 from flask_cors import CORS
-from pin_routes import bp as pin_bp
-app.register_blueprint(pin_bp)
+
 
 # optional postgres support
 try:
@@ -33,6 +32,16 @@ def _now_iso():
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": os.environ.get("CORS_ORIGINS", "*")}}, supports_credentials=True)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+
+
+# Now import & register pin blueprint (import below so `app` already exists)
+try:
+    from pin_routes import bp as pin_bp
+    app.register_blueprint(pin_bp)
+    print("pin_routes blueprint registered")
+except Exception as e:
+    # log error but allow app to start (useful when debugging)
+    print("Failed to register pin_routes:", e)
 
 # -------------------------------------------------
 # DB helpers and compatibility for sqlite3 / psycopg2
