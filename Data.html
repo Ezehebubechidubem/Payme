@@ -48,6 +48,8 @@
     .success-modal { position: fixed; inset: 0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.45); z-index:100; }
     .success-card { background:#fff; border-radius:12px; padding:18px; width:92%; max-width:420px; text-align:center; box-shadow: 0 18px 40px rgba(10,20,30,0.12); }
     .success-badge { width:68px;height:68px;border-radius:999px; display:inline-grid; place-items:center; color:#fff; font-size:32px; margin-bottom:10px; background:linear-gradient(135deg,#00c853,#43a047); }
+    .success-amount { font-size:34px; font-weight:800; margin:6px 0; }
+    .success-type { color:#047a54; font-weight:700; margin-bottom:8px; }
     .error-badge { background:linear-gradient(135deg,#f44336,#e53935); }
     .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
     .btn { padding:10px 12px; border-radius:8px; font-weight:700; border:0; cursor:pointer; }
@@ -77,7 +79,8 @@
       </div>
 
       <div style="margin-top:10px">
-        <input id="recipientInput" type="tel" placeholder="Recipient number (e.g. 0803xxxxxxx)" inputmode="tel" />
+        <!-- maxlength + digit-only enforcement (JS also trims to 11) -->
+        <input id="recipientInput" type="tel" placeholder="Recipient number (e.g. 0803xxxxxxx)" inputmode="tel" maxlength="11" />
       </div>
       <!-- tip removed per request -->
     </div>
@@ -144,13 +147,14 @@
     </div>
   </div>
 
-  <!-- success popup -->
+  <!-- success popup (data-specific) -->
   <div id="successModal" class="success-modal" aria-hidden="true">
     <div class="success-card">
       <div class="success-badge">✓</div>
-      <h3 id="successHeading">Payment successful</h3>
+      <div class="success-type" id="successType">Data purchase</div>
+      <div class="success-amount" id="successAmount">500MB</div>
       <!-- show only recipient number prominently as requested -->
-      <p id="successMsg" style="font-weight:700;font-size:16px;margin-top:8px">Recipient: <span id="successRecipient"></span></p>
+      <p id="successMsg" style="font-weight:600;margin-top:8px">To: <span id="successRecipient"></span></p>
       <div class="actions">
         <button id="viewTxBtn" class="btn btn-outline">View Transactions</button>
         <button id="doneBtn" class="btn btn-primary">Done</button>
@@ -215,6 +219,37 @@ const plans = [
 function cashbackFor(price) {
   if (price <= 200) return Math.ceil(price * 0.02);
   return Math.ceil(price * 0.01);
+}
+
+/* Utility to derive a display label for a data amount */
+function deriveDataLabel(payload) {
+  // Prefer explicit fields
+  if (!payload) return null;
+  if (payload.data_plan) return payload.data_plan;
+  if (payload.plan) return payload.plan;
+
+  const amt = Number(payload.amount || payload.total || 0);
+  if (!amt || amt <= 0) return null;
+
+  // exact match in plan prices
+  const exact = plans.find(p => Number(p.price) === Number(amt));
+  if (exact) return exact.label;
+
+  // fallback: if multiple of 250 -> compute MB: each 250 => 500MB
+  if (amt % 250 === 0) {
+    const units = amt / 250; // number of 500MB units
+    const mb = units * 500;
+    if (mb >= 1024) {
+      const gb = +(mb / 1024).toFixed(2);
+      // if whole number like 1.00 show 1GB
+      return (Number.isInteger(gb) ? `${gb}GB` : `${gb}GB`);
+    } else {
+      return `${mb}MB`;
+    }
+  }
+
+  // last resort: return currency if we can't map
+  return `₦${amt.toLocaleString()}`;
 }
 
 /* ---------------- init UI ---------------- */
@@ -290,7 +325,15 @@ customAmount.addEventListener('input', ()=> {
   updatePayState(isNaN(v) ? null : v, 'Custom');
 });
 
-recipientInput.addEventListener('input', ()=> updatePayState(null,null));
+/* restrict recipient input to digits only and max 11 (also maxlength attr) */
+recipientInput.addEventListener('input', (e)=> {
+  let v = recipientInput.value || '';
+  // keep digits only
+  v = v.replace(/\D/g,'');
+  if (v.length > 11) v = v.slice(0,11);
+  if (recipientInput.value !== v) recipientInput.value = v;
+  updatePayState(null,null);
+});
 
 let selectedPrice = null;
 let selectedPlanLabel = null;
@@ -319,17 +362,22 @@ window.addEventListener('load', ()=> {
     // nothing to auto-fill
   }
 
-  // If we returned from Mainauthentication with success flag, show success modal (only recipient shown)
+  // If we returned from Mainauthentication with success flag, show success modal (data specific)
   try {
     const last = sessionStorage.getItem('last_tx_success');
     if (last) {
       const data = JSON.parse(last);
+      // Prefer explicit data_plan; else derive from amount
+      const planLabel = deriveDataLabel(data) || 'Data';
       const recipient = data.recipient || data.phone || '';
-      const amount = data.amount || data.total || 0;
-      document.getElementById('successRecipient').textContent = recipient;
-      document.getElementById('successHeading').textContent = 'Payment successful';
-      // keep message minimal — only recipient displayed as requested
-      document.getElementById('successMsg').textContent = `You sent ₦${Number(amount).toLocaleString()} to ${recipient}.`;
+      const amount = Number(data.amount || data.total || 0);
+
+      document.getElementById('successType').textContent = 'Data purchase';
+      document.getElementById('successAmount').textContent = planLabel;
+      document.getElementById('successRecipient').textContent = recipient || '-';
+
+      // optionally update the message text below if you want: but user asked to show data and recipient
+      // keep existing behavior: show modal and remove session key
       document.getElementById('successModal').classList.add('show');
       document.getElementById('successModal').style.display = 'flex';
       document.getElementById('successModal').setAttribute('aria-hidden','false');
@@ -354,99 +402,4 @@ payBtn.addEventListener('click', ()=>{
   const to = recipientInput.value.trim();
   if (!validPhone11(to)) return showError('Enter a valid 11-digit recipient phone');
   const amt = Number(selectedPrice || customAmount.value);
-  if (!amt || amt < 50) return showError('Enter a valid amount (minimum ₦50)');
-  const fee = Math.ceil(amt * 0.01);
-  const total = amt + fee;
-
-  confirmTitle.textContent = `Buy ${selectedNetwork.name} Data`;
-  confirmSub.textContent = 'Confirm before we proceed';
-  confirmPlan.textContent = selectedPlanLabel || 'Custom';
-  confirmAmount.textContent = `₦${Number(amt).toLocaleString()}`;
-  confirmFee.textContent = `₦${Number(fee).toLocaleString()}`;
-  confirmTotal.textContent = `₦${Number(total).toLocaleString()}`;
-  confirmTo.textContent = to;
-  confirmOverlay.classList.add('show');
-});
-
-cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
-
-/* Confirm -> create pending_tx and redirect to Mainauthentication.html for PIN */
-confirmBtn.addEventListener('click', async () => {
-  const recipient = confirmTo.textContent.trim();
-  const amount = Number((confirmAmount.textContent || '').replace(/[^0-9.]/g,'')) || Number(selectedPrice || customAmount.value);
-  const fee = Math.ceil(amount * 0.01);
-  const total = amount + fee;
-  const network = selectedNetwork.name;
-  const plan = selectedPlanLabel || 'Custom';
-
-  const user = getStoredUser();
-  if (!user || !user.phone) { showError('You must be logged in'); return; }
-
-  const pending = {
-    phone: user.phone,
-    recipient: recipient,
-    amount: amount,
-    fee: fee,
-    total: total,
-    network: network,
-    product: 'data',
-    data_plan: plan,
-    created_at: new Date().toISOString()
-  };
-
-  try {
-    sessionStorage.setItem('pending_tx', JSON.stringify(pending));
-  } catch(e){
-    console.error('session storage failed', e);
-    showError('Unable to create pending transaction. Try again.');
-    return;
-  }
-
-  // close confirm and redirect to Mainauthentication where user enters PIN
-  confirmOverlay.classList.remove('show');
-  window.location.href = 'Mainauthentication.html';
-});
-
-/* success/error modals handlers */
-const successModal = document.getElementById('successModal');
-const viewTxBtn = document.getElementById('viewTxBtn');
-const doneBtn = document.getElementById('doneBtn');
-
-document.getElementById('errorOk').addEventListener('click', hideError);
-document.getElementById('errorModal').addEventListener('click', (e)=> { if(e.target === document.getElementById('errorModal')) hideError(); });
-
-viewTxBtn.addEventListener('click', ()=> { hideSuccess(); window.location.href = 'transactions.html'; });
-doneBtn.addEventListener('click', ()=> { hideSuccess(); /* stay on page */ });
-
-function hideSuccess(){
-  successModal.classList.remove('show');
-  successModal.style.display = 'none';
-  successModal.setAttribute('aria-hidden','true');
-}
-
-/* close confirm with ESC */
-document.addEventListener('keydown', (e)=> {
-  if (e.key === 'Escape') {
-    confirmOverlay.classList.remove('show');
-    modalOverlay.classList.remove('show');
-    hideSuccess();
-    hideError();
-  }
-});
-
-/* success/error modal close wiring for click outside */
-document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
-document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
-
-/* small helper: setStoredUser (used above) */
-function setStoredUser(u) { try {
-  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
-  const ev = { type: "data_purchase", transaction_for: "data", ts: Date.now(), user: u };
-  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
-} catch(e){ console.error(e); }}
-
-/* init finished */
-</script>
-</body>
-</html>
- 
+  if (!amt || amt < 50) return showError('Enter a valid amoun
