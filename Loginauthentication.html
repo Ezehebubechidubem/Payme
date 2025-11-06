@@ -135,26 +135,22 @@ function baseHeaders() {
     });
 
     if (res.status === 401) {
-      // Do NOT redirect. Show a notice and allow the user to remain on the page.
-      clearError();
+      // User not authenticated but we won't redirect
       showError('Not authenticated. Please login to save the PIN (you can continue but saving will fail until you login).');
       return;
     }
 
-    // If server down or other non-critical error, allow UI (server will reject on submit)
     if (!res.ok) {
       console.warn('pin status check returned', res.status);
-      // non-blocking warning
-      showError('Unable to verify PIN status right now — try saving; server may accept when you are logged in.');
       return;
     }
 
-    // On OK we do nothing - user can proceed to create PIN
-    clearError();
+    // optional: success message if authenticated
+    const j = await res.json().catch(()=>({}));
+    if (j?.success) clearError();
+
   } catch(err){
-    // network issue — let user continue; server will reject if unauthenticated
     console.warn('session check error', err);
-    showError('Network issue while checking session. You can still attempt to create PIN.');
   }
 })();
 
