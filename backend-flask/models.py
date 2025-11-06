@@ -1,4 +1,3 @@
-# models.py
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
@@ -52,44 +51,59 @@ class Transaction(DB.Model):
     amount = DB.Column(DB.Numeric, nullable=False)
     status = DB.Column(DB.String(50), default="PENDING")
     created_at = DB.Column(DB.DateTime, default=datetime.utcnow)
+
+
+# ----------------------------------------------------------------------
+# Universal init_tables() — works on SQLite & PostgreSQL (Render safe)
+# ----------------------------------------------------------------------
 def init_tables():
-    """Safe no-op for Render — used by pin_routes to ensure DB tables exist."""
+    """Ensure tables required by PIN module exist — safe for both SQLite & PG."""
     try:
         from utils import get_conn
         with get_conn() as conn:
             cur = conn.cursor()
-            # Create tables if they don’t exist (SQLite or PG safe)
-            cur.executescript("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT,
-                phone TEXT UNIQUE,
-                password TEXT,
-                account_number TEXT UNIQUE,
-                balance REAL DEFAULT 0
-            );
 
-            CREATE TABLE IF NOT EXISTS pin_audit (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                event_type TEXT,
-                meta TEXT,
-                created_at TEXT
-            );
+            stmts = [
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT,
+                    phone TEXT UNIQUE,
+                    password TEXT,
+                    account_number TEXT UNIQUE,
+                    balance REAL DEFAULT 0
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS pin_audit (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    event_type TEXT,
+                    meta TEXT,
+                    created_at TEXT
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS pin_codes (
+                    id SERIAL PRIMARY KEY,
+                    account_number TEXT,
+                    code TEXT,
+                    expires_at TEXT
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS user_pins (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    hashed_pin TEXT,
+                    created_at TEXT
+                )
+                """
+            ]
 
-            CREATE TABLE IF NOT EXISTS pin_codes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_number TEXT,
-                code TEXT,
-                expires_at TEXT
-            );
+            for sql in stmts:
+                cur.execute(sql.strip())
 
-            CREATE TABLE IF NOT EXISTS user_pins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                hashed_pin TEXT,
-                created_at TEXT
-            );
-            """)
+        print("✅ init_tables(): ensured pin-related tables exist")
     except Exception as e:
-        print("init_tables() skipped or failed:", e)
+        print("⚠️ init_tables() skipped or failed:", e)
