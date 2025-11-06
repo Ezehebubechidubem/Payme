@@ -237,4 +237,232 @@
   })();
 </script>
 </body>
+</html>:0 0 6px}
+    p{color:var(--muted);margin:0 0 12px}
+    .pin-dots{display:flex;gap:10px;justify-content:center;margin:18px 0}
+    .dot{width:56px;height:56px;border-radius:8px;border:1px solid #eee;display:flex;align-items:center;justify-content:center;font-size:24px;background:#fff}
+    .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .key{height:64px;border-radius:10px;background:#fff;border:1px solid #eee;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer}
+    .row{display:flex;gap:8px;margin-top:12px}
+    .btn{flex:1;padding:10px;border-radius:10px;border:0;cursor:pointer}
+    .btn-primary{background:var(--accent);color:#fff}
+    .btn-outline{background:#fff;border:1px solid #ddd}
+    .danger{color:var(--danger);margin-top:8px;text-align:center}
+    .note{color:#666;font-size:13px;text-align:center;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="card" role="dialog" aria-modal="true">
+    <h2>Enter your 4-digit PIN</h2>
+    <p>Confirm this transaction with the PIN linked to your account.</p>
+
+    <div class="pin-dots" id="pinDots">
+      <div class="dot" data-index="0"></div>
+      <div class="dot" data-index="1"></div>
+      <div class="dot" data-index="2"></div>
+      <div class="dot" data-index="3"></div>
+    </div>
+
+    <div id="message" class="note">Type your 4-digit PIN</div>
+    <div id="error" class="danger" style="display:none"></div>
+
+    <div class="keypad" id="keypad" aria-label="PIN keypad" style="margin-top:14px">
+      <div class="key">1</div><div class="key">2</div><div class="key">3</div>
+      <div class="key">4</div><div class="key">5</div><div class="key">6</div>
+      <div class="key">7</div><div class="key">8</div><div class="key">9</div>
+      <div class="key" id="blank"></div><div class="key">0</div><div class="key" id="back">⌫</div>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button id="cancelBtn" class="btn btn-outline">Cancel</button>
+      <button id="submitBtn" class="btn btn-primary" disabled>Verify & Pay</button>
+    </div>
+  </div>
+
+<script>
+  const API_BASE = "https://payme-update.onrender.com";
+  const keypad = document.getElementById('keypad');
+  const pinDots = Array.from(document.querySelectorAll('.dot'));
+  const message = document.getElementById('message');
+  const errorEl = document.getElementById('error');
+  const submitBtn = document.getElementById('submitBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+
+  function getStoredUser() {
+    const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+    try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
+  }
+
+  // read pending transaction from sessionStorage
+  function getPending() {
+    try { const p = sessionStorage.getItem('pending_tx'); return p ? JSON.parse(p) : null; } catch(e){ return null; }
+  }
+  function clearPending() {
+    try { sessionStorage.removeItem('pending_tx'); } catch(e){}
+  }
+
+  // attempts & lock stored client-side for this account_number (note: server-side enforcement is better)
+  function getLockState(account_number) {
+    try {
+      const key = `pin_lock_${account_number}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : { attemptsLeft: 10, lockedUntil: null };
+    } catch(e){ return { attemptsLeft:10, lockedUntil: null }; }
+  }
+  function setLockState(account_number, state) {
+    try {
+      const key = `pin_lock_${account_number}`;
+      localStorage.setItem(key, JSON.stringify(state));
+    } catch(e){}
+  }
+
+  // UI state
+  let current = '';
+
+  function refreshDots(){
+    pinDots.forEach((d,i)=>{
+      const ch = current[i] || '';
+      d.textContent = ch ? '•' : '';
+      d.classList.toggle('filled', !!ch);
+    });
+    submitBtn.disabled = (current.length !== 4);
+  }
+
+  function showError(t){ errorEl.style.display='block'; errorEl.textContent=t; }
+  function clearError(){ errorEl.style.display='none'; errorEl.textContent=''; }
+
+  keypad.addEventListener('click', ev=>{
+    const k = ev.target;
+    if (!k.classList.contains('key')) return;
+    if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
+    if (k.id === 'blank') return;
+    if (current.length >= 4) return;
+    current += k.textContent.trim();
+    refreshDots();
+  });
+
+  cancelBtn.addEventListener('click', ()=>{
+    // go back to airtime page without executing
+    window.location.href = 'Airtime.html';
+  });
+
+  submitBtn.addEventListener('click', async ()=>{
+    clearError();
+    const pending = getPending();
+    if (!pending) {
+      showError('No pending transaction found. Go back and try again.');
+      return;
+    }
+
+    const user = getStoredUser();
+    if (!user || !user.account_number) {
+      showError('You must be logged in. Please log in and try again.');
+      return;
+    }
+
+    // Check local lock state first
+    const lock = getLockState(user.account_number);
+    const now = Date.now();
+    if (lock.lockedUntil && now < lock.lockedUntil) {
+      const mins = Math.ceil((lock.lockedUntil - now)/60000);
+      showError(`Transactions locked. Try again in ${mins} minute(s).`);
+      return;
+    }
+
+    // call backend verify pin endpoint
+    // Pin verify expects: { account_number, pin } (based on your pin_routes.verify)
+    const payload = { account_number: (user.account_number || user.accountNumber || ''), pin: current };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/pin/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const j = await res.json().catch(()=>({ success:false }));
+
+      if (res.ok && j.success) {
+        // Reset attempts on success
+        setLockState(user.account_number, { attemptsLeft: 3, lockedUntil: null });
+
+        // PIN verified -> call backend to perform pending transaction
+        // For airtime the endpoint is /buy_airtime (expects phone, network, amount, recipient, product in earlier code)
+        const txPayload = {
+          phone: pending.phone,
+          network: pending.network,
+          amount: pending.amount,
+          recipient: pending.recipient,
+          product: pending.product || 'airtime'
+        };
+
+        // Call backend to execute
+        try {
+          const execRes = await fetch(`${API_BASE}/buy_airtime`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(txPayload)
+          });
+          const execJson = await execRes.json().catch(()=>null);
+
+          if (execRes.ok && execJson && execJson.status === 'success') {
+            // Success -> clear pending and go back to data.html and show success modal there
+            clearPending();
+
+            // Option A: redirect back to data.html and pass small flag so that page can display success (we use sessionStorage)
+            sessionStorage.setItem('last_tx_success', JSON.stringify({
+              message: execJson.message || 'Airtime purchased successfully',
+              amount: pending.amount,
+              network: pending.network
+            }));
+
+            // go back
+            window.location.href = 'data.html';
+            return;
+          } else {
+            // backend returned error
+            const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
+            showError('Transaction failed: ' + reason);
+            return;
+          }
+        } catch(execErr){
+          console.error('execution error', execErr);
+          showError('Network error while executing transaction.');
+          return;
+        }
+      } else {
+        // PIN verification failed -> decrement attempts client-side
+        const attemptsLeft = (lock.attemptsLeft || 10) - 1;
+        let lockedUntil = null;
+        if (attemptsLeft <= 0) {
+          // lock for 4 hours (4 * 60 * 60 * 1000 ms)
+          lockedUntil = Date.now() + 4 * 60 * 60 * 1000;
+          showError('Too many failed attempts. Transactions locked for 4 hours.');
+        } else {
+          showError((j && j.message ? j.message : 'Invalid PIN') + `. Attempts left: ${attemptsLeft}`);
+        }
+        setLockState(user.account_number, { attemptsLeft: Math.max(0, attemptsLeft), lockedUntil: lockedUntil });
+        return;
+      }
+
+    } catch(err){
+      console.error('verify error', err);
+      showError('Network error while verifying PIN');
+      return;
+    }
+  });
+
+  // On load: precheck for pending tx, show a small note
+  (function init(){
+    const pending = getPending();
+    if (!pending) {
+      message.textContent = 'No pending transaction — go back and try again.';
+      submitBtn.disabled = true;
+    } else {
+      message.textContent = `Confirm ₦${pending.amount.toLocaleString()} to ${pending.recipient} (${pending.network})`;
+    }
+    refreshDots();
+  })();
+</script>
+</body>
 </html>
