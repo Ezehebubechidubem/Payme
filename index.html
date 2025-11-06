@@ -153,7 +153,8 @@
         try {
           const res = await fetch(API, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            credentials: 'include', // <<-- IMPORTANT: send session cookie to backend
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify({ login, password })
           });
 
