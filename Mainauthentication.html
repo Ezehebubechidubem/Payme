@@ -1,4 +1,4 @@
-<!-- authentication.html -->
+<!-- Mainauthentication.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -21,7 +21,6 @@
     .btn-outline{background:#fff;border:1px solid #ddd}
     .danger{color:var(--danger);margin-top:8px;text-align:center;display:none}
     .note{color:#666;font-size:13px;text-align:center;margin-top:8px}
-    .muted-small{color:#999;font-size:12px;text-align:center;margin-top:6px}
     .hidden{display:none}
   </style>
 </head>
@@ -38,7 +37,6 @@
     </div>
 
     <div id="message" class="note">Type your 4-digit PIN</div>
-    <div id="attemptsNote" class="muted-small"></div>
     <div id="error" class="danger" role="alert"></div>
 
     <div class="keypad" id="keypad" aria-label="PIN keypad" style="margin-top:14px">
@@ -55,265 +53,165 @@
   </div>
 
 <script>
-(function(){
-  // config
-  const API_BASE = "https://payme-update.onrender.com";
-  const MAX_ATTEMPTS = 10; // per request
-  const ATTEMPT_KEY_PREFIX = "pin_attempts_"; // localStorage key prefix
-  const REDIRECT_ON_CANCEL = "airtime.html";
-  const REDIRECT_ON_SUCCESS = "airtime.html";
+  (function(){
+    const API_BASE = "https://payme-update.onrender.com";
+    const keypad = document.getElementById('keypad');
+    const pinDots = Array.from(document.querySelectorAll('.dot'));
+    const message = document.getElementById('message');
+    const errorEl = document.getElementById('error');
+    const submitBtn = document.getElementById('submitBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
 
-  // DOM refs
-  const keypad = document.getElementById('keypad');
-  const pinDots = Array.from(document.querySelectorAll('.dot'));
-  const message = document.getElementById('message');
-  const attemptsNote = document.getElementById('attemptsNote');
-  const errorEl = document.getElementById('error');
-  const submitBtn = document.getElementById('submitBtn');
-  const cancelBtn = document.getElementById('cancelBtn');
-
-  // helpers to get user & pending tx (same shapes you already use)
-  function getStoredUser() {
-    const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
-    try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
-  }
-  function getPending() {
-    try { const p = sessionStorage.getItem('pending_tx'); return p ? JSON.parse(p) : null; } catch(e){ return null; }
-  }
-  function clearPending() {
-    try { sessionStorage.removeItem('pending_tx'); } catch(e){}
-  }
-
-  // attempt storage helpers (client-side)
-  function attemptsKeyFor(accountNumber) {
-    return ATTEMPT_KEY_PREFIX + (accountNumber || "anon");
-  }
-  function readAttempts(accountNumber) {
-    try {
-      const raw = localStorage.getItem(attemptsKeyFor(accountNumber));
-      if (!raw) return { left: MAX_ATTEMPTS };
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.left === 'number') return parsed;
-    } catch(e){}
-    return { left: MAX_ATTEMPTS };
-  }
-  function writeAttempts(accountNumber, attemptsObj) {
-    try {
-      localStorage.setItem(attemptsKeyFor(accountNumber), JSON.stringify(attemptsObj));
-    } catch(e){}
-  }
-  function resetAttempts(accountNumber) {
-    writeAttempts(accountNumber, { left: MAX_ATTEMPTS });
-  }
-
-  // UI state
-  let current = '';
-  function refreshDots(){
-    pinDots.forEach((d,i)=>{
-      const ch = current[i] || '';
-      d.textContent = ch ? '•' : '';
-      d.classList.toggle('filled', !!ch);
-    });
-    submitBtn.disabled = (current.length !== 4) || isAttemptsExhausted();
-  }
-
-  function isAttemptsExhausted() {
-    const user = getStoredUser();
-    const acct = (user && (user.account_number || user.accountNumber)) ? (user.account_number || user.accountNumber) : null;
-    const attempts = readAttempts(acct);
-    return attempts.left <= 0;
-  }
-
-  function showAttemptsNote() {
-    const user = getStoredUser();
-    const acct = (user && (user.account_number || user.accountNumber)) ? (user.account_number || user.accountNumber) : null;
-    const attempts = readAttempts(acct);
-    attemptsNote.textContent = (attempts.left > 0)
-      ? `Attempts left: ${attempts.left}`
-      : `Attempts exhausted. Please re-login or reset your PIN with support.`;
-  }
-
-  function showError(msg){
-    errorEl.textContent = msg || '';
-    errorEl.style.display = msg ? 'block' : 'none';
-  }
-  function clearError(){
-    showError('');
-  }
-
-  // keypad handlers (click + keyboard support)
-  keypad.addEventListener('click', ev=>{
-    const k = ev.target;
-    if (!k.classList.contains('key')) return;
-    handleKey(k);
-  });
-  keypad.addEventListener('keydown', ev=>{
-    if (ev.key === 'Enter' || ev.key === ' ') {
-      const k = document.activeElement;
-      if (k && k.classList.contains('key')) {
-        ev.preventDefault();
-        handleKey(k);
-      }
-    }
-  });
-  function handleKey(k){
-    if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
-    if (k.id === 'blank') return;
-    if (current.length >= 4) return;
-    current += (k.textContent || '').trim();
-    refreshDots();
-  }
-
-  // Cancel goes back to airtime.html
-  cancelBtn.addEventListener('click', ()=> {
-    window.location.href = REDIRECT_ON_CANCEL;
-  });
-
-  // Submit / verify flow
-  submitBtn.addEventListener('click', async ()=>{
-    clearError();
-
-    const pending = getPending();
-    if (!pending) { showError('No pending transaction found. Go back and try again.'); return; }
-
-    const user = getStoredUser();
-    if (!user || !(user.account_number || user.accountNumber)) {
-      showError('You must be logged in. Please log in and try again.');
-      return;
+    function getStoredUser() {
+      const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+      try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
     }
 
-    // Check attempts before sending
-    const acct = (user.account_number || user.accountNumber).toString();
-    const attempts = readAttempts(acct);
-    if (attempts.left <= 0) {
-      showError('Attempts exhausted. Please re-login or reset your PIN with support.');
-      submitBtn.disabled = true;
-      return;
+    function getPending() {
+      try { const p = sessionStorage.getItem('pending_tx'); return p ? JSON.parse(p) : null; } catch(e){ return null; }
+    }
+    function clearPending() {
+      try { sessionStorage.removeItem('pending_tx'); } catch(e){}
     }
 
-    // Prepare payload
-    const payload = { account_number: acct, pin: current };
+    let current = '';
 
-    try {
-      const res = await fetch(`${API_BASE}/api/pin/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+    function refreshDots(){
+      pinDots.forEach((d,i)=>{
+        const ch = current[i] || '';
+        d.textContent = ch ? '•' : '';
+        d.classList.toggle('filled', !!ch);
       });
+      submitBtn.disabled = (current.length !== 4);
+    }
 
-      // parse json (fallback safe)
-      const j = await res.json().catch(()=>({ success:false }));
+    function showError(msg){
+      errorEl.style.display='block';
+      errorEl.textContent=msg;
+    }
+    function clearError(){ errorEl.style.display='none'; errorEl.textContent=''; }
 
-      if (res.ok && j.success) {
-        // verified -> reset attempts
-        resetAttempts(acct);
-
-        // execute pending transaction (same as your flow)
-        const txPayload = {
-          phone: pending.phone,
-          network: pending.network,
-          amount: pending.amount,
-          recipient: pending.recipient,
-          product: pending.product || 'airtime'
-        };
-
-        try {
-          const execRes = await fetch(`${API_BASE}/buy_airtime`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(txPayload)
-          });
-          const execJson = await execRes.json().catch(()=>null);
-
-          if (execRes.ok && execJson && execJson.status === 'success') {
-            // success: clear pending, store last_tx_success, redirect back to airtime.html
-            clearPending();
-            sessionStorage.setItem('last_tx_success', JSON.stringify({
-              message: execJson.message || 'Airtime purchased successfully',
-              amount: pending.amount,
-              network: pending.network
-            }));
-
-            // redirect to airtime.html
-            window.location.href = REDIRECT_ON_SUCCESS;
-            return;
-          } else {
-            const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
-            showError('Transaction failed: ' + reason);
-            return;
-          }
-        } catch(execErr){
-          console.error('execution error', execErr);
-          showError('Network error while executing transaction.');
-          return;
+    keypad.addEventListener('click', ev=>{
+      const k = ev.target;
+      if (!k.classList.contains('key')) return;
+      handleKey(k);
+    });
+    keypad.addEventListener('keydown', ev=>{
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        const k = document.activeElement;
+        if (k && k.classList.contains('key')) {
+          ev.preventDefault();
+          handleKey(k);
         }
+      }
+    });
+    function handleKey(k){
+      if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
+      if (k.id === 'blank') return;
+      if (current.length >= 4) return;
+      current += (k.textContent || '').trim();
+      refreshDots();
+    }
 
-      } else {
-        // NOT OK from verify
-        // Distinguish invalid-pin (401 or message) from server error
-        let isInvalidPin = false;
-        if (res.status === 401) isInvalidPin = true;
-        else if (j && j.message && typeof j.message === 'string' && j.message.toLowerCase().includes('invalid')) {
-          isInvalidPin = true;
-        }
+    cancelBtn.addEventListener('click', ()=>{
+      // redirect back to airtime (data.html)
+      window.location.href = 'data.html';
+    });
 
-        if (isInvalidPin) {
-          // decrement attempts
-          const newLeft = Math.max(0, attempts.left - 1);
-          writeAttempts(acct, { left: newLeft });
-          showAttemptsNote();
-          if (newLeft <= 0) {
-            showError('Too many failed attempts. Attempts exhausted. Please re-login or contact support.');
-            submitBtn.disabled = true;
-          } else {
-            showError((j && j.message) ? j.message + ` Attempts left: ${newLeft}` : `Invalid PIN. Attempts left: ${newLeft}`);
-            // clear the PIN input for re-entry
-            current = '';
-            refreshDots();
-          }
-        } else {
-          // server error or unexpected response: do NOT decrement attempts
-          showError((j && j.message) ? `Server error. ${j.message}` : `Server error. Attempts left: ${attempts.left}`);
-        }
+    submitBtn.addEventListener('click', async ()=>{
+      clearError();
+      const pending = getPending();
+      if (!pending) {
+        showError('No pending transaction found. Go back and try again.');
         return;
       }
 
-    } catch(err) {
-      console.error('verify error', err);
-      const attemptsNow = readAttempts((getStoredUser() && (getStoredUser().account_number || getStoredUser().accountNumber)) || null);
-      showError(`Network error while verifying PIN. Attempts left: ${attemptsNow.left || MAX_ATTEMPTS}`);
-      return;
-    }
-  });
+      const user = getStoredUser();
+      if (!user || !(user.account_number || user.accountNumber)) {
+        showError('You must be logged in. Please log in and try again.');
+        return;
+      }
 
-  // initial UI
-  (function init(){
-    const pending = getPending();
-    if (!pending) {
-      message.textContent = 'No pending transaction — go back and try again.';
-      submitBtn.disabled = true;
-    } else {
-      message.textContent = `Confirm ₦${Number(pending.amount).toLocaleString()} to ${pending.recipient} (${pending.network})`;
-    }
+      const accountNumber = (user.account_number || user.accountNumber || '').toString();
+      const payload = { account_number: accountNumber, pin: current };
 
-    // ensure attempts exist for account
-    const user = getStoredUser();
-    const acct = (user && (user.account_number || user.accountNumber)) ? (user.account_number || user.accountNumber) : null;
-    if (acct) {
-      const attempts = readAttempts(acct);
-      // initialize if missing or corrupted
-      if (typeof attempts.left !== 'number') resetAttempts(acct);
-    }
-    showAttemptsNote();
-    refreshDots();
+      try {
+        const res = await fetch(`${API_BASE}/api/pin/verify`, {
+          method: 'POST',
+          credentials: 'include',           // <- include session cookie
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const j = await res.json().catch(()=>({ success:false, message: 'Invalid server response' }));
+
+        if (res.ok && j.success) {
+          // PIN ok -> execute pending transaction (also include credentials)
+          const txPayload = {
+            phone: pending.phone,
+            network: pending.network,
+            amount: pending.amount,
+            recipient: pending.recipient,
+            product: pending.product || 'airtime'
+          };
+
+          try {
+            const execRes = await fetch(`${API_BASE}/buy_airtime`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(txPayload)
+            });
+            const execJson = await execRes.json().catch(()=>null);
+
+            if (execRes.ok && execJson && execJson.status === 'success') {
+              clearPending();
+              sessionStorage.setItem('last_tx_success', JSON.stringify({
+                message: execJson.message || 'Airtime purchased successfully',
+                amount: pending.amount,
+                network: pending.network
+              }));
+              window.location.href = 'data.html';
+              return;
+            } else {
+              const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
+              showError('Transaction failed: ' + reason);
+              return;
+            }
+          } catch(execErr){
+            console.error('execution error', execErr);
+            showError('Network error while executing transaction.');
+            return;
+          }
+
+        } else {
+          const msg = (j && j.message) ? j.message : 'Invalid PIN';
+          showError(msg);
+          current = '';
+          refreshDots();
+          return;
+        }
+      } catch(err){
+        console.error('verify error', err);
+        showError('Network error while verifying PIN');
+        return;
+      }
+    });
+
+    (function init(){
+      const pending = getPending();
+      if (!pending) {
+        message.textContent = 'No pending transaction — go back and try again.';
+        submitBtn.disabled = true;
+      } else {
+        message.textContent = `Confirm ₦${Number(pending.amount).toLocaleString()} to ${pending.recipient} (${pending.network})`;
+      }
+      refreshDots();
+    })();
+
+    document.querySelectorAll('.key').forEach(k => { k.setAttribute('tabindex', '0'); });
+
   })();
-
-  // keyboard focus accessibility for number keys
-  document.querySelectorAll('.key').forEach(k => {
-    k.setAttribute('tabindex', '0');
-  });
-
-})();
 </script>
 </body>
 </html>
