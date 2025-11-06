@@ -20,6 +20,8 @@
     .wrap{max-width:440px;margin:0 auto;padding:12px}
     .topbar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
     .topbar h1{font-size:18px;margin:0;font-weight:700}
+    .back-btn{display:inline-flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;font-weight:700;padding:6px;border-radius:8px}
+    .back-btn:hover{background:#f1f8f3;color:var(--primary-dark)}
     .card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:0 1px 0 rgba(0,0,0,.03) inset}
     .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .label{font-size:12px;color:var(--muted)}
@@ -51,33 +53,33 @@
     .btn { padding:10px 12px; border-radius:8px; font-weight:700; border:0; cursor:pointer; }
     .btn-outline { background:#fff; border:1px solid #ddd; color:#333 }
     .btn-primary { background:var(--primary); color:#fff }
-    .muted-note{font-size:12px;color:#888;margin-top:8px}
+    .change-btn { background:var(--primary); color:#fff; border:0; padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:700 }
     .loader { display:inline-block; width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,0.2); border-top-color: #fff; animation: spin .7s linear infinite; vertical-align: middle; margin-left:8px; }
     @keyframes spin { to { transform: rotate(360deg);} }
+    a{text-decoration:none;color:inherit}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header class="topbar">
+      <a class="back-btn" href="paymelogin.html" aria-label="Back"><i class="fa-solid fa-arrow-left" style="color:var(--primary);"></i></a>
       <h1>Data</h1>
-      <a href="paymelogin.html" style="margin-left:auto;color:var(--muted);font-weight:700">Back</a>
     </header>
 
-    <!-- Recipient -->
+    <!-- Recipient (label removed; placeholder holds the description) -->
     <div class="card">
-      <div class="label">Recipient Number</div>
       <div style="margin-top:8px" class="row">
         <div id="selectedNetworkBadge" style="display:flex;align-items:center;gap:10px">
           <div id="networkBadge" class="logo-badge" style="background:#e53935">A</div>
           <div id="networkName" style="font-weight:700">Airtel</div>
         </div>
-        <button id="chooseNetworkBtn" class="tiny">Change</button>
+        <button id="chooseNetworkBtn" class="change-btn">Change</button>
       </div>
 
       <div style="margin-top:10px">
-        <input id="recipientInput" type="tel" placeholder="e.g 0803xxxxxxx" inputmode="tel" />
+        <input id="recipientInput" type="tel" placeholder="Recipient number (e.g. 0803xxxxxxx)" inputmode="tel" />
       </div>
-      <div class="muted-note">Tip: enter recipient number in local format (11 digits, e.g. 0803xxxxxxxx)</div>
+      <!-- tip removed per request -->
     </div>
 
     <!-- Data Plans -->
@@ -147,7 +149,8 @@
     <div class="success-card">
       <div class="success-badge">✓</div>
       <h3 id="successHeading">Payment successful</h3>
-      <p id="successMsg">Your data purchase was successful.</p>
+      <!-- show only recipient number prominently as requested -->
+      <p id="successMsg" style="font-weight:700;font-size:16px;margin-top:8px">Recipient: <span id="successRecipient"></span></p>
       <div class="actions">
         <button id="viewTxBtn" class="btn btn-outline">View Transactions</button>
         <button id="doneBtn" class="btn btn-primary">Done</button>
@@ -166,7 +169,7 @@
       </div>
     </div>
   </div>
-  
+
 
 <script>
 /* ---------------- CONFIG ---------------- */
@@ -236,6 +239,7 @@ renderNetworkBadge(selectedNetwork);
 /* build plan buttons */
 function renderPlanButtons(){
   amountGrid.innerHTML = '';
+  amountBtns.length = 0;
   plans.forEach(p => {
     const cb = cashbackFor(p.price);
     const div = document.createElement('div');
@@ -314,9 +318,27 @@ window.addEventListener('load', ()=> {
   if (user && user.phone) {
     // nothing to auto-fill
   }
+
+  // If we returned from Mainauthentication with success flag, show success modal (only recipient shown)
+  try {
+    const last = sessionStorage.getItem('last_tx_success');
+    if (last) {
+      const data = JSON.parse(last);
+      const recipient = data.recipient || data.phone || '';
+      const amount = data.amount || data.total || 0;
+      document.getElementById('successRecipient').textContent = recipient;
+      document.getElementById('successHeading').textContent = 'Payment successful';
+      // keep message minimal — only recipient displayed as requested
+      document.getElementById('successMsg').textContent = `You sent ₦${Number(amount).toLocaleString()} to ${recipient}.`;
+      document.getElementById('successModal').classList.add('show');
+      document.getElementById('successModal').style.display = 'flex';
+      document.getElementById('successModal').setAttribute('aria-hidden','false');
+      sessionStorage.removeItem('last_tx_success');
+    }
+  } catch(e){ console.warn('no last_tx_success or invalid', e); }
 });
 
-/* ---------------- Purchase flow ---------------- */
+/* ---------------- Purchase flow (create pending_tx and go to Mainauthentication) ---------------- */
 const confirmOverlay = document.getElementById('confirmOverlay');
 const confirmTitle = document.getElementById('confirmTitle');
 const confirmSub = document.getElementById('confirmSub');
@@ -348,156 +370,36 @@ payBtn.addEventListener('click', ()=>{
 
 cancelBtn.addEventListener('click', ()=> confirmOverlay.classList.remove('show'));
 
-/* success/error modals handlers */
-const successModal = document.getElementById('successModal');
-const successHeading = document.getElementById('successHeading');
-const successMsg = document.getElementById('successMsg');
-const viewTxBtn = document.getElementById('viewTxBtn');
-const doneBtn = document.getElementById('doneBtn');
-const errorOk = document.getElementById('errorOk');
-
-document.getElementById('errorOk').addEventListener('click', hideError);
-document.getElementById('errorModal').addEventListener('click', (e)=> { if(e.target === document.getElementById('errorModal')) hideError(); });
-
-viewTxBtn.addEventListener('click', ()=> { hideSuccess(); window.location.href = 'transactions.html'; });
-doneBtn.addEventListener('click', ()=> { hideSuccess(); /* stay on page */ });
-
-function showSuccess(msg){
-  successHeading.textContent = 'Payment successful';
-  successMsg.textContent = msg || 'Your purchase was successful.';
-  successModal.classList.add('show');
-  successModal.style.display = 'flex';
-  successModal.setAttribute('aria-hidden','false');
-  doneBtn.focus();
-}
-function hideSuccess(){
-  successModal.classList.remove('show');
-  successModal.style.display = 'none';
-  successModal.setAttribute('aria-hidden','true');
-}
-
-/* Confirm -> call backend */
+/* Confirm -> create pending_tx and redirect to Mainauthentication.html for PIN */
 confirmBtn.addEventListener('click', async () => {
-  confirmBtn.disabled = true;
-  const recipient = recipientInput.value.trim();
-  const amount = Number(selectedPrice || customAmount.value);
-  const user = getStoredUser();
-  if (!user || !user.phone) { showError('You must be logged in'); confirmBtn.disabled=false; return; }
-
+  const recipient = confirmTo.textContent.trim();
+  const amount = Number((confirmAmount.textContent || '').replace(/[^0-9.]/g,'')) || Number(selectedPrice || customAmount.value);
   const fee = Math.ceil(amount * 0.01);
   const total = amount + fee;
+  const network = selectedNetwork.name;
+  const plan = selectedPlanLabel || 'Custom';
 
-  
-  // UI loading
-  const oldHtml = confirmBtn.innerHTML;
-  confirmBtn.innerHTML = 'Processing <span class="loader" aria-hidden="true"></span>';
+  const user = getStoredUser();
+  if (!user || !user.phone) { showError('You must be logged in'); return; }
 
-  const payload = {
+  const pending = {
     phone: user.phone,
-    network: selectedNetwork.name,
-    amount: amount,
     recipient: recipient,
+    amount: amount,
+    fee: fee,
+    total: total,
+    network: network,
     product: 'data',
-    data_plan: selectedPlanLabel
+    data_plan: plan,
+    created_at: new Date().toISOString()
   };
 
   try {
-    const res = await fetch(`${API_BASE}/buy_airtime`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-
-    let data = null;
-    try { data = await res.json(); } catch(e){ data = null; }
-
-    if (!res.ok || (data && data.status && data.status !== 'success')) {
-      const reason = (data && (data.message || data.error)) ? (data.message || data.error) : (data ? JSON.stringify(data) : `HTTP ${res.status}`);
-      console.error('buy_data failure', res.status, data);
-      showError('Purchase failed: ' + reason);
-      confirmBtn.disabled = false;
-      confirmBtn.innerHTML = oldHtml;
-      return;
-    }
-
-    // Success path: update local storage balance
-    const newBalance = (data && (typeof data.balance !== 'undefined')) ? Number(data.balance) : null;
-    let updatedUser = user;
-    if (newBalance === null) {
-      // try fetch /user/<phone>
-      try {
-        const r2 = await fetch(`${API_BASE}/user/${encodeURIComponent(user.phone)}`);
-        if (r2.ok) {
-          const j = await r2.json();
-          if (j && j.status === 'success' && j.user) updatedUser = j.user;
-        }
-      } catch(e){ console.warn('refetch user failed', e); }
-    } else {
-      updatedUser = Object.assign({}, user, { balance: newBalance });
-    }
-
-    // persist
-    setStoredUser(updatedUser);
-
-    // add local transaction (transactions.html reads localStorage.transactions if you use it)
-    try {
-      const txs = JSON.parse(localStorage.getItem('transactions') || '[]');
-      txs.unshift({
-        type: 'Data Purchase',
-        network: selectedNetwork.name,
-        plan: selectedPlanLabel,
-        amount: amount,
-        fee: fee,
-        total: total,
-        other_party: recipient,
-        date: (new Date()).toISOString()
-      });
-      localStorage.setItem('transactions', JSON.stringify(txs));
-    } catch(e){ console.warn('store tx failed', e); }
-
-    confirmOverlay.classList.remove('show');
-
-    // show success popup
-    showSuccess(`You bought ${selectedPlanLabel} (${selectedNetwork.name}) for ₦${Number(amount).toLocaleString()}.`);
-    // reset UI
-    document.querySelectorAll('.amt').forEach(x=>x.classList.remove('active'));
-    customAmount.value = '';
-    recipientInput.value = '';
-    selectedPrice = null;
-    selectedPlanLabel = null;
-    updatePayState(null,null);
-
-  } catch (err) {
-    console.error('network error', err);
-    showError('Network error while purchasing data');
-  } finally {
-    confirmBtn.disabled = false;
-    confirmBtn.innerHTML = oldHtml;
+    sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+  } catch(e){
+    console.error('session storage failed', e);
+    showError('Unable to create pending transaction. Try again.');
+    return;
   }
-});
 
-/* close confirm with ESC */
-document.addEventListener('keydown', (e)=> {
-  if (e.key === 'Escape') {
-    confirmOverlay.classList.remove('show');
-    modalOverlay.classList.remove('show');
-    hideSuccess();
-    hideError();
-  }
-});
-
-/* success/error modal close wiring for click outside */
-document.getElementById('successModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('successModal')) hideSuccess(); });
-document.getElementById('errorModal').addEventListener('click', (e)=> { if (e.target === document.getElementById('errorModal')) hideError(); });
-
-/* small helper: setStoredUser (used above) */
-function setStoredUser(u) { try {
-  localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u));
-  const ev = { type: "data_purchase", transaction_for: "data", ts: Date.now(), user: u };
-  localStorage.setItem("payme_event", JSON.stringify(ev)); setTimeout(()=> localStorage.removeItem("payme_event"), 900);
-} catch(e){ console.error(e); }}
-
-/* init finished */
-</script>
-</body>
-</html>
+  // close confirm and redirect to Mainauthentication 
