@@ -480,5 +480,311 @@
       bankSearch.value = bankSearchMain.value;
       filterBanks(bankSearchMain.value);
     });
-        // delete last char behaviour for main input
-    bankDeleteBtn.addEventListene
+             // delete last char behaviour for main input
+    bankDeleteBtn.addEventListener("click", () => {
+      bankSearchMain.value = bankSearchMain.value.slice(0, -1);
+      bankSearch.value = bankSearchMain.value;
+      filterBanks(bankSearchMain.value);
+      bankSearchMain.focus();
+    });
+    // delete last char behaviour for modal input
+    bankDeleteModalBtn.addEventListener("click", () => {
+      bankSearch.value = bankSearch.value.slice(0, -1);
+      bankSearchMain.value = bankSearch.value;
+      filterBanks(bankSearch.value);
+      bankSearch.focus();
+    });
+
+    // initial load
+    loadBanks();
+
+    // sanitize account input to digits only and show banks when length==10
+    accountInput.addEventListener("input", function(){
+      const digits = this.value.replace(/\D/g,'');
+      if (this.value !== digits) this.value = digits;
+      if (this.value.length === 10) {
+        currentAccount = this.value;
+        bankSection.classList.remove("hidden");
+      } else {
+        bankSection.classList.add("hidden");
+        receiverSection.classList.add("hidden");
+        amountSection.classList.add("hidden");
+        sendSection.classList.add("hidden");
+        receiverNameEl.textContent = "";
+      }
+    });
+
+    // Resolve account using POST /towallet/resolve-account
+    async function resolveAccountPOST(account, bankCode) {
+      try {
+        const res = await fetch(TOWALLET_RESOLVE, {
+          method: "POST",
+          headers: {"Content-Type":"application/json","Accept":"application/json"},
+          body: JSON.stringify({account_number: account, bank_code: bankCode})
+        });
+        const body = await res.json().catch(()=>null);
+        return { httpStatus: res.status, body };
+      } catch (err) {
+        return { httpStatus: 0, body: null, error: String(err) };
+      }
+    }
+
+    // Helper to extract account name robustly
+    function extractAccountName(payload) {
+      if (!payload) return null;
+      if (payload.account_name) return payload.account_name;
+      if (payload.accountName) return payload.accountName;
+      if (payload.accountname) return payload.accountname;
+      if (payload.username) return payload.username;
+      if (payload.data && typeof payload.data === "object") {
+        const d = payload.data;
+        if (d.account_name) return d.account_name;
+        if (d.accountName) return d.accountName;
+        if (d.username) return d.username;
+        if (d.data && typeof d.data === "object") {
+          if (d.data.account_name) return d.data.account_name;
+          if (d.data.accountName) return d.data.accountName;
+        }
+      }
+      if (payload.raw && typeof payload.raw === "object") {
+        const r = payload.raw;
+        if (r.data && typeof r.data === "object") {
+          if (r.data.account_name) return r.data.account_name;
+          if (r.data.accountName) return r.data.accountName;
+        }
+        if (r.account_name) return r.account_name;
+        if (r.username) return r.username;
+      }
+      return null;
+    }
+
+    // On bank selection attempt resolve
+    bankSelect.addEventListener("change", async function(){
+      const bankCode = this.value;
+      receiverSection.classList.remove("hidden");
+      receiverNameEl.textContent = "";
+      amountSection.classList.add("hidden");
+      sendSection.classList.add("hidden");
+
+      if (!bankCode) {
+        receiverSection.classList.add("hidden");
+        return;
+      }
+      if (!currentAccount || currentAccount.length !== 10) {
+        receiverNameEl.textContent = "❌ Enter a valid 10-digit account first";
+        return;
+      }
+
+      receiverNameEl.textContent = "⏳ Verifying…";
+
+      const result = await resolveAccountPOST(currentAccount, bankCode);
+
+      // network error
+      if (result.httpStatus === 0) {
+        receiverNameEl.textContent = "⚠️ Network error when contacting backend";
+        return;
+      }
+
+      const payload = result.body || {};
+
+      // if backend returns normal success
+      if (result.httpStatus === 200 && payload.status === "success") {
+        const acctName = extractAccountName(payload) || extractAccountName(payload.data) || extractAccountName(payload.raw);
+        receiverUsername = acctName || "";
+        // Per your request: show only the name when banks loaded from backend
+        receiverNameEl.textContent = acctName || "Name not provided";
+        amountSection.classList.remove("hidden");
+        sendSection.classList.remove("hidden");
+        return;
+      }
+
+      // backend warning (can_proceed) - treat as success-ish but no name
+      if (result.httpStatus === 200 && payload.status === "warning" && payload.can_proceed) {
+        receiverUsername = "";
+        receiverNameEl.textContent = "Name lookup not available for this bank — proceed with caution";
+        amountSection.classList.remove("hidden");
+        sendSection.classList.remove("hidden");
+        return;
+      }
+
+      // fallback: show friendly payload message (but do not reveal bank code)
+      let msg = "Account not found or verification failed";
+      if (payload && payload.message) msg = payload.message;
+      else if (payload && payload.error) msg = payload.error;
+      else if (payload && payload.details) msg = payload.details;
+
+      receiverNameEl.textContent = "❌ " + msg;
+    });
+
+    // fetch balance (server-backed)
+    async function fetchBalance() {
+      if (!currentUser || !currentUser.phone) return 0;
+      try {
+        const res = await fetch(BALANCE_URL + "/" + currentUser.phone);
+        const data = await res.json().catch(()=>null);
+        if (res.ok && data && (data.balance !== undefined)) {
+          localStorage.setItem("balance", data.balance);
+          return parseFloat(data.balance);
+        }
+      } catch (e) {}
+      return parseFloat(localStorage.getItem("balance")) || 0;
+    }
+
+    // -----------------------
+    // SEND: create pending_tx and redirect to Mainauthentication.html
+    // (Strictly only this flow change — everything else kept same)
+    // -----------------------
+    sendBtn.addEventListener("click", async function(){
+      const amountEl = document.getElementById("amount");
+      const amount = Number(amountEl.value);
+      const bankCode = bankSelect.value;
+      const acct = currentAccount;
+
+      if (!acct || acct.length !== 10) {
+        await showSimpleError("Enter a valid 10-digit receiver account first");
+        return;
+      }
+      if (!bankCode) {
+        await showSimpleError("Please select a bank.");
+        return;
+      }
+      if (!amount || Number.isNaN(amount) || amount <= 0) {
+        await showSimpleError("Enter a valid amount");
+        return;
+      }
+
+      // Check balance before send
+      const balance = await fetchBalance();
+      if (amount > balance) {
+        await showSimpleError("Insufficient funds.");
+        return;
+      }
+
+      // Create pending transaction and redirect to Mainauthentication.html for PIN entry
+      const pending = {
+        product: 'towallet',
+        sender_phone: (currentUser && currentUser.phone) || null,
+        sender_name: (currentUser && (currentUser.username || currentUser.name)) || null,
+        sender_account: (currentUser && (currentUser.account_number || '')) || null,
+        receiver_acc: acct,
+        receiver_name: receiverUsername || null,
+        receiver_bank: bankCode,
+        receiver_bank_name: getBankNameByCode(bankCode) || null,
+        amount: amount,
+        created_at: new Date().toISOString()
+      };
+
+      try {
+        sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+      } catch(e) {
+        await showSimpleError('Unable to create pending transaction. Try again.');
+        return;
+      }
+
+      // redirect to PIN screen
+      window.location.href = 'Mainauthentication.html';
+    });
+
+    // small simple error overlay (auto dismiss)
+    function showSimpleError(msg) {
+      return new Promise(resolve => {
+        const overlay = document.createElement("div");
+        overlay.className = "popup-overlay";
+        overlay.style.background = "rgba(0,0,0,0.25)";
+
+        const box = document.createElement("div");
+        box.className = "popup-box";
+
+        const body = document.createElement("div");
+        body.className = "popup-body";
+
+        const badge = document.createElement("div");
+        badge.className = "popup-badge error";
+        badge.textContent = "!";
+        const title = document.createElement("div");
+        title.className = "popup-title";
+        title.textContent = "Error";
+        const p = document.createElement("div");
+        p.className = "popup-amount";
+        p.style.fontSize = "18px";
+        p.textContent = msg;
+
+        body.appendChild(badge);
+        body.appendChild(title);
+        body.appendChild(p);
+        box.appendChild(body);
+
+        const actions = document.createElement("div");
+        actions.className = "popup-actions";
+        const ok = document.createElement("button");
+        ok.className = "btn-outline";
+        ok.textContent = "OK";
+        actions.appendChild(ok);
+        box.appendChild(actions);
+
+        overlay.appendChild(box);
+        popupRoot.appendChild(overlay);
+
+        ok.addEventListener("click", () => {
+          try { popupRoot.removeChild(overlay); } catch(e){}
+          resolve();
+        });
+        // auto-close after 4s
+        setTimeout(() => {
+          try { popupRoot.removeChild(overlay); } catch(e){}
+          resolve();
+        }, 4000);
+      });
+    }
+
+    // Utility: get bank name by code
+    function getBankNameByCode(code) {
+      if (!code) return null;
+      const found = fullBankList.find(b => String(b.code) === String(code));
+      return found ? found.name : null;
+    }
+
+    // close modal by ESC
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (!bankModal.classList.contains("hidden")) closeBankModal();
+      }
+    });
+
+    /* ----------------- Linking: show popup if Mainauthentication returned a success
+       Mainauthentication will set sessionStorage.last_tx_success when it completes.
+       We detect it on load and show the exact same popup used by this page.
+       Nothing else in UI or routes changed.
+    ---------------------------------------------------------------*/
+    (function showReturnPopupIfExists(){
+      try {
+        const last = sessionStorage.getItem('last_tx_success');
+        if (!last) return;
+        const payload = JSON.parse(last);
+        // Map payload to popupOpts accepted by showTransactionPopup
+        const popupOpts = {
+          type: payload.type || (payload.statusText === 'Failed' ? 'error' : 'success'),
+          amount: payload.amount || payload.orderAmount || 0,
+          statusText: payload.statusText || (payload.type === 'error' ? 'Failed' : 'Successful'),
+          orderAmount: payload.orderAmount || payload.amount || 0,
+          datetime: payload.datetime || new Date().toLocaleString(),
+          sender: payload.sender || ((currentUser && (currentUser.username || currentUser.name)) || 'You'),
+          senderAccount: payload.senderAccount || ((currentUser && (currentUser.account_number || '')) || '-'),
+          bankName: payload.bankName || payload.receiver_bank_name || '-',
+          recipient: payload.recipient || payload.receiver_name || payload.to || '-',
+          recipientAccount: payload.recipientAccount || payload.receiver_acc || payload.recipient || '-',
+          txnNo: payload.txnNo || payload.transaction_id || '-'
+        };
+        // remove before showing to avoid duplicate
+        sessionStorage.removeItem('last_tx_success');
+
+        // show the exact popup from this page's code
+        setTimeout(()=> showTransactionPopup(popupOpts).catch(()=>{}), 200);
+      } catch(e){
+        console.warn('showReturnPopupIfExists error', e);
+      }
+    })();
+
+  </script>
+</body>
+</html>
