@@ -137,7 +137,7 @@
       .back-arrow { left: 8px; top: 8px; width:36px;height:36px; }
     }
   </style>
-  <!-- load Font Awesome for arrow icon (using CDN) -->
+  <!-- Font Awesome for arrow icon -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
 </head>
 <body>
@@ -217,20 +217,29 @@
   // current logged in user
   const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
 
+  // track if receiver is registered (must be true to allow sending)
+  let receiverExists = false;
+  let receiverUsername = "";
+
   // helper: show error popup
-  function showErrorPopup(message, title = "Error") {
+  function showErrorPopup(message, title = "Error", onOk = null) {
     errorHeader.textContent = title;
     errorText.textContent = message;
     errorModal.classList.add('show');
     errorModal.setAttribute('aria-hidden','false');
     errorOkBtn.focus();
+    errorOkBtn.onclick = function() {
+      hideErrorPopup();
+      if (typeof onOk === 'function') onOk();
+    };
   }
   function hideErrorPopup() {
     errorModal.classList.remove('show');
     errorModal.setAttribute('aria-hidden','true');
+    errorOkBtn.onclick = null;
   }
 
-  // small helper: format amount
+  // format amount
   function formatMoney(n){
     if (n == null) return "0.00";
     return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -250,40 +259,71 @@
     return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // attempt to lookup receiver name (best-effort) when 10 digits typed
-  let receiverUsername = "";
-  accountInput.addEventListener('input', async function(){
+  // lookup receiver account; MUST be registered for sending to proceed
+  async function lookupReceiver(acc) {
+    receiverExists = false;
+    receiverUsername = "";
     receiverInfo.style.display = "none";
     errorBox.style.display = "none";
-    receiverUsername = "";
-    const acc = accountInput.value.trim();
-    // ensure digits only
-    const onlyDigits = acc.replace(/\D/g,'');
-    if (onlyDigits !== acc) accountInput.value = onlyDigits;
 
-    if (acc.length === 10) {
-      // disallow sending to self
-      const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : '';
-      if (userAcc && acc === String(userAcc)) {
-        errorBox.textContent = "❌ You cannot send money to yourself!";
+    if (!acc || acc.length !== 10) {
+      // do not show anything until 10 digits
+      return;
+    }
+
+    // Prevent sending to self quickly
+    const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : '';
+    if (userAcc && String(userAcc) === String(acc)) {
+      errorBox.textContent = "❌ You cannot send money to yourself!";
+      errorBox.style.display = "block";
+      receiverExists = false;
+      return;
+    }
+
+    try {
+      // call backend lookup route (must return success for registered user)
+      const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
+      const data = await res.json().catch(()=>null);
+
+      if (res.ok && data && data.status === "success" && (data.username || data.name)) {
+        receiverExists = true;
+        receiverUsername = data.username || data.name || '';
+        receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
+        receiverInfo.style.display = "block";
+        errorBox.style.display = "none";
+      } else {
+        // Not registered — block
+        receiverExists = false;
+        receiverUsername = "";
+        errorBox.textContent = "❌ Invalid account — recipient not registered";
         errorBox.style.display = "block";
-        return;
-      }
-      try {
-        // try to resolve via backend route if available (best-effort; not required)
-        const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
-        const data = await res.json().catch(()=>null);
-        if (res.ok && data && data.status === "success" && (data.username || data.name)) {
-          receiverUsername = data.username || data.name || "";
-          receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
-          receiverInfo.style.display = "block";
-        } else {
-          receiverInfo.style.display = "none";
-        }
-      } catch (e) {
-        // ignore network error — don't block
         receiverInfo.style.display = "none";
       }
+    } catch (err) {
+      // network or server error -> treat as not registered (per your instruction)
+      receiverExists = false;
+      receiverUsername = "";
+      errorBox.textContent = "❌ Invalid account or network error — recipient not registered";
+      errorBox.style.display = "block";
+      receiverInfo.style.display = "none";
+      console.warn('lookupReceiver error', err);
+    }
+  }
+
+  // bind input event; sanitize digits and run lookup when 10 digits present
+  accountInput.addEventListener('input', function() {
+    let v = accountInput.value || '';
+    v = v.replace(/\D/g,'');
+    if (v.length > 10) v = v.slice(0,10);
+    if (accountInput.value !== v) accountInput.value = v;
+    if (v.length === 10) {
+      lookupReceiver(v);
+    } else {
+      // reset state when not 10 digits
+      receiverExists = false;
+      receiverUsername = "";
+      receiverInfo.style.display = "none";
+      errorBox.style.display = "none";
     }
   });
 
@@ -301,6 +341,12 @@
       return;
     }
 
+    // receiver must be registered
+    if (!receiverExists) {
+      showErrorPopup("Invalid account — recipient not registered", "Invalid recipient");
+      return;
+    }
+
     const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : null;
     if (userAcc && receiverAcc === String(userAcc)) {
       showErrorPopup("You cannot send money to your own account!", "Invalid transfer");
@@ -314,13 +360,12 @@
     }
 
     // Build pending_tx — use fields Mainauthentication expects.
-    // We set product='towallet' and include receiver_acc so Mainauthentication will treat it as account transfer flow.
     const pending = {
       sender_phone: (currentUser && currentUser.phone) || null,
-      sender_name: (currentUser && (currentUser.username || currentUser.name)) || 'You',
-      sender_account: (currentUser && (currentUser.account_number || '')) || '-',
-      receiver_acc: receiverAcc,
-      receiver_name: receiverUsername || "-",
+      sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
+      senderAccount: (currentUser && (currentUser.account_number || '')) || '-',
+      recipient: receiverUsername || receiverAcc,
+      recipientAccount: receiverAcc,
       amount: amount,
       receiver_bank: "PAYME",        // ensure bank is PAYME (per your request)
       receiver_bank_name: "PAYME",   // duplicate for safety
@@ -424,12 +469,9 @@
 
   // If there's no logged user, show error and send back to login (preserves original behavior)
   if (!currentUser) {
-    showErrorPopup("No logged-in user found. Please login first.", "Not logged in");
-    // keep user on same page so they can see the error; they can click OK to continue to login
-    errorOkBtn.onclick = () => {
-      hideErrorPopup();
+    showErrorPopup("No logged-in user found. Please login first.", "Not logged in", function(){
       window.location.href = "paymelogin.html";
-    };
+    });
   }
 
 </script>
