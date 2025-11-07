@@ -55,6 +55,8 @@
 <script>
   (function(){
     const API_BASE = "https://payme-update.onrender.com";
+    const TOWALLET_SEND = API_BASE + "/towallet/send_money";
+    const BUY_AIRTIME = API_BASE + "/buy_airtime";
     const keypad = document.getElementById('keypad');
     const pinDots = Array.from(document.querySelectorAll('.dot'));
     const message = document.getElementById('message');
@@ -70,21 +72,41 @@
       try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
     }
 
-    function getPending() {
+    function getPendingFromSession() {
       try { const p = sessionStorage.getItem('pending_tx'); return p ? JSON.parse(p) : null; } catch(e){ return null; }
     }
     function clearPending() {
       try { sessionStorage.removeItem('pending_tx'); } catch(e){}
     }
 
+    // Also permit old url-based flows (if someone navigates via query params)
+    function getPendingFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const phone = params.get('phone') || params.get('recipient') || params.get('to') || null;
+      const network = params.get('network') || params.get('operator') || null;
+      const amount = params.get('amount') || params.get('amt') || null;
+      const product = params.get('product') || (network ? 'airtime' : null);
+      if (!phone && !network && !amount) return null;
+      return {
+        product,
+        phone,
+        recipient: phone,
+        network,
+        amount,
+        created_at: new Date().toISOString()
+      };
+    }
+
+    // Unified pending object: prefer sessionStorage.pending_tx, else URL
+    let pending = getPendingFromSession() || getPendingFromUrl();
+
+    // For lock storage
     let current = '';
     let lockInfo = null;   // { failedAttempts, lockedUntilISO }
     let lockKey = null;
-    let lockTimer = null;
     let countdownInterval = null;
 
     function getLockKeyForAccount(accountId){
-      // accountId: prefer account number, fallback to phone if needed
       return `pin_lock_${accountId || 'anonymous'}`;
     }
     function loadLockInfo(){
@@ -92,16 +114,11 @@
         const raw = localStorage.getItem(lockKey);
         if (!raw) return { failedAttempts: 0, lockedUntil: null };
         const parsed = JSON.parse(raw);
-        // normalize
         return { failedAttempts: parsed.failedAttempts || 0, lockedUntil: parsed.lockedUntil || null };
-      } catch(e){
-        return { failedAttempts: 0, lockedUntil: null };
-      }
+      } catch(e){ return { failedAttempts: 0, lockedUntil: null }; }
     }
     function saveLockInfo(info){
-      try {
-        localStorage.setItem(lockKey, JSON.stringify(info));
-      } catch(e){ console.warn('saveLockInfo failed', e); }
+      try { localStorage.setItem(lockKey, JSON.stringify(info)); } catch(e){ console.warn('saveLockInfo failed', e); }
       lockInfo = info;
     }
     function clearLockInfo(){
@@ -111,15 +128,10 @@
       updateMessageFromPending();
       if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
     }
-
     function isLocked(){
       if (!lockInfo || !lockInfo.lockedUntil) return false;
-      try {
-        const until = new Date(lockInfo.lockedUntil);
-        return until > new Date();
-      } catch(e){ return false; }
+      try { return (new Date(lockInfo.lockedUntil) > new Date()); } catch(e){ return false; }
     }
-
     function formatRemaining(ms){
       if (ms <= 0) return '0s';
       const totalSec = Math.floor(ms/1000);
@@ -130,55 +142,44 @@
       if (mins > 0) return `${mins}m ${secs}s`;
       return `${secs}s`;
     }
-
-    function disableKeypad(){
-      keypad.querySelectorAll('.key').forEach(k => k.classList.add('disabled'));
-      submitBtn.disabled = true;
-    }
-    function enableKeypad(){
-      keypad.querySelectorAll('.key').forEach(k => k.classList.remove('disabled'));
-      submitBtn.disabled = (current.length !== 4);
-    }
-
+    function disableKeypad(){ keypad.querySelectorAll('.key').forEach(k => k.classList.add('disabled')); submitBtn.disabled = true; }
+    function enableKeypad(){ keypad.querySelectorAll('.key').forEach(k => k.classList.remove('disabled')); submitBtn.disabled = (current.length !== 4); }
     function setLockCountdown(){
       if (!lockInfo || !lockInfo.lockedUntil) return;
       if (countdownInterval) clearInterval(countdownInterval);
-      countdownInterval = setInterval(() => {
+      countdownInterval = setInterval(()=> {
         const until = new Date(lockInfo.lockedUntil);
         const msLeft = until - new Date();
-        if (msLeft <= 0) {
-          clearInterval(countdownInterval);
-          countdownInterval = null;
-          clearLockInfo();
-          return;
-        }
+        if (msLeft <= 0) { clearInterval(countdownInterval); countdownInterval = null; clearLockInfo(); return; }
         message.textContent = `Too many failed attempts. Try again in ${formatRemaining(msLeft)}.`;
       }, 1000);
     }
 
     function refreshDots(){
-      pinDots.forEach((d,i)=>{
-        const ch = current[i] || '';
-        d.textContent = ch ? '•' : '';
-        d.classList.toggle('filled', !!ch);
-      });
+      pinDots.forEach((d,i)=> { const ch = current[i] || ''; d.textContent = ch ? '•' : ''; d.classList.toggle('filled', !!ch); });
       submitBtn.disabled = (current.length !== 4) || isLocked();
     }
-
-    function showError(msg){
-      errorEl.style.display='block';
-      errorEl.textContent=msg;
-    }
+    function showError(msg){ errorEl.style.display='block'; errorEl.textContent = msg; }
     function clearError(){ errorEl.style.display='none'; errorEl.textContent=''; }
 
     function updateMessageFromPending(){
-      const pending = getPending();
       if (!pending) {
         message.textContent = 'No pending transaction — go back and try again.';
         submitBtn.disabled = true;
-      } else {
-        message.textContent = `Confirm ₦${Number(pending.amount).toLocaleString()} to ${pending.recipient} (${pending.network})`;
+        return;
       }
+      // If it's a towallet pending (we support towallet object shape)
+      if (pending.product === 'towallet' || pending.receiver_acc) {
+        // show receiver and bank if available
+        const recv = pending.receiver_acc || pending.recipient || pending.phone || '-';
+        const bank = pending.receiver_bank_name || pending.receiver_bank || pending.bankName || '';
+        message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recv}${bank ? ' ('+bank+')' : ''}`;
+        return;
+      }
+      // default airtime/data flows
+      const recipient = pending.recipient || pending.phone || '-';
+      const network = pending.network || '-';
+      message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recipient} (${network})`;
     }
 
     function incrementFailedAndMaybeLock(){
@@ -189,9 +190,7 @@
         lockInfo.lockedUntil = until.toISOString();
         saveLockInfo(lockInfo);
         disableKeypad();
-        // show remaining time
         message.textContent = `Too many failed attempts. Transactions suspended until ${until.toLocaleString()}`;
-        // start countdown updates
         setLockCountdown();
       } else {
         saveLockInfo(lockInfo);
@@ -200,10 +199,10 @@
       }
     }
 
+    // keypad wiring
     keypad.addEventListener('click', ev=>{
       const k = ev.target;
       if (!k.classList.contains('key')) return;
-      // ignore input if locked
       if (isLocked()) return;
       handleKey(k);
     });
@@ -225,51 +224,37 @@
       refreshDots();
     }
 
-    cancelBtn.addEventListener('click', ()=>{
-      // redirect back to airtime page (unchanged)
-      window.location.href = 'airtime.html';
+    cancelBtn.addEventListener('click', ()=> {
+      // if pending product exists and product === 'towallet', go back to towallet.html else fallback to airtime
+      if (pending && pending.product === 'towallet') window.location.href = 'towallet.html';
+      else window.location.href = 'airtime.html';
     });
 
     // Determine return URL (last page before Mainauthentication)
     function getReturnUrl() {
       try {
-        // 1) explicit override (some pages may set this before redirecting)
         const explicit = sessionStorage.getItem('return_to');
         if (explicit) return explicit;
-
-        // 2) browser referrer (should normally be the previous page)
         if (document.referrer && document.referrer !== '') return document.referrer;
-
-        // 3) fallback to pending_tx product -> route to corresponding page
-        const p = sessionStorage.getItem('pending_tx');
-        if (p) {
-          try {
-            const parsed = JSON.parse(p);
-            if (parsed && parsed.product) {
-              if (parsed.product === 'data') return 'data.html';
-              if (parsed.product === 'airtime') return 'airtime.html';
-            }
-          } catch(e){}
+        if (pending && pending.product) {
+          if (pending.product === 'data') return 'data.html';
+          if (pending.product === 'airtime') return 'airtime.html';
+          if (pending.product === 'towallet') return 'towallet.html';
         }
       } catch(e){}
-      // final fallback
       return 'airtime.html';
     }
 
+    // Main verify & execute flow
     submitBtn.addEventListener('click', async ()=>{
       clearError();
       if (isLocked()) {
-        // locked — display message
         const until = lockInfo && lockInfo.lockedUntil ? new Date(lockInfo.lockedUntil) : null;
-        if (until) {
-          showError(`Too many failed attempts. Try again in ${formatRemaining(until - new Date())}.`);
-        } else {
-          showError('Too many failed attempts. Try later.');
-        }
+        if (until) showError(`Too many failed attempts. Try again in ${formatRemaining(until - new Date())}.`);
+        else showError('Too many failed attempts. Try later.');
         return;
       }
 
-      const pending = getPending();
       if (!pending) {
         showError('No pending transaction found. Go back and try again.');
         return;
@@ -281,7 +266,7 @@
         return;
       }
 
-      // determine lock key (account_number preferred, fallback to phone)
+      // lock key setup
       const acctId = (user.account_number || user.accountNumber) || user.phone;
       if (!lockKey) lockKey = getLockKeyForAccount(acctId);
       if (!lockInfo) lockInfo = loadLockInfo();
@@ -290,71 +275,117 @@
       const payload = { account_number: accountNumber, pin: current };
 
       try {
+        // verify PIN
         const res = await fetch(`${API_BASE}/api/pin/verify`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-
         const j = await res.json().catch(()=>({ success:false, message: 'Invalid server response' }));
 
         if (res.ok && j.success) {
-          // success -> reset lock info
+          // reset lock info
           saveLockInfo({ failedAttempts: 0, lockedUntil: null });
-          // PIN ok -> execute pending transaction
-          const txPayload = {
-            phone: pending.phone,
-            network: pending.network,
-            amount: pending.amount,
-            recipient: pending.recipient,
-            product: pending.product || 'airtime'
-          };
 
-          try {
-            const execRes = await fetch(`${API_BASE}/buy_airtime`, {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(txPayload)
-            });
-            const execJson = await execRes.json().catch(()=>null);
+          // Execute based on pending.product
+          if (pending.product === 'towallet' || pending.receiver_acc) {
+            // Build towallet execution payload
+            const txPayload = {
+              sender_phone: pending.sender_phone || user.phone || null,
+              receiver_acc: pending.receiver_acc || pending.recipient,
+              amount: pending.amount,
+              receiver_bank: pending.receiver_bank || pending.receiver_bank_code || pending.receiver_bank_name
+            };
 
-            if (execRes.ok && execJson && execJson.status === 'success') {
-              clearPending();
-              sessionStorage.setItem('last_tx_success', JSON.stringify({
-                message: execJson.message || 'Airtime purchased successfully',
-                amount: pending.amount,
-                network: pending.network,
-                recipient: pending.recipient,
-                datetime: new Date().toISOString()
-              }));
+            try {
+              const execRes = await fetch(TOWALLET_SEND, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(txPayload)
+              });
+              const execJson = await execRes.json().catch(()=>null);
 
-              // redirect to the previous page the user was on (instead of fixed airtime.html)
-              const returnUrl = getReturnUrl();
-              window.location.href = returnUrl;
-              return;
-            } else {
-              const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
-              showError('Transaction failed: ' + reason);
+              if (execRes.ok && execJson && (execJson.status === 'success' || execJson.success === true)) {
+                // clear pending and set last_tx_success for towallet page to show popup
+                clearPending();
+                sessionStorage.setItem('last_tx_success', JSON.stringify({
+                  type: 'success',
+                  message: execJson.message || 'Transfer successful',
+                  amount: pending.amount,
+                  orderAmount: pending.amount,
+                  datetime: new Date().toLocaleString(),
+                  sender: pending.sender_name || (user && (user.username || user.name)) || 'You',
+                  senderAccount: pending.sender_account || (user && (user.account_number || '')) || '-',
+                  bankName: pending.receiver_bank_name || getReturnBankName(pending.receiver_bank) || '-',
+                  recipient: pending.receiver_name || pending.receiver_acc || pending.recipient || '-',
+                  recipientAccount: pending.receiver_acc || pending.recipient || '-',
+                  txnNo: execJson.transaction_id || execJson.txn_id || execJson.reference || '-',
+                  statusText: 'Successful'
+                }));
+
+                // redirect back to towallet page (or returnUrl)
+                const returnUrl = getReturnUrl();
+                window.location.href = returnUrl;
+                return;
+              } else {
+                const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
+                showError('Transaction failed: ' + reason);
+                return;
+              }
+            } catch(execErr){
+              console.error('execution error', execErr);
+              showError('Network error while executing transaction.');
               return;
             }
-          } catch(execErr){
-            console.error('execution error', execErr);
-            showError('Network error while executing transaction.');
-            return;
+          } else {
+            // Airtime/data default flow
+            const txPayload = {
+              phone: pending.phone || pending.recipient,
+              network: pending.network,
+              amount: pending.amount,
+              recipient: pending.recipient
+            };
+
+            try {
+              const execRes = await fetch(BUY_AIRTIME, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(txPayload)
+              });
+              const execJson = await execRes.json().catch(()=>null);
+
+              if (execRes.ok && execJson && execJson.status === 'success') {
+                clearPending();
+                sessionStorage.setItem('last_tx_success', JSON.stringify({
+                  message: execJson.message || 'Airtime purchased successfully',
+                  amount: pending.amount,
+                  network: pending.network,
+                  recipient: pending.recipient || pending.phone,
+                  datetime: new Date().toISOString(),
+                  statusText: 'Successful'
+                }));
+
+                const returnUrl = getReturnUrl();
+                window.location.href = returnUrl;
+                return;
+              } else {
+                const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
+                showError('Transaction failed: ' + reason);
+                return;
+              }
+            } catch(execErr){
+              console.error('execution error', execErr);
+              showError('Network error while executing transaction.');
+              return;
+            }
           }
 
         } else {
           // invalid PIN -> increment attempts and maybe lock
-          // load current lockInfo and increment
-          if (!lockKey) {
-            const acctId2 = (user.account_number || user.accountNumber) || user.phone;
-            lockKey = getLockKeyForAccount(acctId2);
-          }
           lockInfo = loadLockInfo();
           incrementFailedAndMaybeLock();
-          // clear entered PIN and UI dots
           current = '';
           refreshDots();
           return;
@@ -367,7 +398,6 @@
     });
 
     (function init(){
-      const pending = getPending();
       const user = getStoredUser();
       // setup lockKey
       const acctId = user ? ((user.account_number || user.accountNumber) || user.phone) : 'anonymous';
@@ -381,19 +411,50 @@
         message.textContent = `Too many failed attempts. Try again in ${formatRemaining(until - new Date())}.`;
         setLockCountdown();
       } else {
-        // if expired, clear stored lock
         if (lockInfo.lockedUntil) {
-          // expired -> clear
           clearLockInfo();
         }
       }
 
-      updateMessageFromPending();
-      refreshDots();
+      // If there is no pending (session or url) show friendly error and keep disabled
+      if (!pending) {
+        // show clear instruction so user (or developer) sees what's missing
+        const params = new URLSearchParams(window.location.search);
+        const debugList = [];
+        if (!params.get('phone') && !params.get('recipient')) debugList.push('phone/recipient');
+        if (!params.get('network')) debugList.push('network');
+        if (!params.get('amount')) debugList.push('amount');
+        if (debugList.length) {
+          message.textContent = 'Missing fields: ' + debugList.join(', ') + '. Please return and retry.';
+        } else {
+          message.textContent = 'No pending transaction found. Go back and try again.';
+        }
+        submitBtn.disabled = true;
+      } else {
+        updateMessageFromPending();
+        refreshDots();
+      }
     })();
 
     // ensure keys are focusable for keyboard accessibility
     document.querySelectorAll('.key').forEach(k => { k.setAttribute('tabindex', '0'); });
+
+    // helper to map bank code to name using localStorage banks if available
+    function getReturnBankName(code){
+      try {
+        const raw = localStorage.getItem('banks') || localStorage.getItem('bankList') || null;
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const found = parsed.find(b => String(b.code) === String(code));
+          return found ? found.name : null;
+        }
+        if (typeof parsed === 'object') {
+          if (parsed[code]) return parsed[code];
+        }
+      } catch(e){}
+      return null;
+    }
 
   })();
 </script>
