@@ -1,143 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Transfer to Bank/Wallet - PAYME</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      margin: 0;
-      padding: 20px;
-    }
-    .container {
-      max-width: 400px;
-      margin: auto;
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      padding: 20px;
-      position: relative;
-    }
-    /* top-left arrow */
-    .back-arrow {
-      position: fixed;
-      left: 12px;
-      top: 12px;
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      text-decoration:none;
-      color: #555;
-      background: #fff;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-      z-index: 999;
-    }
-    .back-arrow i { font-size:18px; }
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #00c853;
-    }
-    label {
-      font-size: 14px;
-      font-weight: bold;
-      margin-bottom: 6px;
-      display: block;
-    }
-    input {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 16px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    button {
-      width: 100%;
-      background: #00c853;
-      border: none;
-      color: #fff;
-      padding: 12px;
-      border-radius: 6px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 14px;
-      margin-bottom: 10px;
-    }
-    button:hover { background: #009624; }
-    .receiver-info {
-      font-size: 14px;
-      padding: 10px;
-      background: #e8f5e9;
-      border-radius: 6px;
-      margin-bottom: 16px;
-      display: none;
-    }
-    .error {
-      color: red;
-      font-size: 13px;
-      margin-bottom: 10px;
-      display: none;
-    }
-
-    /* SUCCESS POPUP (detailed) */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.45);
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    }
-    .modal-overlay.show { display: flex; }
-    .modal {
-      width: calc(100% - 48px);
-      max-width: 520px;
-      background: #fff;
-      border-radius: 12px;
-      padding: 18px;
-      box-shadow: 0 18px 40px rgba(10,20,30,0.15);
-      text-align: center;
-    }
-    .modal .badge {
-      width: 68px;
-      height: 68px;
-      border-radius: 50%;
-      background: linear-gradient(135deg,#00c853,#43a047);
-      color: #fff;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 32px;
-      margin-bottom: 12px;
-    }
-    .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
-    .modal h3 { margin: 6px 0 6px; font-size: 18px; }
-    .modal p { margin: 0 0 12px; color: #555; }
-
-    .detail-list { text-align:left; margin-top:12px; }
-    .detail-item { display:flex; justify-content:space-between; padding:10px 12px; background:#fafafa; border-radius:10px; margin-bottom:10px; }
-    .detail-label { color:#666; font-size:13px; }
-    .detail-value { font-weight:700; text-align:right; }
-
-    .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
-    .modal .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
-    .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
-    .btn-primary { background:#00c853; color:#fff; border:0; }
-
-    @media (max-width:420px) {
-      .container { padding: 16px; }
-      .modal { padding: 14px; }
-      .back-arrow { left: 8px; top: 8px; width:36px;height:36px; }
-    }
+    body{font-family:Arial, sans-serif;background:#f4f6f8;margin:0;padding:20px}
+    .container{max-width:400px;margin:auto;background:#fff;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:20px;position:relative}
+    .back-arrow{position:fixed;left:12px;top:12px;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;text-decoration:none;color:#555;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.08);z-index:999}
+    .back-arrow i{font-size:18px}
+    h2{text-align:center;margin-bottom:20px;color:#00c853}
+    label{font-size:14px;font-weight:bold;margin-bottom:6px;display:block}
+    input{width:100%;padding:10px;margin-bottom:16px;border:1px solid #ccc;border-radius:6px;font-size:14px}
+    button{width:100%;background:#00c853;border:none;color:#fff;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;margin-bottom:10px}
+    button:hover{background:#009624}
+    .receiver-info{font-size:14px;padding:10px;background:#e8f5e9;border-radius:6px;margin-bottom:16px;display:none}
+    .error{color:red;font-size:13px;margin-bottom:10px;display:none}
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;z-index:9999}
+    .modal-overlay.show{display:flex}
+    .modal{width:calc(100% - 48px);max-width:520px;background:#fff;border-radius:12px;padding:18px;box-shadow:0 18px 40px rgba(10,20,30,0.15);text-align:center}
+    .modal .badge{width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#00c853,#43a047);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:12px}
+    .modal .badge.error{background:linear-gradient(135deg,#f44336,#e53935)}
+    .detail-list{text-align:left;margin-top:12px}
+    .detail-item{display:flex;justify-content:space-between;padding:10px 12px;background:#fafafa;border-radius:10px;margin-bottom:10px}
+    .detail-label{color:#666;font-size:13px}
+    .detail-value{font-weight:700;text-align:right}
+    .modal .actions{display:flex;gap:10px;justify-content:center;margin-top:12px}
+    .btn-outline{padding:10px 14px;border-radius:8px;border:1px solid #ddd;background:#fff;color:#333;cursor:pointer}
+    .btn-primary{padding:10px 14px;border-radius:8px;border:0;background:#00c853;color:#fff;cursor:pointer}
+    @media(max-width:420px){.container{padding:16px}.modal{padding:14px}.back-arrow{left:8px;top:8px;width:36px;height:36px}}
   </style>
-  <!-- Font Awesome for arrow icon -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
 </head>
 <body>
@@ -149,13 +41,13 @@
     <h2>Transfer Money</h2>
 
     <label for="accountNumber">Receiver Account Number</label>
-    <input type="text" id="accountNumber" placeholder="Enter account number" maxlength="10" required />
+    <input type="text" id="accountNumber" placeholder="Enter account number" maxlength="10" />
 
     <div class="receiver-info" id="receiverInfo"></div>
     <div class="error" id="error"></div>
 
     <label for="amount">Amount (₦)</label>
-    <input type="number" id="amount" placeholder="Enter amount" required />
+    <input type="number" id="amount" placeholder="Enter amount" />
 
     <button id="sendBtn">Send Money</button>
   </div>
@@ -165,63 +57,55 @@
     <div class="modal" role="document">
       <div class="badge">₦</div>
       <h3 id="successTitle">Money received</h3>
-      <p id="successSubtitle" style="font-weight:700;font-size:28px;margin:4px 0" >₦<span id="successAmount">0.00</span></p>
+      <p id="successSubtitle" style="font-weight:700;font-size:28px;margin:4px 0">₦<span id="successAmount">0.00</span></p>
       <div style="display:inline-block;padding:8px 12px;border-radius:8px;background:#e8f5e9;color:#0b8a39;font-weight:700;margin-bottom:12px" id="successStatus">Successful</div>
 
-      <div class="detail-list" id="detailList">
-        <!-- populated dynamically: Order amount, Date/Time, Sender, Sender Account, Bank Name (PAYME), Recipient, Recipient Account, Transaction NO. -->
-      </div>
+      <div class="detail-list" id="detailList"></div>
 
       <div class="actions" style="margin-top:6px">
-        <button id="viewTransactionsBtn" class="btn btn-outline">View Transactions</button>
-        <button id="closeSuccessBtn" class="btn btn-primary">Done</button>
+        <button id="viewTransactionsBtn" class="btn-outline">View Transactions</button>
+        <button id="closeSuccessBtn" class="btn-primary">Done</button>
       </div>
     </div>
   </div>
 
-  <!-- ERROR POPUP (simple) -->
+  <!-- ERROR POPUP -->
   <div id="errorModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal" role="document">
       <div class="badge error">✕</div>
       <h3 id="errorHeader">Error</h3>
       <p id="errorText">An error occurred</p>
       <div class="actions">
-        <button id="errorOkBtn" class="btn btn-primary">OK</button>
+        <button id="errorOkBtn" class="btn-primary">OK</button>
       </div>
     </div>
   </div>
 
 <script>
-  const API_BASE = "https://payme-update.onrender.com"; // backend base (unchanged)
+  const API_BASE = "https://payme-update.onrender.com";
 
   const accountInput = document.getElementById("accountNumber");
   const receiverInfo = document.getElementById("receiverInfo");
   const errorBox = document.getElementById("error");
   const sendBtn = document.getElementById("sendBtn");
   const amountInput = document.getElementById("amount");
-
   const successModal = document.getElementById("successModal");
   const detailList = document.getElementById("detailList");
   const successAmountEl = document.getElementById("successAmount");
   const successStatusEl = document.getElementById("successStatus");
   const successTitle = document.getElementById("successTitle");
-
   const viewTransactionsBtn = document.getElementById("viewTransactionsBtn");
   const closeSuccessBtn = document.getElementById("closeSuccessBtn");
-
   const errorModal = document.getElementById("errorModal");
   const errorHeader = document.getElementById("errorHeader");
   const errorText = document.getElementById("errorText");
   const errorOkBtn = document.getElementById("errorOkBtn");
 
-  // current logged in user
   const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
 
-  // track if receiver is registered (must be true to allow sending)
   let receiverExists = false;
   let receiverUsername = "";
 
-  // helper: show error popup
   function showErrorPopup(message, title = "Error", onOk = null) {
     errorHeader.textContent = title;
     errorText.textContent = message;
@@ -238,14 +122,8 @@
     errorModal.setAttribute('aria-hidden','true');
     errorOkBtn.onclick = null;
   }
+  function formatMoney(n){ if (n == null) return "0.00"; return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-  // format amount
-  function formatMoney(n){
-    if (n == null) return "0.00";
-    return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  // fetch balance (keeps same behaviour as original)
   async function fetchBalance() {
     if (!currentUser || !currentUser.phone) return 0;
     try {
@@ -259,19 +137,15 @@
     return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // lookup receiver account; MUST be registered for sending to proceed
+  // Must be a registered recipient
   async function lookupReceiver(acc) {
     receiverExists = false;
     receiverUsername = "";
     receiverInfo.style.display = "none";
     errorBox.style.display = "none";
 
-    if (!acc || acc.length !== 10) {
-      // do not show anything until 10 digits
-      return;
-    }
+    if (!acc || acc.length !== 10) return;
 
-    // Prevent sending to self quickly
     const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : '';
     if (userAcc && String(userAcc) === String(acc)) {
       errorBox.textContent = "❌ You cannot send money to yourself!";
@@ -281,7 +155,6 @@
     }
 
     try {
-      // call backend lookup route (must return success for registered user)
       const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
       const data = await res.json().catch(()=>null);
 
@@ -292,7 +165,6 @@
         receiverInfo.style.display = "block";
         errorBox.style.display = "none";
       } else {
-        // Not registered — block
         receiverExists = false;
         receiverUsername = "";
         errorBox.textContent = "❌ Invalid account — recipient not registered";
@@ -300,7 +172,6 @@
         receiverInfo.style.display = "none";
       }
     } catch (err) {
-      // network or server error -> treat as not registered (per your instruction)
       receiverExists = false;
       receiverUsername = "";
       errorBox.textContent = "❌ Invalid account or network error — recipient not registered";
@@ -310,24 +181,15 @@
     }
   }
 
-  // bind input event; sanitize digits and run lookup when 10 digits present
   accountInput.addEventListener('input', function() {
     let v = accountInput.value || '';
     v = v.replace(/\D/g,'');
     if (v.length > 10) v = v.slice(0,10);
     if (accountInput.value !== v) accountInput.value = v;
-    if (v.length === 10) {
-      lookupReceiver(v);
-    } else {
-      // reset state when not 10 digits
-      receiverExists = false;
-      receiverUsername = "";
-      receiverInfo.style.display = "none";
-      errorBox.style.display = "none";
-    }
+    if (v.length === 10) lookupReceiver(v);
+    else { receiverExists = false; receiverUsername = ""; receiverInfo.style.display = "none"; errorBox.style.display = "none"; }
   });
 
-  // Instead of executing the transfer here, create pending_tx and redirect to Mainauthentication
   sendBtn.addEventListener('click', async function(){
     const receiverAcc = accountInput.value.trim();
     const amount = parseFloat(amountInput.value);
@@ -340,8 +202,6 @@
       showErrorPopup("Enter a valid amount.", "Invalid amount");
       return;
     }
-
-    // receiver must be registered
     if (!receiverExists) {
       showErrorPopup("Invalid account — recipient not registered", "Invalid recipient");
       return;
@@ -359,16 +219,18 @@
       return;
     }
 
-    // Build pending_tx — use fields Mainauthentication expects.
+    // Create pending_tx with all keys Mainauthentication expects
     const pending = {
-      sender_phone: (currentUser && currentUser.phone) || null,
+      phone: (currentUser && currentUser.phone) || null,          // sender phone (Mainauth expects phone)
       sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
       senderAccount: (currentUser && (currentUser.account_number || '')) || '-',
-      recipient: receiverUsername || receiverAcc,
-      recipientAccount: receiverAcc,
+      receiver_acc: receiverAcc,                                  // IMPORTANT: Mainauth expects this key
+      recipient: receiverUsername || receiverAcc,                // friendly recipient name
+      recipientAccount: receiverAcc,                             // keep backward compatibility
       amount: amount,
-      receiver_bank: "PAYME",        // ensure bank is PAYME (per your request)
-      receiver_bank_name: "PAYME",   // duplicate for safety
+      receiver_bank: "PAYME",                                    // forced bank name
+      receiver_bank_name: "PAYME",
+      network: "PAYME",                                          // include network (Mainauth may read this)
       product: 'towallet',
       created_at: new Date().toISOString()
     };
@@ -376,104 +238,73 @@
     try {
       sessionStorage.setItem('pending_tx', JSON.stringify(pending));
     } catch (e) {
-      console.error("session storage failed", e);
-      showErrorPopup("Unable to create pending transaction. Try again.", "Storage error");
+      console.error('session storage failed', e);
+      showErrorPopup('Unable to create pending transaction. Try again.', 'Storage error');
       return;
     }
 
-    // redirect to Mainauthentication where user will enter PIN
+    // Redirect to PIN page for verification and execution
     window.location.href = 'Mainauthentication.html';
   });
 
-  // When we return from Mainauthentication.html, it will set sessionStorage.last_tx_success.
-  // Detect it on load and show the detailed modal exactly like in the screenshot.
   (function showReturnPopupIfExists(){
     try {
       const last = sessionStorage.getItem('last_tx_success');
       if (!last) return;
       const payload = JSON.parse(last);
-      // Remove right away to avoid duplicate
       sessionStorage.removeItem('last_tx_success');
 
-      // Normalize fields and build detail list
       const amount = Number(payload.amount || payload.orderAmount || payload.total || 0);
       successAmountEl.textContent = formatMoney(amount);
-
-      // status text
       successStatusEl.textContent = (payload.statusText || payload.message || 'Successful');
       successTitle.textContent = payload.type === 'error' ? 'Transaction failed' : 'Money received';
 
-      // Build details — ensure Bank Name is PAYME always
       detailList.innerHTML = '';
-
       function addDetail(label, value){
         const row = document.createElement('div');
         row.className = 'detail-item';
-        const lab = document.createElement('div');
-        lab.className = 'detail-label';
-        lab.textContent = label;
-        const val = document.createElement('div');
-        val.className = 'detail-value';
-        val.textContent = value ?? '-';
-        row.appendChild(lab);
-        row.appendChild(val);
+        const lab = document.createElement('div'); lab.className='detail-label'; lab.textContent = label;
+        const val = document.createElement('div'); val.className='detail-value'; val.textContent = value ?? '-';
+        row.appendChild(lab); row.appendChild(val);
         detailList.appendChild(row);
       }
 
-      addDetail('Order amount', '₦' + formatMoney(amount));
+      addDetail('Order amount','₦'+formatMoney(amount));
       addDetail('Date/Time', payload.datetime || new Date().toLocaleString());
       addDetail('Sender', (payload.sender || (currentUser && (currentUser.username || currentUser.name))) || 'You');
       addDetail('Sender Account', (payload.senderAccount || (currentUser && currentUser.account_number)) || '-');
-      addDetail('Bank Name', 'PAYME'); // force PAYME per your instruction
+      addDetail('Bank Name','PAYME'); // forced
       addDetail('Recipient', payload.recipient || payload.receiver_name || payload.receiver || '-');
       addDetail('Recipient Account', payload.recipientAccount || payload.receiver_acc || payload.receiver || '-');
       addDetail('Transaction NO.', payload.txnNo || payload.transaction_id || payload.reference || '-');
 
-      // show modal
       successModal.classList.add('show');
       successModal.setAttribute('aria-hidden','false');
-      // focus close button
       closeSuccessBtn.focus();
     } catch (e) {
       console.warn('showReturnPopupIfExists error', e);
     }
   })();
 
-  // success modal handlers
   viewTransactionsBtn.addEventListener('click', function(){
-    successModal.classList.remove('show');
-    successModal.setAttribute('aria-hidden','true');
+    successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true');
     window.location.href = 'transactions.html';
   });
   closeSuccessBtn.addEventListener('click', function(){
-    successModal.classList.remove('show');
-    successModal.setAttribute('aria-hidden','true');
-    // stay on page
+    successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true');
   });
-
-  // error modal handler
   errorOkBtn.addEventListener('click', hideErrorPopup);
 
-  // allow ESC to close modals
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape') {
-      if (successModal.classList.contains('show')) {
-        successModal.classList.remove('show');
-        successModal.setAttribute('aria-hidden','true');
-      }
-      if (errorModal.classList.contains('show')) {
-        hideErrorPopup();
-      }
+      if (successModal.classList.contains('show')) { successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true'); }
+      if (errorModal.classList.contains('show')) { hideErrorPopup(); }
     }
   });
 
-  // If there's no logged user, show error and send back to login (preserves original behavior)
   if (!currentUser) {
-    showErrorPopup("No logged-in user found. Please login first.", "Not logged in", function(){
-      window.location.href = "paymelogin.html";
-    });
+    showErrorPopup("No logged-in user found. Please login first.", "Not logged in", function(){ window.location.href = "paymelogin.html"; });
   }
-
 </script>
 </body>
 </html>
