@@ -1,371 +1,437 @@
-<!DOCTYPE html>    <html lang="en">      
-<head>      
-  <meta charset="UTF-8" />      
-  <meta name="viewport" content="width=device-width, initial-scale=1" />      
-  <title>Transfer to Bank/Wallet - PAYME</title>      
-  <style>      
-    body {      
-      font-family: Arial, sans-serif;      
-      background: #f4f6f8;      
-      margin: 0;      
-      padding: 20px;      
-    }      
-    .container {      
-      max-width: 400px;      
-      margin: auto;      
-      background: #fff;      
-      border-radius: 12px;      
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);      
-      padding: 20px;      
-    }      
-    h2 {      
-      text-align: center;      
-      margin-bottom: 20px;      
-      color: #00c853;      
-    }      
-    label {      
-      font-size: 14px;      
-      font-weight: bold;      
-      margin-bottom: 6px;      
-      display: block;      
-    }      
-    input {      
-      width: 100%;      
-      padding: 10px;      
-      margin-bottom: 16px;      
-      border: 1px solid #ccc;      
-      border-radius: 6px;      
-      font-size: 14px;      
-    }      
-    button {      
-      width: 100%;      
-      background: #00c853;      
-      border: none;      
-      color: #fff;      
-      padding: 12px;      
-      border-radius: 6px;      
-      font-weight: bold;      
-      cursor: pointer;      
-      font-size: 14px;      
-      margin-bottom: 10px;      
-    }      
-    button:hover {      
-      background: #009624;      
-    }      
-    .back-btn {      
-      background: #555;      
-    }      
-    .back-btn:hover {      
-      background: #333;      
-    }      
-    .receiver-info {      
-      font-size: 14px;      
-      padding: 10px;      
-      background: #e8f5e9;      
-      border-radius: 6px;      
-      margin-bottom: 16px;      
-      display: none;      
-    }      
-    .error {      
-      color: red;      
-      font-size: 13px;      
-      margin-bottom: 10px;      
-      display: none;      
-    }    /* Success popup modal (centered) */      
-.modal-overlay {      
-  display: none;      
-  position: fixed;      
-  inset: 0;      
-  background: rgba(0,0,0,0.45);      
-  align-items: center;      
-  justify-content: center;      
-  z-index: 9999;      
-}      
-.modal-overlay.show {      
-  display: flex;      
-}      
-.modal {      
-  width: calc(100% - 48px);      
-  max-width: 420px;      
-  background: #fff;      
-  border-radius: 12px;      
-  padding: 18px;      
-  box-shadow: 0 18px 40px rgba(10,20,30,0.15);      
-  text-align: center;      
-}      
-.modal .badge {      
-  width: 68px;      
-  height: 68px;      
-  border-radius: 50%;      
-  background: linear-gradient(135deg,#00c853,#43a047);      
-  color: #fff;      
-  display: inline-flex;      
-  align-items: center;      
-  justify-content: center;      
-  font-size: 32px;      
-  margin-bottom: 12px;      
-}      
-.modal h3 { margin: 6px 0 6px; font-size: 18px; }      
-.modal p { margin: 0 0 12px; color: #555; }      
-.modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }      
-.modal .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }      
-.modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }      
-.modal .btn-primary { background:var(--primary,#00c853); color:#fff; border:0; }      
-  
-/* Error popup style (reuses same layout; red badge) */      
-.modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }      
-  
-/* small responsive */      
-@media (max-width:420px) {      
-  .container { padding: 16px; }      
-  .modal { padding: 14px; }      
-}  
-  
-  </style>      
-</head>      
-<body>      
-  <div class="container">      
-    <h2>Transfer Money</h2>    <label for="accountNumber">Receiver Account Number</label>      
-<input type="text" id="accountNumber" placeholder="Enter account number" maxlength="10" required />      
-  
-<div class="receiver-info" id="receiverInfo"></div>      
-<div class="error" id="error"></div>      
-  
-<label for="amount">Amount (₦)</label>      
-<input type="number" id="amount" placeholder="Enter amount" required />      
-  
-<button onclick="makeTransfer()">Send Money</button>      
-<button class="back-btn" onclick="window.location.href='paymelogin.html'">⬅ Back to Dashboard</button>  
-  
-  </div>      <!-- SUCCESS POPUP (replaces success alert) -->      <div id="successModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">      
-    <div class="modal" role="document">      
-      <div class="badge">✓</div>      
-      <h3 id="successHeader">Transfer Successful</h3>      
-      <p id="successText">Your transfer was completed successfully.</p>      
-      <div class="actions">      
-        <button id="viewTransactionsBtn" class="btn btn-outline">View Transactions</button>      
-        <button id="backDashboardBtn" class="btn btn-primary">Back to Dashboard</button>      
-      </div>      
-    </div>      
-  </div>      <!-- ERROR POPUP (replaces all alert() calls) -->      <div id="errorModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">      
-    <div class="modal" role="document">      
-      <div class="badge error">✕</div>      
-      <h3 id="errorHeader">Error</h3>      
-      <p id="errorText">An error occurred</p>      
-      <div class="actions">      
-        <button id="errorOkBtn" class="btn btn-primary">OK</button>      
-      </div>      
-    </div>      
-  </div>      <script>      
-    const API_BASE = "https://payme-update.onrender.com"; // ✅ backend URL      
-      
-    const accountInput = document.getElementById("accountNumber");      
-    const receiverInfo = document.getElementById("receiverInfo");      
-    const errorBox = document.getElementById("error");      
-      
-    const successModal = document.getElementById("successModal");      
-    const successHeader = document.getElementById("successHeader");      
-    const successText = document.getElementById("successText");      
-    const viewTransactionsBtn = document.getElementById("viewTransactionsBtn");      
-    const backDashboardBtn = document.getElementById("backDashboardBtn");      
-      
-    const errorModal = document.getElementById("errorModal");      
-    const errorHeader = document.getElementById("errorHeader");      
-    const errorText = document.getElementById("errorText");      
-    const errorOkBtn = document.getElementById("errorOkBtn");      
-      
-    const currentUser = JSON.parse(localStorage.getItem("loggedInUser"))       
-                     || JSON.parse(localStorage.getItem("user"));      
-      
-    // Replace original alert + immediate redirect behavior with popup + redirect on OK.      
-    if (!currentUser) {      
-      showErrorPopup("No logged-in user found. Please login first.", "Not logged in", () => {      
-        window.location.href = "paymelogin.html";      
-      });      
-    }      
-      
-    let receiverUsername = ""; // ✅ store receiver name      
-      
-    // Fetch latest balance      
-    async function fetchBalance() {      
-      try {      
-        const res = await fetch(`${API_BASE}/balance/${currentUser.phone}`);      
-        const data = await res.json();      
-        if (res.ok) {      
-          localStorage.setItem("balance", data.balance);      
-          return data.balance;      
-        }      
-      } catch (err) {      
-        console.error(err);      
-      }      
-      return parseFloat(localStorage.getItem("balance")) || 0;      
-    }      
-      
-    // ✅ Lookup receiver’s username when typing account number      
-    accountInput.addEventListener("input", async function() {      
-      receiverInfo.style.display = "none";      
-      errorBox.style.display = "none";      
-      receiverUsername = "";      
-      
-      const acc = accountInput.value.trim();      
-      if (acc.length === 10) {      
-        if (acc === currentUser.account_number) {      
-          errorBox.innerText = "❌ You cannot send money to yourself!";      
-          errorBox.style.display = "block";      
-        } else {      
-          try {      
-            const res = await fetch(`${API_BASE}/user_by_account/${acc}`);      
-            const data = await res.json();      
-      
-            if (res.ok && data.status === "success") {      
-              receiverUsername = data.username;      
-              receiverInfo.innerText = "✅ Receiver: " + receiverUsername;      
-              receiverInfo.style.display = "block";      
-            } else {      
-              errorBox.innerText = "❌ Account not found!";      
-              errorBox.style.display = "block";      
-            }      
-          } catch (err) {      
-            console.error(err);      
-            errorBox.innerText = "⚠️ Error checking account.";      
-            errorBox.style.display = "block";      
-          }      
-        }      
-      }      
-    });      
-      
-    // ✅ Transfer money      
-    async function makeTransfer() {      
-      const receiverAcc = document.getElementById("accountNumber").value.trim();      
-      const amount = parseFloat(document.getElementById("amount").value);      
-      
-      if (!receiverAcc || receiverAcc.length !== 10) {      
-        showErrorPopup("Please enter a valid 10-digit receiver account.", "Invalid account");      
-        return;      
-      }      
-      if (!amount || amount <= 0) {      
-        showErrorPopup("Enter a valid amount.", "Invalid amount");      
-        return;      
-      }      
-      
-      // 🚫 Prevent sending to self (support different key names)      
-      const userAcc = currentUser.account_number || currentUser.acc_number || currentUser.accountNumber;      
-      
-      if (receiverAcc === userAcc) {      
-        showErrorPopup("You cannot send money to your own account!", "Invalid transfer");      
-        return;      
-      }      
-      
-      const balance = await fetchBalance();      
-      if (amount > balance) {      
-        showErrorPopup("Insufficient funds.", "Insufficient balance");      
-        return;      
-      }      
-      
-      try {      
-        const response = await fetch(`${API_BASE}/send_money`, {      
-          method: "POST",      
-          headers: { "Content-Type": "application/json" },      
-          body: JSON.stringify({      
-            sender_phone: currentUser.phone,      
-            receiver_acc: receiverAcc,      
-            amount: amount      
-          })      
-        });      
-      
-        const result = await response.json();      
-      
-        if (response.ok && result.status === "success") {      
-          // Update balance inside loggedInUser      
-          let user = JSON.parse(localStorage.getItem("loggedInUser"));      
-          if (!user) user = JSON.parse(localStorage.getItem("user")) || {};      
-          // keep previous logic: use fetched balance - amount      
-          try {      
-            user.balance = (parseFloat(balance) - parseFloat(amount));      
-          } catch (e) {      
-            user.balance = user.balance ? (user.balance - amount) : null;      
-          }      
-          localStorage.setItem("loggedInUser", JSON.stringify(user));      
-          localStorage.setItem("user", JSON.stringify(user));      
-      
-          // Save transaction      
-          let transactions = JSON.parse(localStorage.getItem("transactions")) || [];      
-          transactions.push({      
-            type: "Transfer Out",      
-            amount: amount,      
-            description: "Transfer to " + (receiverUsername || receiverAcc),      
-            date: new Date().toLocaleString()      
-          });      
-          localStorage.setItem("transactions", JSON.stringify(transactions));      
-      
-          // --- REPLACED alert with popup ---      
-          showSuccessPopup("✅ " + (result.message || "Transfer completed successfully."));      
-          // ------------------------------------------------      
-      
-        } else {      
-          showErrorPopup((result && result.message) ? result.message : "Transfer failed.", "Transfer failed");      
-        }      
-      } catch (err) {      
-        console.error(err);      
-        showErrorPopup("Error connecting to server.", "Network error");      
-      }      
-    }      
-      
-    /* ---------- Success popup handlers ---------- */      
-    function showSuccessPopup(message){      
-      successHeader.textContent = "Transfer successful";      
-      successText.textContent = message;      
-      successModal.classList.add("show");      
-      successModal.setAttribute("aria-hidden","false");      
-      // focus first action for accessibility      
-      viewTransactionsBtn.focus();      
-    }      
-    function hideSuccessPopup(){      
-      successModal.classList.remove("show");      
-      successModal.setAttribute("aria-hidden","true");      
-    }      
-      
-    viewTransactionsBtn.addEventListener("click", function(){      
-      hideSuccessPopup();      
-      // go to transactions page      
-      window.location.href = "transactions.html";      
-    });      
-      
-    backDashboardBtn.addEventListener("click", function(){      
-      hideSuccessPopup();      
-      // go back to dashboard      
-      window.location.href = "paymelogin.html";      
-    });      
-      
-    // Close popup on Escape key      
-    document.addEventListener("keydown", function(e){      
-      if (e.key === "Escape") {      
-        if (successModal.classList.contains("show")) hideSuccessPopup();      
-        if (errorModal.classList.contains("show")) hideErrorPopup();      
-      }      
-    });      
-      
-    /* ---------- Error popup handlers (replaces alert) ---------- */      
-    function showErrorPopup(message, title = "Error", onOk = null) {      
-      errorHeader.textContent = title || "Error";      
-      errorText.textContent = message || "";      
-      errorModal.classList.add("show");      
-      errorModal.setAttribute("aria-hidden","false");      
-      // ensure old handler removed      
-      errorOkBtn.onclick = null;      
-      errorOkBtn.focus();      
-      errorOkBtn.onclick = function() {      
-        hideErrorPopup();      
-        if (typeof onOk === "function") {      
-          try { onOk(); } catch(e){ console.warn(e); }      
-        }      
-      };      
-    }      
-    function hideErrorPopup() {      
-      errorModal.classList.remove("show");      
-      errorModal.setAttribute("aria-hidden","true");      
-      errorOkBtn.onclick = null;      
-    }      
-  </script>   
- </body>      
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Transfer to Bank/Wallet - PAYME</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 400px;
+      margin: auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 20px;
+      position: relative;
+    }
+    /* top-left arrow */
+    .back-arrow {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-decoration:none;
+      color: #555;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      z-index: 999;
+    }
+    .back-arrow i { font-size:18px; }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #00c853;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      display: block;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    button {
+      width: 100%;
+      background: #00c853;
+      border: none;
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    button:hover { background: #009624; }
+    .receiver-info {
+      font-size: 14px;
+      padding: 10px;
+      background: #e8f5e9;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .error {
+      color: red;
+      font-size: 13px;
+      margin-bottom: 10px;
+      display: none;
+    }
+
+    /* SUCCESS POPUP (detailed) */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      width: calc(100% - 48px);
+      max-width: 520px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 18px 40px rgba(10,20,30,0.15);
+      text-align: center;
+    }
+    .modal .badge {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: linear-gradient(135deg,#00c853,#43a047);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+    .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
+    .modal h3 { margin: 6px 0 6px; font-size: 18px; }
+    .modal p { margin: 0 0 12px; color: #555; }
+
+    .detail-list { text-align:left; margin-top:12px; }
+    .detail-item { display:flex; justify-content:space-between; padding:10px 12px; background:#fafafa; border-radius:10px; margin-bottom:10px; }
+    .detail-label { color:#666; font-size:13px; }
+    .detail-value { font-weight:700; text-align:right; }
+
+    .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+    .modal .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
+    .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
+    .btn-primary { background:#00c853; color:#fff; border:0; }
+
+    @media (max-width:420px) {
+      .container { padding: 16px; }
+      .modal { padding: 14px; }
+      .back-arrow { left: 8px; top: 8px; width:36px;height:36px; }
+    }
+  </style>
+  <!-- load Font Awesome for arrow icon (using CDN) -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+</head>
+<body>
+
+  <!-- top-left arrow (replaces back button) -->
+  <a class="back-arrow" href="paymelogin.html" aria-label="Back to dashboard"><i class="fa fa-arrow-left"></i></a>
+
+  <div class="container">
+    <h2>Transfer Money</h2>
+
+    <label for="accountNumber">Receiver Account Number</label>
+    <input type="text" id="accountNumber" placeholder="Enter account number" maxlength="10" required />
+
+    <div class="receiver-info" id="receiverInfo"></div>
+    <div class="error" id="error"></div>
+
+    <label for="amount">Amount (₦)</label>
+    <input type="number" id="amount" placeholder="Enter amount" required />
+
+    <button id="sendBtn">Send Money</button>
+  </div>
+
+  <!-- SUCCESS POPUP (detailed) -->
+  <div id="successModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document">
+      <div class="badge">₦</div>
+      <h3 id="successTitle">Money received</h3>
+      <p id="successSubtitle" style="font-weight:700;font-size:28px;margin:4px 0" >₦<span id="successAmount">0.00</span></p>
+      <div style="display:inline-block;padding:8px 12px;border-radius:8px;background:#e8f5e9;color:#0b8a39;font-weight:700;margin-bottom:12px" id="successStatus">Successful</div>
+
+      <div class="detail-list" id="detailList">
+        <!-- populated dynamically: Order amount, Date/Time, Sender, Sender Account, Bank Name (PAYME), Recipient, Recipient Account, Transaction NO. -->
+      </div>
+
+      <div class="actions" style="margin-top:6px">
+        <button id="viewTransactionsBtn" class="btn btn-outline">View Transactions</button>
+        <button id="closeSuccessBtn" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ERROR POPUP (simple) -->
+  <div id="errorModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document">
+      <div class="badge error">✕</div>
+      <h3 id="errorHeader">Error</h3>
+      <p id="errorText">An error occurred</p>
+      <div class="actions">
+        <button id="errorOkBtn" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API_BASE = "https://payme-update.onrender.com"; // backend base (unchanged)
+
+  const accountInput = document.getElementById("accountNumber");
+  const receiverInfo = document.getElementById("receiverInfo");
+  const errorBox = document.getElementById("error");
+  const sendBtn = document.getElementById("sendBtn");
+  const amountInput = document.getElementById("amount");
+
+  const successModal = document.getElementById("successModal");
+  const detailList = document.getElementById("detailList");
+  const successAmountEl = document.getElementById("successAmount");
+  const successStatusEl = document.getElementById("successStatus");
+  const successTitle = document.getElementById("successTitle");
+
+  const viewTransactionsBtn = document.getElementById("viewTransactionsBtn");
+  const closeSuccessBtn = document.getElementById("closeSuccessBtn");
+
+  const errorModal = document.getElementById("errorModal");
+  const errorHeader = document.getElementById("errorHeader");
+  const errorText = document.getElementById("errorText");
+  const errorOkBtn = document.getElementById("errorOkBtn");
+
+  // current logged in user
+  const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
+
+  // helper: show error popup
+  function showErrorPopup(message, title = "Error") {
+    errorHeader.textContent = title;
+    errorText.textContent = message;
+    errorModal.classList.add('show');
+    errorModal.setAttribute('aria-hidden','false');
+    errorOkBtn.focus();
+  }
+  function hideErrorPopup() {
+    errorModal.classList.remove('show');
+    errorModal.setAttribute('aria-hidden','true');
+  }
+
+  // small helper: format amount
+  function formatMoney(n){
+    if (n == null) return "0.00";
+    return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // fetch balance (keeps same behaviour as original)
+  async function fetchBalance() {
+    if (!currentUser || !currentUser.phone) return 0;
+    try {
+      const res = await fetch(`${API_BASE}/balance/${currentUser.phone}`);
+      const data = await res.json().catch(()=>null);
+      if (res.ok && data && (data.balance !== undefined)) {
+        localStorage.setItem("balance", data.balance);
+        return parseFloat(data.balance);
+      }
+    } catch (e){}
+    return parseFloat(localStorage.getItem("balance")) || 0;
+  }
+
+  // attempt to lookup receiver name (best-effort) when 10 digits typed
+  let receiverUsername = "";
+  accountInput.addEventListener('input', async function(){
+    receiverInfo.style.display = "none";
+    errorBox.style.display = "none";
+    receiverUsername = "";
+    const acc = accountInput.value.trim();
+    // ensure digits only
+    const onlyDigits = acc.replace(/\D/g,'');
+    if (onlyDigits !== acc) accountInput.value = onlyDigits;
+
+    if (acc.length === 10) {
+      // disallow sending to self
+      const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : '';
+      if (userAcc && acc === String(userAcc)) {
+        errorBox.textContent = "❌ You cannot send money to yourself!";
+        errorBox.style.display = "block";
+        return;
+      }
+      try {
+        // try to resolve via backend route if available (best-effort; not required)
+        const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
+        const data = await res.json().catch(()=>null);
+        if (res.ok && data && data.status === "success" && (data.username || data.name)) {
+          receiverUsername = data.username || data.name || "";
+          receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
+          receiverInfo.style.display = "block";
+        } else {
+          receiverInfo.style.display = "none";
+        }
+      } catch (e) {
+        // ignore network error — don't block
+        receiverInfo.style.display = "none";
+      }
+    }
+  });
+
+  // Instead of executing the transfer here, create pending_tx and redirect to Mainauthentication
+  sendBtn.addEventListener('click', async function(){
+    const receiverAcc = accountInput.value.trim();
+    const amount = parseFloat(amountInput.value);
+
+    if (!receiverAcc || receiverAcc.length !== 10) {
+      showErrorPopup("Please enter a valid 10-digit receiver account.", "Invalid account");
+      return;
+    }
+    if (!amount || isNaN(amount) || amount <= 0) {
+      showErrorPopup("Enter a valid amount.", "Invalid amount");
+      return;
+    }
+
+    const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : null;
+    if (userAcc && receiverAcc === String(userAcc)) {
+      showErrorPopup("You cannot send money to your own account!", "Invalid transfer");
+      return;
+    }
+
+    const balance = await fetchBalance();
+    if (amount > balance) {
+      showErrorPopup("Insufficient funds.", "Insufficient balance");
+      return;
+    }
+
+    // Build pending_tx — use fields Mainauthentication expects.
+    // We set product='towallet' and include receiver_acc so Mainauthentication will treat it as account transfer flow.
+    const pending = {
+      sender_phone: (currentUser && currentUser.phone) || null,
+      sender_name: (currentUser && (currentUser.username || currentUser.name)) || 'You',
+      sender_account: (currentUser && (currentUser.account_number || '')) || '-',
+      receiver_acc: receiverAcc,
+      receiver_name: receiverUsername || "-",
+      amount: amount,
+      receiver_bank: "PAYME",        // ensure bank is PAYME (per your request)
+      receiver_bank_name: "PAYME",   // duplicate for safety
+      product: 'towallet',
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+    } catch (e) {
+      console.error("session storage failed", e);
+      showErrorPopup("Unable to create pending transaction. Try again.", "Storage error");
+      return;
+    }
+
+    // redirect to Mainauthentication where user will enter PIN
+    window.location.href = 'Mainauthentication.html';
+  });
+
+  // When we return from Mainauthentication.html, it will set sessionStorage.last_tx_success.
+  // Detect it on load and show the detailed modal exactly like in the screenshot.
+  (function showReturnPopupIfExists(){
+    try {
+      const last = sessionStorage.getItem('last_tx_success');
+      if (!last) return;
+      const payload = JSON.parse(last);
+      // Remove right away to avoid duplicate
+      sessionStorage.removeItem('last_tx_success');
+
+      // Normalize fields and build detail list
+      const amount = Number(payload.amount || payload.orderAmount || payload.total || 0);
+      successAmountEl.textContent = formatMoney(amount);
+
+      // status text
+      successStatusEl.textContent = (payload.statusText || payload.message || 'Successful');
+      successTitle.textContent = payload.type === 'error' ? 'Transaction failed' : 'Money received';
+
+      // Build details — ensure Bank Name is PAYME always
+      detailList.innerHTML = '';
+
+      function addDetail(label, value){
+        const row = document.createElement('div');
+        row.className = 'detail-item';
+        const lab = document.createElement('div');
+        lab.className = 'detail-label';
+        lab.textContent = label;
+        const val = document.createElement('div');
+        val.className = 'detail-value';
+        val.textContent = value ?? '-';
+        row.appendChild(lab);
+        row.appendChild(val);
+        detailList.appendChild(row);
+      }
+
+      addDetail('Order amount', '₦' + formatMoney(amount));
+      addDetail('Date/Time', payload.datetime || new Date().toLocaleString());
+      addDetail('Sender', (payload.sender || (currentUser && (currentUser.username || currentUser.name))) || 'You');
+      addDetail('Sender Account', (payload.senderAccount || (currentUser && currentUser.account_number)) || '-');
+      addDetail('Bank Name', 'PAYME'); // force PAYME per your instruction
+      addDetail('Recipient', payload.recipient || payload.receiver_name || payload.receiver || '-');
+      addDetail('Recipient Account', payload.recipientAccount || payload.receiver_acc || payload.receiver || '-');
+      addDetail('Transaction NO.', payload.txnNo || payload.transaction_id || payload.reference || '-');
+
+      // show modal
+      successModal.classList.add('show');
+      successModal.setAttribute('aria-hidden','false');
+      // focus close button
+      closeSuccessBtn.focus();
+    } catch (e) {
+      console.warn('showReturnPopupIfExists error', e);
+    }
+  })();
+
+  // success modal handlers
+  viewTransactionsBtn.addEventListener('click', function(){
+    successModal.classList.remove('show');
+    successModal.setAttribute('aria-hidden','true');
+    window.location.href = 'transactions.html';
+  });
+  closeSuccessBtn.addEventListener('click', function(){
+    successModal.classList.remove('show');
+    successModal.setAttribute('aria-hidden','true');
+    // stay on page
+  });
+
+  // error modal handler
+  errorOkBtn.addEventListener('click', hideErrorPopup);
+
+  // allow ESC to close modals
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') {
+      if (successModal.classList.contains('show')) {
+        successModal.classList.remove('show');
+        successModal.setAttribute('aria-hidden','true');
+      }
+      if (errorModal.classList.contains('show')) {
+        hideErrorPopup();
+      }
+    }
+  });
+
+  // If there's no logged user, show error and send back to login (preserves original behavior)
+  if (!currentUser) {
+    showErrorPopup("No logged-in user found. Please login first.", "Not logged in");
+    // keep user on same page so they can see the error; they can click OK to continue to login
+    errorOkBtn.onclick = () => {
+      hideErrorPopup();
+      window.location.href = "paymelogin.html";
+    };
+  }
+
+</script>
+</body>
 </html>
