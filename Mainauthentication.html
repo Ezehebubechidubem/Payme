@@ -85,12 +85,17 @@
       const phone = params.get('phone') || params.get('recipient') || params.get('to') || null;
       const network = params.get('network') || params.get('operator') || null;
       const amount = params.get('amount') || params.get('amt') || null;
+      // Accept receiver_acc and variants from URL
+      const receiver_acc = params.get('receiver_acc') || params.get('receiver') || params.get('recipient_acc') || params.get('recipientAccount') || null;
+      const recipientName = params.get('recipient_name') || params.get('receiver_name') || params.get('recipient') || null;
       const product = params.get('product') || (network ? 'airtime' : null);
-      if (!phone && !network && !amount) return null;
+      if (!phone && !network && !amount && !receiver_acc) return null;
       return {
         product,
         phone,
-        recipient: phone,
+        recipient: recipientName || phone,
+        receiver_acc: receiver_acc,
+        recipientAccount: receiver_acc,
         network,
         amount,
         created_at: new Date().toISOString()
@@ -170,7 +175,6 @@
       }
       // If it's a towallet pending (we support towallet object shape)
       if (pending.product === 'towallet' || pending.receiver_acc) {
-        // show receiver and bank if available
         const recv = pending.receiver_acc || pending.recipient || pending.phone || '-';
         const bank = pending.receiver_bank_name || pending.receiver_bank || pending.bankName || '';
         message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recv}${bank ? ' ('+bank+')' : ''}`;
@@ -225,7 +229,6 @@
     }
 
     cancelBtn.addEventListener('click', ()=> {
-      // if pending product exists and product === 'towallet', go back to towallet.html else fallback to airtime
       if (pending && pending.product === 'towallet') window.location.href = 'towallet.html';
       else window.location.href = 'airtime.html';
     });
@@ -290,13 +293,27 @@
 
           // Execute based on pending.product
           if (pending.product === 'towallet' || pending.receiver_acc) {
-            // Build towallet execution payload
+            // Build towallet execution payload — ensure receiver_acc present and include multiple compatible keys
+            const senderPhone = pending.sender_phone || pending.phone || user.phone || null;
+            const receiverAccVal = (pending.receiver_acc || pending.recipientAccount || pending.recipient || pending.receiver || pending.recipient_account) || null;
+
             const txPayload = {
-              sender_phone: pending.sender_phone || user.phone || null,
-              receiver_acc: pending.receiver_acc || pending.recipient,
+              sender_phone: senderPhone,
+              phone: senderPhone,                    // some backends expect `phone`
+              receiver_acc: receiverAccVal,
+              recipient: pending.recipient || pending.receiver_name || undefined,
               amount: pending.amount,
-              receiver_bank: pending.receiver_bank || pending.receiver_bank_code || pending.receiver_bank_name
+              receiver_bank: pending.receiver_bank || pending.receiver_bank_name || pending.receiver_bank_code || 'PAYME'
             };
+
+            // debug log payload so you can inspect what is being sent
+            console.log("TOWALLET SEND PAYLOAD:", JSON.stringify(txPayload, null, 2));
+
+            // guard: if receiver_acc absent, fail early (we must send it)
+            if (!txPayload.receiver_acc) {
+              showError('Transaction failed: Missing receiver_acc in pending transaction. Please retry.');
+              return;
+            }
 
             try {
               const execRes = await fetch(TOWALLET_SEND, {
@@ -317,9 +334,9 @@
                   datetime: new Date().toLocaleString(),
                   sender: pending.sender_name || (user && (user.username || user.name)) || 'You',
                   senderAccount: pending.sender_account || (user && (user.account_number || '')) || '-',
-                  bankName: pending.receiver_bank_name || getReturnBankName(pending.receiver_bank) || '-',
-                  recipient: pending.receiver_name || pending.receiver_acc || pending.recipient || '-',
-                  recipientAccount: pending.receiver_acc || pending.recipient || '-',
+                  bankName: pending.receiver_bank_name || txPayload.receiver_bank || 'PAYME',
+                  recipient: pending.receiver_name || pending.recipient || pending.receiver || pending.recipientAccount || txPayload.receiver_acc,
+                  recipientAccount: pending.recipientAccount || txPayload.receiver_acc,
                   txnNo: execJson.transaction_id || execJson.txn_id || execJson.reference || '-',
                   statusText: 'Successful'
                 }));
@@ -329,7 +346,8 @@
                 window.location.href = returnUrl;
                 return;
               } else {
-                const reason = execJson && (execJson.message || execJson.error) ? (execJson.message || execJson.error) : `HTTP ${execRes.status}`;
+                // pass backend's message if present
+                const reason = (execJson && (execJson.message || execJson.error || execJson.msg)) ? (execJson.message || execJson.error || execJson.msg) : `HTTP ${execRes.status}`;
                 showError('Transaction failed: ' + reason);
                 return;
               }
@@ -339,7 +357,7 @@
               return;
             }
           } else {
-            // Airtime/data default flow
+            // Airtime/data default flow - unchanged
             const txPayload = {
               phone: pending.phone || pending.recipient,
               network: pending.network,
@@ -418,12 +436,12 @@
 
       // If there is no pending (session or url) show friendly error and keep disabled
       if (!pending) {
-        // show clear instruction so user (or developer) sees what's missing
         const params = new URLSearchParams(window.location.search);
         const debugList = [];
         if (!params.get('phone') && !params.get('recipient')) debugList.push('phone/recipient');
         if (!params.get('network')) debugList.push('network');
         if (!params.get('amount')) debugList.push('amount');
+        if (!params.get('receiver_acc') && !sessionStorage.getItem('pending_tx')) debugList.push('receiver_acc (for towallet)');
         if (debugList.length) {
           message.textContent = 'Missing fields: ' + debugList.join(', ') + '. Please return and retry.';
         } else {
@@ -460,3 +478,4 @@
 </script>
 </body>
 </html>
+
