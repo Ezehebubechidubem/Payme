@@ -342,14 +342,47 @@ function validPhone11(p){
   const digits = p.replace(/\D/g,'');
   return /^\d{11}$/.test(digits); // exactly 11 digits required
 }
+
+/* ---- IMPORTANT: enforce only predefined plans ----
+   - customAmount must exactly match one of plans[].price to be accepted.
+   - payBtn enabled only when selectedPrice matches a plan price AND recipient valid.
+   - confirm step double-checks the plan match as well.
+*/
 function updatePayState(priceCandidate, planLabelCandidate){
   if (typeof priceCandidate === 'number') {
-    selectedPrice = priceCandidate;
-    selectedPlanLabel = planLabelCandidate || 'Custom';
+    // user clicked a plan button or custom numeric passed in
+    // If planLabelCandidate === 'Custom', we must ensure the numeric matches a plan price
+    if (planLabelCandidate && planLabelCandidate !== 'Custom') {
+      selectedPrice = priceCandidate;
+      selectedPlanLabel = planLabelCandidate;
+    } else {
+      // custom input path: only accept if matches a plan price exactly
+      const match = plans.find(p => Number(p.price) === Number(priceCandidate));
+      if (match) {
+        selectedPrice = Number(match.price);
+        selectedPlanLabel = match.label;
+      } else {
+        selectedPrice = null;
+        selectedPlanLabel = null;
+      }
+    }
   } else if (customAmount.value) {
-    selectedPrice = Number(customAmount.value) || null;
-    selectedPlanLabel = 'Custom';
+    // user typed something — check if it matches a plan exactly
+    const v = Number(customAmount.value);
+    const match = plans.find(p => Number(p.price) === v);
+    if (match) {
+      selectedPrice = Number(match.price);
+      selectedPlanLabel = match.label;
+    } else {
+      selectedPrice = null;
+      selectedPlanLabel = null;
+    }
+  } else {
+    // no numeric candidate and no custom input -> clear selection
+    selectedPrice = null;
+    selectedPlanLabel = null;
   }
+
   const to = (recipientInput.value || '').trim();
   const ok = selectedPrice && selectedPrice >= 50 && validPhone11(to);
   payBtn.disabled = !ok;
@@ -376,7 +409,7 @@ window.addEventListener('load', ()=> {
       document.getElementById('successAmount').textContent = planLabel;
       document.getElementById('successRecipient').textContent = recipient || '-';
 
-      // optionally update the message text below if you want: but user asked to show data and recipient
+          // optionally update the message text below if you want: but user asked to show data and recipient
       // keep existing behavior: show modal and remove session key
       document.getElementById('successModal').classList.add('show');
       document.getElementById('successModal').style.display = 'flex';
@@ -402,13 +435,20 @@ payBtn.addEventListener('click', ()=>{
   const to = recipientInput.value.trim();
   if (!validPhone11(to)) return showError('Enter a valid 11-digit recipient phone');
   const amt = Number(selectedPrice || customAmount.value);
-    if (!amt || amt < 50) return showError('Enter a valid amount (minimum ₦50)');
+  if (!amt || amt < 50) return showError('Enter a valid amount (minimum ₦50)');
+
+  // Important: ensure amt matches a defined plan price
+  const match = plans.find(p => Number(p.price) === Number(amt));
+  if (!match) {
+    return showError('Please choose a valid data plan from the provided options.');
+  }
+
   const fee = Math.ceil(amt * 0.01);
   const total = amt + fee;
 
   confirmTitle.textContent = `Buy ${selectedNetwork.name} Data`;
   confirmSub.textContent = 'Confirm before we proceed';
-  confirmPlan.textContent = selectedPlanLabel || 'Custom';
+  confirmPlan.textContent = match.label || selectedPlanLabel || 'Custom';
   confirmAmount.textContent = `₦${Number(amt).toLocaleString()}`;
   confirmFee.textContent = `₦${Number(fee).toLocaleString()}`;
   confirmTotal.textContent = `₦${Number(total).toLocaleString()}`;
@@ -425,7 +465,14 @@ confirmBtn.addEventListener('click', async () => {
   const fee = Math.ceil(amount * 0.01);
   const total = amount + fee;
   const network = selectedNetwork.name;
-  const plan = selectedPlanLabel || 'Custom';
+
+  // Enforce final check: amount MUST match one of the plan prices
+  const matchPlan = plans.find(p => Number(p.price) === Number(amount));
+  if (!matchPlan) {
+    showError('Transaction blocked — amount must match one of the available data plans.');
+    return;
+  }
+  const plan = matchPlan.label;
 
   const user = getStoredUser();
   if (!user || !user.phone) { showError('You must be logged in'); return; }
