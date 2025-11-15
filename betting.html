@@ -5,6 +5,68 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Betting — PayMe</title>
   <style>
+:root{
+  --bg:#f6f7fb;
+  --card:#ffffff;
+  --accent:#00c853;
+  --accent-2:#00ad5a;
+  --muted:#8b8f98;
+  --radius:12px;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);-webkit-font-smoothing:antialiased}
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 14px;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;position:sticky;top:0;z-index:20}
+.topbar h1{font-size:18px;margin:0;font-weight:700}
+.topbar .back{background:transparent;border:0;color:#fff;font-size:18px;padding:6px 8px;border-radius:8px}
+.page{max-width:720px;margin:14px auto;padding:10px}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 6px 18px rgba(20,20,40,0.06)}
+.muted{color:var(--muted);font-size:13px}
+.field-label{font-weight:700;font-size:13px;margin-bottom:6px;display:block}
+.selected-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.selected-left{display:flex;align-items:center;gap:12px}
+.site-title-large{font-weight:800;font-size:18px}
+.selected-logo{width:64px;height:64px;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.dropdown-controls{display:flex;align-items:center;gap:8px}
+.dropdown-btn{border:0;background:#f2f7f2;padding:8px 10px;border-radius:8px;font-weight:800;cursor:pointer;color:var(--accent)}
+.user-section{margin-top:12px}
+#mainUserId{width:100%;padding:12px;border-radius:10px;border:1px solid #eee;font-size:16px}
+.custom-amount-row{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+#customAmount{padding:12px;border-radius:10px;border:1px solid #eee;font-size:16px}
+.amount-grid-main{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.amount-tile-main{flex:1 1 30%;min-width:28%;background:#fbfffb;border-radius:10px;padding:12px;text-align:center;border:1px solid #eef8ee;cursor:pointer;transition:transform .12s,box-shadow .12s}
+.amount-tile-main .label{font-weight:800}
+.amount-tile-main .sub{font-size:12px;color:var(--muted);margin-top:6px}
+.amount-tile-main:hover{transform:translateY(-4px)}
+.amount-tile-main.selected{box-shadow:0 10px 30px rgba(0,200,83,0.12);border-color:rgba(0,200,83,0.45);transform:translateY(-6px)}
+.bottom-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+.pay-left .small{font-size:12px;color:var(--muted)}
+.pay-amount{font-weight:900;font-size:20px}
+.btn{padding:12px 16px;border-radius:10px;border:0;font-weight:800;cursor:pointer}
+.btn.primary{background:var(--accent);color:#fff}
+.use-btn{background:var(--accent);border:0;color:#fff;padding:8px 12px;border-radius:10px;cursor:pointer}
+.links-card .link-card{display:block;padding:10px 12px;border-radius:10px;background:#fafafa;border:1px solid #f0eff8;color:var(--accent);text-decoration:none;margin-top:8px}
+.small-note{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
+.site-list-panel{position:fixed;inset:0;display:flex;flex-direction:column;background:rgba(0,0,0,0.28);z-index:60;backdrop-filter:blur(4px)}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--card);border-radius:12px 12px 0 0}
+.panel-title{font-weight:800}
+.close-panel{background:transparent;border:0;font-size:20px;cursor:pointer}
+.panel-search{padding:10px;background:var(--card);border-bottom:1px solid #f0f0f5}
+.panel-search input{width:100%;padding:12px;border-radius:10px;border:1px solid #eee}
+.panel-sites{list-style:none;margin:0;padding:12px;overflow:auto;flex:1;background:#fff;border-top-left-radius:12px;border-top-right-radius:12px}
+.panel-sites .panel-site{display:flex;align-items:center;gap:14px;padding:12px;border-radius:10px;cursor:pointer;border-bottom:1px solid #f7f7fb}
+.panel-site .site-icon{width:52px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;box-shadow:0 6px 18px rgba(10,10,20,0.06);position:relative;overflow:hidden}
+.panel-site .site-icon img{width:100%;height:100%;object-fit:cover;display:block}
+.logo-text{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:4px}
+.logo-text .l1{font-size:12px;font-weight:800}
+.logo-text .l2{font-size:10px;font-weight:700;opacity:0.95;margin-top:2px}
+.logo-badge{position:absolute;right:6px;top:6px;background:rgba(255,255,255,0.95);color:#111;font-size:9px;padding:2px 6px;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,0.06)}
+@media(min-width:720px){
+  .page{padding:20px}
+  .site-list-panel{left:20%;right:20%}
+  .panel-sites{border-radius:12px}
+}
+.hidden{display:none}
 </style>
 </head>
 <body>
