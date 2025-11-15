@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Betting — PayMe</title>
+  <style>
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <button class="back" onclick="history.back()">←</button>
+    <h1>Betting</h1>
+  </header>
+
+  <main class="page">
+    <section class="card selected-card" id="selectedCard" aria-live="polite">
+      <div class="selected-row">
+        <div class="selected-left">
+          <div id="selectedSiteLogo" class="site-icon selected-logo hidden" aria-hidden="true"></div>
+          <div id="selectedSiteName" class="site-title-large">Select site</div>
+        </div>
+
+        <div class="dropdown-controls">
+          <button class="dropdown-btn" id="openListBtn" title="Show all sites">▼</button>
+        </div>
+      </div>
+
+      <div class="user-section">
+        <label class="field-label">User ID</label>
+        <input id="mainUserId" type="text" inputmode="numeric" maxlength="40" placeholder="Enter user ID (e.g. 8167542829)" />
+        <div style="margin-top:8px">
+          <button id="verifyBtn" class="btn">Verify Account</button>
+          <span id="verifyResult" class="muted" style="margin-left:10px"></span>
+        </div>
+      </div>
+
+      <div class="label" style="margin-top:12px;font-weight:700">Select Amount</div>
+
+      <div class="custom-amount-row">
+        <input id="customAmount" type="number" inputmode="numeric" placeholder="Or enter custom amount (min ₦100)" min="0" step="1" />
+        <div class="muted small">Minimum top-up is ₦100</div>
+      </div>
+
+      <div class="amount-grid-main" id="amountGridMain" aria-live="polite"></div>
+
+      <div class="bottom-row">
+        <div class="pay-left">
+          <div class="muted small">Amount (you will be charged this amount)</div>
+          <div id="mainPayAmount" class="pay-amount">₦0</div>
+        </div>
+        <div style="flex:0">
+          <button class="btn primary" id="mainPayBtn">Pay</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card links-card">
+      <div class="muted">More Services</div>
+      <a class="link-card" href="tel:*861*4#">Top up Betting with *861*4#</a>
+    </section>
+
+    <footer class="small-note muted">If network unavailable, use USSD top-up.</footer>
+  </main>
+
+  <div id="siteListPanel" class="site-list-panel hidden" role="dialog" aria-modal="true">
+    <div class="panel-header">
+      <div class="panel-title">Betting sites</div>
+      <button class="close-panel" id="closeListBtn" aria-label="Close list">✕</button>
+    </div>
+
+    <div class="panel-search">
+      <input id="panelSearch" type="search" placeholder="Search betting sites" aria-label="Search betting sites" />
+    </div>
+
+    <ul id="panelSites" class="panel-sites" role="list"></ul>
+  </div>
+
+  <script>
+// betting.js
+const BACKEND_URL = (window.BACKEND_URL || "http://localhost:5000").replace(/\/+$/, "");
+const SITES_ENDPOINT = `${BACKEND_URL}/betting-sites`;
+const VERIFY_ENDPOINT = `${BACKEND_URL}/verify-betting`;
+const FUND_ENDPOINT = `${BACKEND_URL}/fund-betting`;
+
+// DOM
+const openListBtn = document.getElementById("openListBtn");
+const closeListBtn = document.getElementById("closeListBtn");
+const siteListPanel = document.getElementById("siteListPanel");
+const panelSites = document.getElementById("panelSites");
+const panelSearch = document.getElementById("panelSearch");
+const selectedSiteName = document.getElementById("selectedSiteName");
+const selectedSiteLogo = document.getElementById("selectedSiteLogo");
+const amountGridMain = document.getElementById("amountGridMain");
+const mainUserId = document.getElementById("mainUserId");
+const customAmount = document.getElementById("customAmount");
+const mainPayAmount = document.getElementById("mainPayAmount");
+const mainPayBtn = document.getElementById("mainPayBtn");
+const verifyBtn = document.getElementById("verifyBtn");
+const verifyResult = document.getElementById("verifyResult");
+
+let BETTING_SITES = [];       // will be loaded from backend
+let selectedSite = null;
+let selectedTileValue = null;
+let customValue = null;
+const AMOUNT_OPTIONS = [100, 500, 1000, 2000, 5000, 10000];
+
+function numberWithCommas(x){ return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+function logoPathFor(slug){ return `assets/logos/${slug}.png`; }
+
+// fetch sites from backend
+async function loadSites(){
+  try {
+    const r = await fetch(SITES_ENDPOINT);
+    if(!r.ok) throw new Error("Failed to load");
+    const body = await r.json();
+    if(body && Array.isArray(body.sites)) {
+      BETTING_SITES = body.sites;
+    } else if(Array.isArray(body)) {
+      BETTING_SITES = body;
+    } else {
+      console.warn("Unexpected sites shape, using defaults");
+      BETTING_SITES = [];
+    }
+  } catch (err) {
+    console.warn("loadSites error:", err);
+    // fallback minimal set
+    BETTING_SITES = [
+      {name:"iLotBet", slug:"ilotbet", color:"#00897b"},
+      {name:"Bet9ja", slug:"bet9ja", color:"#1b9e5a"},
+      {name:"SportyBet", slug:"sportybet", color:"#e53935"},
+      {name:"BetKing", slug:"betking", color:"#1e3a8a"}
+    ];
+  }
+  renderPanelSites(BETTING_SITES);
+}
+
+// render panel list
+function renderPanelSites(list){
+  panelSites.innerHTML = "";
+  list.forEach(item=>{
+    const li = document.createElement("li");
+    li.className = "panel-site";
+
+    const icon = document.createElement("div");
+    icon.className = "site-icon";
+
+    const img = new Image();
+    img.src = logoPathFor(item.slug);
+    img.onload = () => { icon.innerHTML = ""; icon.appendChild(img); };
+    img.onerror = () => {
+      icon.style.background = item.color || "#888";
+      icon.innerHTML = `<div style="color:#fff;font-weight:800">${(item.name||"").slice(0,2).toUpperCase()}</div>`;
+    };
+
+    li.appendChild(icon);
+    const body = document.createElement("div"); body.style.flex = "1";
+    body.innerHTML = `<div>${item.name}</div><div class="muted">Betting</div>`;
+    li.appendChild(body);
+    const che = document.createElement("div"); che.className = "muted"; che.textContent = "›";
+    li.appendChild(che);
+
+    li.addEventListener("click", ()=> selectSite(item));
+    panelSites.appendChild(li);
+  });
+}
+
+// amounts UI
+function renderMainAmounts(){
+  amountGridMain.innerHTML = "";
+  AMOUNT_OPTIONS.forEach(v=>{
+    const btn = document.createElement("button");
+    btn.className = "amount-tile-main" + (v === selectedTileValue ? " selected" : "");
+    btn.type = "button";
+    btn.innerHTML = `<div class="label">₦${numberWithCommas(v)}</div>`;
+    btn.addEventListener("click", ()=>{
+      selectedTileValue = v;
+      customValue = null;
+      if(customAmount) customAmount.value = "";
+      updateMainSelection();
+    });
+    amountGridMain.appendChild(btn);
+  });
+  updateMainSelection();
+}
+
+function updateMainSelection(){
+  document.querySelectorAll(".amount-tile-main").forEach(n=>n.classList.remove("selected"));
+  if(selectedTileValue !== null){
+    const node = Array.from(document.querySelectorAll(".amount-tile-main")).find(n => Number(n.querySelector(".label").textContent.replace(/\D/g,'')) === selectedTileValue);
+    if(node) node.classList.add("selected");
+  }
+
+  const nominal = getNominalAmount();
+  mainPayAmount.textContent = nominal > 0 ? `₦${numberWithCommas(nominal)}` : "₦0";
+
+  if(selectedSite){
+    selectedSiteLogo.classList.remove("hidden");
+    selectedSiteName.classList.add("hidden");
+    const path = logoPathFor(selectedSite.slug);
+    const img = new Image();
+    img.src = path;
+    img.onload = () => { selectedSiteLogo.innerHTML = ""; selectedSiteLogo.appendChild(img); };
+    img.onerror = () => { selectedSiteLogo.style.background = selectedSite.color || "#888"; selectedSiteLogo.innerHTML = `<div style="color:#fff;font-weight:800">${(selectedSite.name||"").slice(0,2).toUpperCase()}</div>`; };
+  } else {
+    selectedSiteLogo.classList.add("hidden");
+    selectedSiteName.classList.remove("hidden");
+    selectedSiteName.textContent = "Select site";
+  }
+}
+
+function getNominalAmount(){
+  if(customValue !== null && customValue !== "" && !isNaN(Number(customValue))) return Math.round(Number(customValue));
+  if(selectedTileValue !== null) return selectedTileValue;
+  return 0;
+}
+
+function openPanel(){ siteListPanel.classList.remove("hidden"); panelSearch.value=""; panelSearch.focus(); renderPanelSites(BETTING_SITES); }
+function closePanel(){ siteListPanel.classList.add("hidden"); }
+function filterPanelSites(q){ q=(q||"").trim().toLowerCase(); const filtered = BETTING_SITES.filter(s => (s.name||"").toLowerCase().includes(q)); renderPanelSites(filtered); }
+function selectSite(item){ selectedSite = item; closePanel(); updateMainSelection(); verifyResult.textContent = ""; }
+
+// verification
+async function verifyAccount(){
+  if(!selectedSite){ alert("Select site first"); return; }
+  const account = mainUserId.value.trim();
+  if(!account){ alert("Enter account / user ID"); return; }
+  verifyResult.textContent = "Verifying...";
+  try {
+    const res = await fetch(VERIFY_ENDPOINT, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({service_id: selectedSite.slug, account})
+    });
+    const body = await res.json().catch(()=>null);
+    if(res.ok && body){
+      const name = body.customer_name || body.provider_response?.data?.customer_name || body.provider_response?.data?.name || body.provider_response?.customer?.name || null;
+      verifyResult.textContent = name ? `Name: ${name}` : "Verified (name not provided)";
+    } else {
+      verifyResult.textContent = `Verify failed: ${ (body && body.message) || res.status }`;
+    }
+  } catch (err){
+    verifyResult.textContent = "Network error verifying";
+  }
+}
+
+// pay
+async function payNow(){
+  if(!selectedSite){ alert("Select site"); return; }
+  const account = mainUserId.value.trim();
+  if(!account){ alert("Enter account"); return; }
+
+  const nominal = getNominalAmount();
+  if(!nominal || nominal < 100){ alert("Minimum top-up is ₦100"); return; }
+
+  if(!confirm(`Send ₦${numberWithCommas(nominal)} to ${selectedSite.name}?`)) return;
+
+  // call backend /fund-betting
+  try {
+    const res = await fetch(FUND_ENDPOINT, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({service_id: selectedSite.slug, account, nominal_amount: nominal})
+    });
+    const body = await res.json().catch(()=>null);
+    if(res.ok && body){
+      alert("Payment successful. " + (body.provider_response?.message || "Transaction queued"));
+      // clear
+      mainUserId.value = "";
+      customAmount.value = "";
+      selectedTileValue = null;
+      customValue = null;
+      renderMainAmounts();
+      updateMainSelection();
+      verifyResult.textContent = "";
+    } else {
+      alert("Payment failed: " + ((body && body.message) || res.status));
+    }
+  } catch (err){
+    alert("Network error during payment");
+  }
+}
+
+// events
+openListBtn.addEventListener("click", openPanel);
+closeListBtn.addEventListener("click", closePanel);
+panelSearch.addEventListener("input", (e)=> filterPanelSites(e.target.value));
+customAmount.addEventListener("input", (e)=> {
+  const v = e.target.value;
+  if(v === "" || isNaN(Number(v))) customValue = null;
+  else customValue = Math.round(Number(v));
+  selectedTileValue = null;
+  renderMainAmounts();
+  updateMainSelection();
+});
+verifyBtn.addEventListener("click", verifyAccount);
+mainPayBtn.addEventListener("click", payNow);
+
+// init
+window.addEventListener("load", async ()=>{
+  await loadSites();
+  renderMainAmounts();
+  updateMainSelection();
+});
+</script>
+</body>
+</html>
