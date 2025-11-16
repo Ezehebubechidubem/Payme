@@ -139,11 +139,12 @@ html,body{height:100%;margin:0;background:var(--bg);-webkit-font-smoothing:antia
   </div>
 
   <script>
-// betting.js
-const BACKEND_URL = (window.BACKEND_URL || "https://payme-update.onrender.com"; // your backend").replace(/\/+$/, "");
-const SITES_ENDPOINT = `${BACKEND_URL}/betting-sites`;
-const VERIFY_ENDPOINT = `${BACKEND_URL}/verify-betting`;
-const FUND_ENDPOINT = `${BACKEND_URL}/fund-betting`;
+// ---- Fixed script: connects to backend (uses /api prefix) ----
+const DEFAULT_BACKEND = "https://payme-update.onrender.com"; // change if your backend is hosted elsewhere
+const BACKEND_URL = (window.BACKEND_URL || DEFAULT_BACKEND).replace(/\/+$/, "");
+const SITES_ENDPOINT = `${BACKEND_URL}/api/betting-sites`;
+const VERIFY_ENDPOINT = `${BACKEND_URL}/api/verify-betting`;
+const FUND_ENDPOINT = `${BACKEND_URL}/api/fund-betting`;
 
 // DOM
 const openListBtn = document.getElementById("openListBtn");
@@ -173,16 +174,24 @@ function logoPathFor(slug){ return `assets/logos/${slug}.png`; }
 // fetch sites from backend
 async function loadSites(){
   try {
-    const r = await fetch(SITES_ENDPOINT);
-    if(!r.ok) throw new Error("Failed to load");
+    const r = await fetch(SITES_ENDPOINT, { method: "GET" });
+    if(!r.ok) throw new Error("Failed to load: " + r.status);
     const body = await r.json();
+    // backend returns { status: "success", sites: [...] }
     if(body && Array.isArray(body.sites)) {
+      BETTING_SITES = body.sites;
+    } else if (body && body.status === "success" && Array.isArray(body.sites)) {
       BETTING_SITES = body.sites;
     } else if(Array.isArray(body)) {
       BETTING_SITES = body;
     } else {
-      console.warn("Unexpected sites shape, using defaults");
-      BETTING_SITES = [];
+      console.warn("Unexpected sites shape, using fallback");
+      BETTING_SITES = [
+        {name:"iLotBet", slug:"ilotbet", color:"#00897b"},
+        {name:"Bet9ja", slug:"bet9ja", color:"#1b9e5a"},
+        {name:"SportyBet", slug:"sportybet", color:"#e53935"},
+        {name:"BetKing", slug:"betking", color:"#1e3a8a"}
+      ];
     }
   } catch (err) {
     console.warn("loadSites error:", err);
