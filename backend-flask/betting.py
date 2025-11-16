@@ -1,20 +1,28 @@
 # betting.py
+"""
+Betting blueprint + VTU health check route.
+
+Drop this file into the same folder as app.py (backend-flask/betting.py).
+If your app registers the blueprint with url_prefix="/api" then the
+health route will be available at: GET /api/_check_vtu
+"""
 import os
 import math
 import traceback
 from flask import Blueprint, request, jsonify, current_app
 
-# Try importing your VTU wrapper. Adjust import path if your structure differs.
-# This expects services/vtu_service.py with class VTUService as in earlier messages.
+# Try importing your VTU wrapper. Capture import error so it can be surfaced.
+VTUService = None
+_VTU_IMPORT_ERROR = None
 try:
-    from services.vtu_service import VTUService
+    from services.vtu_service import VTUService  # expected path: backend-flask/services/vtu_service.py
 except Exception as e:
     VTUService = None
+    _VTU_IMPORT_ERROR = str(e)
 
 betting_bp = Blueprint("betting_bp", __name__)
 
 # Simple built-in list of betting platforms (slug == VTU service_id)
-# You can expand this list or fetch from a DB later.
 DEFAULT_BETTING_SITES = [
     {"name": "iLotBet", "slug": "ilotbet", "color": "#00897b"},
     {"name": "Bet9ja", "slug": "bet9ja", "color": "#1b9e5a"},
@@ -37,20 +45,73 @@ SHOW_CHARGE = os.getenv("SHOW_CHARGE", "false").lower() in ("1", "true", "yes")
 
 # Lazy VTU service instance (will be created on first request)
 _vtu_instance = None
+
+
 def get_vtu():
+    """
+    Return tuple (vtu_instance_or_None, error_or_None).
+    If VTUService import failed, returns import error message.
+    If VTUService init failed (missing env, etc.) returns that message.
+    """
     global _vtu_instance
     if _vtu_instance is None:
         if VTUService is None:
+            if _VTU_IMPORT_ERROR:
+                return None, f"VTUService import failed: {_VTU_IMPORT_ERROR}"
             return None, "VTUService (services.vtu_service) not available/importable"
         try:
             _vtu_instance = VTUService()
         except Exception as e:
+            # return initialization error (e.g. missing VTU_EMAIL/VTU_PASSWORD)
             return None, f"failed to initialize VTUService: {e}"
     return _vtu_instance, None
+
 
 def secret_apply_fee(nominal):
     """Deduct 1% (secret). Rounds to nearest integer."""
     return round(nominal * 99 / 100)
+
+
+# -------------------------
+# Health / debug route (blueprint)
+# -------------------------
+@betting_bp.route("/_check_vtu", methods=["GET"])
+def _check_vtu():
+    """
+    Health check for VTU integration. Returns stage and details:
+      - stage: import  -> services.vtu_service import failed
+      - stage: init    -> VTUService() initialization failed (likely missing env)
+      - stage: token   -> token fetch failed (auth/network)
+      - stage: ok      -> token obtained successfully
+
+    This endpoint is safe: it does NOT expose secrets, only error messages.
+    """
+    # 1) import stage
+    if VTUService is None:
+        # If import failed earlier, return that detail
+        detail = _VTU_IMPORT_ERROR or "VTUService not importable"
+        return jsonify({"status": "error", "stage": "import", "details": detail}), 500
+
+    # 2) init stage
+    try:
+        vtu, err = get_vtu()
+        if err:
+            return jsonify({"status": "error", "stage": "init", "details": err}), 500
+    except Exception as e:
+        # unexpected
+        current_app.logger.exception("vtu init unexpected")
+        return jsonify({"status": "error", "stage": "init", "details": str(e)}), 500
+
+    # 3) token stage
+    try:
+        token = vtu._ensure_token()
+    except Exception as e:
+        current_app.logger.exception("vtu token fetch failed")
+        return jsonify({"status": "error", "stage": "token", "details": str(e)}), 500
+
+    # success
+    return jsonify({"status": "success", "stage": "ok", "token_preview": (token[:12] + "...") if token else None}), 200
+
 
 # -------------------------
 # Routes
@@ -61,11 +122,11 @@ def betting_sites():
     Return list of supported betting sites for the frontend.
     """
     try:
-        # In future, you can fetch sites dynamic from DB or remote API.
         return jsonify({"status": "success", "sites": DEFAULT_BETTING_SITES}), 200
     except Exception as e:
         current_app.logger.exception("betting_sites error")
         return jsonify({"status": "error", "message": "Internal server error", "details": str(e)}), 500
+
 
 @betting_bp.route("/verify-betting", methods=["POST"])
 def verify_betting():
@@ -84,6 +145,8 @@ def verify_betting():
 
         vtu, err = get_vtu()
         if err:
+            # surface helpful details to logs and response (safe)
+            current_app.logger.error("VTU not configured: %s", err)
             return jsonify({"status": "error", "message": "VTU not configured", "details": err}), 500
 
         # call VTU verify; VTUService.verify_customer should return requests.Response
@@ -106,9 +169,9 @@ def verify_betting():
         customer_name = None
         if isinstance(body, dict):
             customer_name = (
-                body.get("customer", {}).get("name")
-                or body.get("data", {}).get("customer_name")
-                or body.get("data", {}).get("name")
+                (body.get("customer") or {}).get("name")
+                or (body.get("data") or {}).get("customer_name")
+                or (body.get("data") or {}).get("name")
                 or body.get("name")
                 or body.get("customer")
             )
@@ -124,6 +187,7 @@ def verify_betting():
     except Exception as e:
         current_app.logger.exception("verify_betting error")
         return jsonify({"status": "error", "message": "Internal server error", "details": str(e)}), 500
+
 
 @betting_bp.route("/fund-betting", methods=["POST"])
 def fund_betting():
@@ -157,6 +221,7 @@ def fund_betting():
 
         vtu, err = get_vtu()
         if err:
+            current_app.logger.error("VTU not configured: %s", err)
             return jsonify({"status": "error", "message": "VTU not configured", "details": err}), 500
 
         # metadata can include who initiated, reference id, etc. You can also store transaction in DB here.
@@ -193,3 +258,4 @@ def fund_betting():
     except Exception as e:
         current_app.logger.exception("fund_betting error")
         return jsonify({"status": "error", "message": "Internal server error", "details": str(e)}), 500
+```0
