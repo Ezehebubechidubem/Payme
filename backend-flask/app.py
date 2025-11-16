@@ -51,6 +51,14 @@ except Exception as e:
     # log error but allow app to start (useful when debugging)
     print("Failed to register pin_routes:", e)
 
+# --- Betting Blueprint Import ---
+try:
+    from betting import betting_bp
+    app.register_blueprint(betting_bp, url_prefix="/api")
+    print("betting blueprint registered")
+except Exception as e:
+    print("Failed to register betting blueprint:", e)
+
 # -------------------------------------------------
 # DB helpers and compatibility for sqlite3 / psycopg2
 # -------------------------------------------------
