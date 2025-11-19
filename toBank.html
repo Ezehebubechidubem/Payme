@@ -15,6 +15,7 @@
     button{width:100%;background:#00c853;border:none;color:#fff;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;margin-bottom:10px}
     button:hover{background:#009624}
     .receiver-info{font-size:14px;padding:10px;background:#e8f5e9;border-radius:6px;margin-bottom:16px;display:none}
+    .receiver-warning{font-size:14px;padding:10px;background:#fff7e6;border-radius:6px;margin-bottom:16px;display:none;border:1px solid #ffd796;color:#6a4b00}
     .error{color:red;font-size:13px;margin-bottom:10px;display:none}
     .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;z-index:9999}
     .modal-overlay.show{display:flex}
@@ -44,6 +45,7 @@
     <input type="text" id="accountNumber" placeholder="Enter account number" maxlength="10" />
 
     <div class="receiver-info" id="receiverInfo"></div>
+    <div class="receiver-warning" id="receiverWarning"></div>
     <div class="error" id="error"></div>
 
     <label for="amount">Amount (₦)</label>
@@ -86,6 +88,7 @@
 
   const accountInput = document.getElementById("accountNumber");
   const receiverInfo = document.getElementById("receiverInfo");
+  const receiverWarning = document.getElementById("receiverWarning");
   const errorBox = document.getElementById("error");
   const sendBtn = document.getElementById("sendBtn");
   const amountInput = document.getElementById("amount");
@@ -103,7 +106,8 @@
 
   const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
 
-  let receiverExists = false;
+  let receiverExists = false;         // means "we have enough info to proceed"
+  let receiverIsRegistered = false;   // true if recipient exists in app DB
   let receiverUsername = "";
 
   function showErrorPopup(message, title = "Error", onOk = null) {
@@ -137,11 +141,14 @@
     return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // Must be a registered recipient
+  // Must be a registered recipient OR allow external transfer
   async function lookupReceiver(acc) {
+    // reset UI
     receiverExists = false;
+    receiverIsRegistered = false;
     receiverUsername = "";
     receiverInfo.style.display = "none";
+    receiverWarning.style.display = "none";
     errorBox.style.display = "none";
 
     if (!acc || acc.length !== 10) return;
@@ -151,6 +158,7 @@
       errorBox.textContent = "❌ You cannot send money to yourself!";
       errorBox.style.display = "block";
       receiverExists = false;
+      receiverIsRegistered = false;
       return;
     }
 
@@ -159,25 +167,34 @@
       const data = await res.json().catch(()=>null);
 
       if (res.ok && data && data.status === "success" && (data.username || data.name)) {
+        // Registered recipient found
         receiverExists = true;
+        receiverIsRegistered = true;
         receiverUsername = data.username || data.name || '';
-        receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
+        receiverInfo.textContent = "✅ Receiver: " + receiverUsername + " (registered)";
         receiverInfo.style.display = "block";
+        receiverWarning.style.display = "none";
         errorBox.style.display = "none";
       } else {
-        receiverExists = false;
-        receiverUsername = "";
-        errorBox.textContent = "❌ Invalid account — recipient not registered";
-        errorBox.style.display = "block";
+        // Not registered — allow external bank transfer
+        receiverExists = true;         // we allow the transfer to proceed
+        receiverIsRegistered = false;
+        receiverUsername = acc;        // show account as identifier
         receiverInfo.style.display = "none";
+        receiverWarning.textContent = "⚠️ Recipient not registered in PayMe. This will be processed as an external bank transfer.";
+        receiverWarning.style.display = "block";
+        errorBox.style.display = "none";
       }
     } catch (err) {
-      receiverExists = false;
-      receiverUsername = "";
-      errorBox.textContent = "❌ Invalid account or network error — recipient not registered";
-      errorBox.style.display = "block";
-      receiverInfo.style.display = "none";
+      // Network or other error — still allow external transfer but warn user
       console.warn('lookupReceiver error', err);
+      receiverExists = true;
+      receiverIsRegistered = false;
+      receiverUsername = acc;
+      receiverInfo.style.display = "none";
+      receiverWarning.textContent = "⚠️ Could not verify recipient (network). Transfer will be treated as external if you proceed.";
+      receiverWarning.style.display = "block";
+      errorBox.style.display = "none";
     }
   }
 
@@ -187,7 +204,7 @@
     if (v.length > 10) v = v.slice(0,10);
     if (accountInput.value !== v) accountInput.value = v;
     if (v.length === 10) lookupReceiver(v);
-    else { receiverExists = false; receiverUsername = ""; receiverInfo.style.display = "none"; errorBox.style.display = "none"; }
+    else { receiverExists = false; receiverIsRegistered = false; receiverUsername = ""; receiverInfo.style.display = "none"; receiverWarning.style.display = "none"; errorBox.style.display = "none"; }
   });
 
   sendBtn.addEventListener('click', async function(){
@@ -203,7 +220,8 @@
       return;
     }
     if (!receiverExists) {
-      showErrorPopup("Invalid account — recipient not registered", "Invalid recipient");
+      // shouldn't happen because lookup sets receiverExists=true for unregistered
+      showErrorPopup("Unable to verify recipient. Please try again.", "Invalid recipient");
       return;
     }
 
@@ -211,6 +229,12 @@
     if (userAcc && receiverAcc === String(userAcc)) {
       showErrorPopup("You cannot send money to your own account!", "Invalid transfer");
       return;
+    }
+
+    // If recipient is unregistered, confirm user wants to proceed as external transfer
+    if (!receiverIsRegistered) {
+      const proceed = confirm("Recipient is not registered with PayMe. This will be processed as an external bank transfer. Do you want to continue?");
+      if (!proceed) return;
     }
 
     const balance = await fetchBalance();
@@ -225,7 +249,7 @@
       sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
       senderAccount: (currentUser && (currentUser.account_number || '')) || '-',
       receiver_acc: receiverAcc,                                  // IMPORTANT: Mainauth expects this key
-      recipient: receiverUsername || receiverAcc,                // friendly recipient name
+      recipient: (receiverIsRegistered ? (receiverUsername || receiverAcc) : receiverAcc), // friendly recipient name
       recipientAccount: receiverAcc,                             // keep backward compatibility
       amount: amount,
       receiver_bank: "PAYME",                                    // forced bank name
