@@ -17,6 +17,7 @@
     .receiver-info{font-size:14px;padding:10px;background:#e8f5e9;border-radius:6px;margin-bottom:16px;display:none}
     .receiver-warning{font-size:14px;padding:10px;background:#fff7e6;border-radius:6px;margin-bottom:16px;display:none;border:1px solid #ffd796;color:#6a4b00}
     .error{color:red;font-size:13px;margin-bottom:10px;display:none}
+    .muted{color:#666;font-size:13px}
     .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;z-index:9999}
     .modal-overlay.show{display:flex}
     .modal{width:calc(100% - 48px);max-width:520px;background:#fff;border-radius:12px;padding:18px;box-shadow:0 18px 40px rgba(10,20,30,0.15);text-align:center}
@@ -49,9 +50,10 @@
     <div class="error" id="error"></div>
 
     <label for="amount">Amount (₦)</label>
-    <input type="number" id="amount" placeholder="Enter amount" />
+    <input type="number" id="amount" placeholder="Enter amount" min="0" step="1" />
 
     <button id="sendBtn">Send Money</button>
+    <div class="muted" id="balanceNote" style="text-align:center;font-size:13px;margin-top:6px"></div>
   </div>
 
   <!-- SUCCESS POPUP (detailed) -->
@@ -84,14 +86,18 @@
   </div>
 
 <script>
+  // BACKEND base (keep as your backend)
   const API_BASE = "https://payme-update.onrender.com";
 
+  // Elements
   const accountInput = document.getElementById("accountNumber");
   const receiverInfo = document.getElementById("receiverInfo");
   const receiverWarning = document.getElementById("receiverWarning");
   const errorBox = document.getElementById("error");
   const sendBtn = document.getElementById("sendBtn");
   const amountInput = document.getElementById("amount");
+  const balanceNote = document.getElementById("balanceNote");
+
   const successModal = document.getElementById("successModal");
   const detailList = document.getElementById("detailList");
   const successAmountEl = document.getElementById("successAmount");
@@ -104,10 +110,11 @@
   const errorText = document.getElementById("errorText");
   const errorOkBtn = document.getElementById("errorOkBtn");
 
+  // Current logged user (your app stores this in localStorage)
   const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
 
-  let receiverExists = false;         // means "we have enough info to proceed"
-  let receiverIsRegistered = false;   // true if recipient exists in app DB
+  let receiverExists = false;         // means we may proceed (registered OR external allowed)
+  let receiverIsRegistered = false;   // true if recipient found in app DB
   let receiverUsername = "";
 
   function showErrorPopup(message, title = "Error", onOk = null) {
@@ -128,22 +135,29 @@
   }
   function formatMoney(n){ if (n == null) return "0.00"; return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+  // load available balance (non-blocking)
   async function fetchBalance() {
-    if (!currentUser || !currentUser.phone) return 0;
+    if (!currentUser || !currentUser.phone) {
+      balanceNote.textContent = '';
+      return 0;
+    }
     try {
       const res = await fetch(`${API_BASE}/balance/${currentUser.phone}`);
       const data = await res.json().catch(()=>null);
       if (res.ok && data && (data.balance !== undefined)) {
         localStorage.setItem("balance", data.balance);
-        return parseFloat(data.balance);
+        const bal = parseFloat(data.balance);
+        balanceNote.textContent = `Balance: ₦${formatMoney(bal)}`;
+        return bal;
       }
     } catch (e){}
-    return parseFloat(localStorage.getItem("balance")) || 0;
+    const fallback = parseFloat(localStorage.getItem("balance")) || 0;
+    balanceNote.textContent = fallback ? `Balance: ₦${formatMoney(fallback)}` : '';
+    return fallback;
   }
 
-  // Must be a registered recipient OR allow external transfer
+  // Lookup recipient in your app DB; if not found, allow external transfer.
   async function lookupReceiver(acc) {
-    // reset UI
     receiverExists = false;
     receiverIsRegistered = false;
     receiverUsername = "";
@@ -167,7 +181,7 @@
       const data = await res.json().catch(()=>null);
 
       if (res.ok && data && data.status === "success" && (data.username || data.name)) {
-        // Registered recipient found
+        // Registered recipient
         receiverExists = true;
         receiverIsRegistered = true;
         receiverUsername = data.username || data.name || '';
@@ -176,17 +190,17 @@
         receiverWarning.style.display = "none";
         errorBox.style.display = "none";
       } else {
-        // Not registered — allow external bank transfer
-        receiverExists = true;         // we allow the transfer to proceed
+        // Not registered -> allow external transfer (user confirms later)
+        receiverExists = true;
         receiverIsRegistered = false;
-        receiverUsername = acc;        // show account as identifier
+        receiverUsername = acc;
         receiverInfo.style.display = "none";
-        receiverWarning.textContent = "⚠️ Recipient not registered in PayMe. This will be processed as an external bank transfer.";
+        receiverWarning.textContent = "⚠️ Recipient not registered in PayMe. This will be processed as an external bank transfer if you proceed.";
         receiverWarning.style.display = "block";
         errorBox.style.display = "none";
       }
     } catch (err) {
-      // Network or other error — still allow external transfer but warn user
+      // network; still allow external transfer but warn
       console.warn('lookupReceiver error', err);
       receiverExists = true;
       receiverIsRegistered = false;
@@ -198,6 +212,7 @@
     }
   }
 
+  // sanitize input and trigger lookup at 10 digits
   accountInput.addEventListener('input', function() {
     let v = accountInput.value || '';
     v = v.replace(/\D/g,'');
@@ -207,6 +222,7 @@
     else { receiverExists = false; receiverIsRegistered = false; receiverUsername = ""; receiverInfo.style.display = "none"; receiverWarning.style.display = "none"; errorBox.style.display = "none"; }
   });
 
+  // On clicking send: validate, prepare pending_tx and redirect to PIN page (Mainauthentication.html)
   sendBtn.addEventListener('click', async function(){
     const receiverAcc = accountInput.value.trim();
     const amount = parseFloat(amountInput.value);
@@ -220,7 +236,6 @@
       return;
     }
     if (!receiverExists) {
-      // shouldn't happen because lookup sets receiverExists=true for unregistered
       showErrorPopup("Unable to verify recipient. Please try again.", "Invalid recipient");
       return;
     }
@@ -231,9 +246,9 @@
       return;
     }
 
-    // If recipient is unregistered, confirm user wants to proceed as external transfer
+    // If recipient unregistered, confirm external transfer
     if (!receiverIsRegistered) {
-      const proceed = confirm("Recipient is not registered with PayMe. This will be processed as an external bank transfer. Do you want to continue?");
+      const proceed = confirm("Recipient not registered in PayMe. This will be processed as an external transfer. Continue?");
       if (!proceed) return;
     }
 
@@ -243,18 +258,14 @@
       return;
     }
 
-    // Create pending_tx with all keys Mainauthentication expects
+    // Build pending_tx to be read by Mainauthentication.html (PIN confirm -> backend execute-transfer)
     const pending = {
-      phone: (currentUser && currentUser.phone) || null,          // sender phone (Mainauth expects phone)
-      sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
-      senderAccount: (currentUser && (currentUser.account_number || '')) || '-',
-      receiver_acc: receiverAcc,                                  // IMPORTANT: Mainauth expects this key
-      recipient: (receiverIsRegistered ? (receiverUsername || receiverAcc) : receiverAcc), // friendly recipient name
-      recipientAccount: receiverAcc,                             // keep backward compatibility
-      amount: amount,
-      receiver_bank: "PAYME",                                    // forced bank name
-      receiver_bank_name: "PAYME",
-      network: "PAYME",                                          // include network (Mainauth may read this)
+      sender_phone: (currentUser && currentUser.phone) || null,          // server should validate auth in production
+      sender_account: (currentUser && (currentUser.account_number || currentUser.acc_number)) || null,
+      receiver_account: receiverAcc,
+      amount: Math.round(Number(amount)),
+      external_transfer: !receiverIsRegistered,
+      recipient_name: receiverIsRegistered ? receiverUsername : null,
       product: 'towallet',
       created_at: new Date().toISOString()
     };
@@ -267,10 +278,11 @@
       return;
     }
 
-    // Redirect to PIN page for verification and execution
+    // Redirect to PIN page for verification and execution (Mainauthentication.html handles the final POST)
     window.location.href = 'Mainauthentication.html';
   });
 
+  // show success popup if a recent tx exists in sessionStorage (keeps your current flow)
   (function showReturnPopupIfExists(){
     try {
       const last = sessionStorage.getItem('last_tx_success');
@@ -310,6 +322,7 @@
     }
   })();
 
+  // modal controls
   viewTransactionsBtn.addEventListener('click', function(){
     successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true');
     window.location.href = 'transactions.html';
@@ -318,7 +331,6 @@
     successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true');
   });
   errorOkBtn.addEventListener('click', hideErrorPopup);
-
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape') {
       if (successModal.classList.contains('show')) { successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true'); }
@@ -326,8 +338,12 @@
     }
   });
 
+  // must be logged in
   if (!currentUser) {
     showErrorPopup("No logged-in user found. Please login first.", "Not logged in", function(){ window.location.href = "paymelogin.html"; });
+  } else {
+    // initial balance fetch
+    fetchBalance();
   }
 </script>
 </body>
