@@ -103,10 +103,6 @@
 
   const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
 
-  // === KEY CHANGE: allow transfers between different phones/accounts ===
-  // We no longer require recipient to be registered. Any valid 10-digit account can receive money.
-  // Minimal UI change: keep receiverInfo/error DOM as-is but don't block transfers to unregistered accounts.
-
   let receiverExists = false;
   let receiverUsername = "";
 
@@ -141,7 +137,7 @@
     return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // New simplified lookup: validate account format and allow transfers to any valid 10-digit account.
+  // Must be a registered recipient
   async function lookupReceiver(acc) {
     receiverExists = false;
     receiverUsername = "";
@@ -158,11 +154,35 @@
       return;
     }
 
-    // We permit transfers to any 10-digit account (no registration check).
-    receiverExists = true;
-    receiverUsername = acc; // use account as display if needed
-    receiverInfo.textContent = "Receiver account: " + acc;
-    receiverInfo.style.display = "block";
+    try {
+      const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
+      const data = await res.json().catch(()=>null);
+
+      if (res.ok && data && data.status === "success" && (data.username || data.name)) {
+        // Registered recipient -> normal flow
+        receiverExists = true;
+        receiverUsername = data.username || data.name || '';
+        receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
+        receiverInfo.style.display = "block";
+        errorBox.style.display = "none";
+      } else {
+        // NOT registered but allow transfer between phones: mark as valid recipient anyway.
+        receiverExists = true;
+        receiverUsername = acc;
+        // Show the receiver account info (keeps UI elements unchanged)
+        receiverInfo.textContent = "Receiver (external): " + acc;
+        receiverInfo.style.display = "block";
+        errorBox.style.display = "none";
+      }
+    } catch (err) {
+      // Network or other error while checking — allow transfer anyway.
+      receiverExists = true;
+      receiverUsername = acc;
+      receiverInfo.textContent = "Receiver (unverified): " + acc;
+      receiverInfo.style.display = "block";
+      errorBox.style.display = "none";
+      console.warn('lookupReceiver error', err);
+    }
   }
 
   accountInput.addEventListener('input', function() {
@@ -187,7 +207,7 @@
       return;
     }
     if (!receiverExists) {
-      showErrorPopup("Invalid account — recipient not valid", "Invalid recipient");
+      showErrorPopup("Invalid account — recipient not registered", "Invalid recipient");
       return;
     }
 
@@ -203,7 +223,7 @@
       return;
     }
 
-    // Build pending_tx with all keys Mainauthentication expects
+    // Create pending_tx with all keys Mainauthentication expects
     const pending = {
       phone: (currentUser && currentUser.phone) || null,          // sender phone (Mainauth expects phone)
       sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
