@@ -1227,6 +1227,243 @@ def towallet_send_money():
             "message": f"Internal error: {str(e)}"
         }), 500
 
+
+# -------------------------
+# Route: GET /balance/<phone>
+# -------------------------
+@app.route("/balance/<phone>", methods=["GET"])
+def get_balance(phone):
+    """
+    Return user's balance by phone.
+    Response: 200 + {"balance": <number>} or 404 / 500 on error.
+    """
+    p = str(phone or "").strip()
+    if not p:
+        return jsonify({"status": "error", "message": "phone required"}), 400
+
+    try:
+        conn, kind = _get_db_conn()
+        cur = conn.cursor()
+        # try balances table first
+        try:
+            if kind == "sqlite":
+                cur.execute("SELECT balance FROM balances WHERE phone = ? LIMIT 1", (p,))
+                row = cur.fetchone()
+            else:
+                cur.execute("SELECT balance FROM balances WHERE phone = %s LIMIT 1", (p,))
+                row = cur.fetchone()
+            if row:
+                bal = (row["balance"] if isinstance(row, dict) else row[0])
+                return jsonify({"balance": float(bal)}), 200
+        except Exception:
+            # ignore and try users table
+            pass
+
+        # try users table
+        try:
+            if kind == "sqlite":
+                cur.execute("SELECT balance FROM users WHERE phone = ? LIMIT 1", (p,))
+                row = cur.fetchone()
+            else:
+                cur.execute("SELECT balance FROM users WHERE phone = %s LIMIT 1", (p,))
+                row = cur.fetchone()
+            if row:
+                bal = row["balance"] if isinstance(row, sqlite3.Row) else (row[0] if isinstance(row, tuple) else getattr(row, 'balance', None))
+                return jsonify({"balance": float(bal or 0)}), 200
+        except Exception:
+            pass
+
+        return jsonify({"status": "error", "message": "User or balance not found"}), 404
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Internal server error", "details": str(e)}), 500
+
+# -------------------------
+# Route: POST /execute-transfer
+# -------------------------
+@app.route("/execute-transfer", methods=["POST"])
+def execute_transfer():
+    """
+    Execute a wallet-to-wallet transfer.
+    Expects JSON:
+      {
+        "sender_phone": "0800xxx",
+        "receiver_account": "2198579728",
+        "amount": 1000,
+        "note": "...optional..."
+      }
+    Returns 200 + transaction payload on success.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        sender_phone = str(payload.get("sender_phone") or "").strip()
+        receiver_acc = str(payload.get("receiver_account") or "").strip()
+        amount = payload.get("amount")
+
+        if not sender_phone or not receiver_acc or amount is None:
+            return jsonify({"status":"error","message":"sender_phone, receiver_account and amount required"}), 400
+
+        try:
+            amt = int(amount)
+            if amt <= 0:
+                return jsonify({"status":"error","message":"amount must be positive integer"}), 400
+        except Exception:
+            return jsonify({"status":"error","message":"amount must be integer"}), 400
+
+        conn, kind = _get_db_conn()
+        cur = conn.cursor()
+
+        # 1) Fetch sender balance
+        # try balances table then users
+        sender_balance = None
+        try:
+            if kind == "sqlite":
+                cur.execute("SELECT balance FROM balances WHERE phone = ? LIMIT 1", (sender_phone,))
+                r = cur.fetchone()
+                if r:
+                    sender_balance = float(r["balance"])
+            else:
+                cur.execute("SELECT balance FROM balances WHERE phone = %s LIMIT 1", (sender_phone,))
+                r = cur.fetchone()
+                if r:
+                    sender_balance = float(r[0])
+        except Exception:
+            sender_balance = None
+
+        if sender_balance is None:
+            try:
+                if kind == "sqlite":
+                    cur.execute("SELECT balance FROM users WHERE phone = ? LIMIT 1", (sender_phone,))
+                    r = cur.fetchone()
+                    if r:
+                        sender_balance = float(r["balance"])
+                else:
+                    cur.execute("SELECT balance FROM users WHERE phone = %s LIMIT 1", (sender_phone,))
+                    r = cur.fetchone()
+                    if r:
+                        sender_balance = float(r[0])
+            except Exception:
+                sender_balance = None
+
+        if sender_balance is None:
+            return jsonify({"status":"error","message":"Sender balance not found"}), 404
+
+        if sender_balance < amt:
+            return jsonify({"status":"error","message":"Insufficient funds"}), 400
+
+        # 2) Find receiver user (may be external). Prefer to credit users table if exists, else fallback to balances table,
+        # or return success but mark as external (you might want to push to bank where appropriate).
+        receiver_found = False
+        try:
+            if kind == "sqlite":
+                cur.execute("SELECT id, phone, account_number FROM users WHERE account_number = ? OR acc_number = ? OR account = ? LIMIT 1", (receiver_acc, receiver_acc, receiver_acc))
+                rcv = cur.fetchone()
+            else:
+                cur.execute("SELECT id, phone, account_number FROM users WHERE account_number = %s OR acc_number = %s OR account = %s LIMIT 1", (receiver_acc, receiver_acc, receiver_acc))
+                rcv = cur.fetchone()
+        except Exception:
+            rcv = None
+
+        # Begin transaction
+        if kind == "pg":
+            conn.autocommit = False
+        else:
+            # sqlite default autocommit false when using connection
+            pass
+
+        try:
+            # deduct sender
+            if kind == "sqlite":
+                cur.execute("UPDATE users SET balance = balance - ? WHERE phone = ? OR account_number = ? OR acc_number = ? OR account = ?",
+                            (amt, sender_phone, sender_phone, sender_phone, sender_phone))
+                if cur.rowcount == 0:
+                    # maybe balances table
+                    cur.execute("UPDATE balances SET balance = balance - ? WHERE phone = ?", (amt, sender_phone))
+            else:
+                cur.execute("UPDATE users SET balance = balance - %s WHERE phone = %s OR account_number = %s OR acc_number = %s OR account = %s",
+                            (amt, sender_phone, sender_phone, sender_phone, sender_phone))
+                if cur.rowcount == 0:
+                    cur.execute("UPDATE balances SET balance = balance - %s WHERE phone = %s", (amt, sender_phone))
+
+            # credit receiver if exists in users or balances
+            if rcv:
+                receiver_found = True
+                # rcv may be sqlite Row or tuple
+                # try users table credit
+                if kind == "sqlite":
+                    cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amt, rcv["id"]))
+                else:
+                    cur.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (amt, rcv[0]))
+            else:
+                # try balances table (maybe receiver stored there)
+                try:
+                    if kind == "sqlite":
+                        cur.execute("SELECT balance FROM balances WHERE phone = ? LIMIT 1", (receiver_acc,))
+                        r = cur.fetchone()
+                        if r:
+                            cur.execute("UPDATE balances SET balance = balance + ? WHERE phone = ?", (amt, receiver_acc))
+                        else:
+                            # create a balances record for this receiver_acc so multi-phone transfers possible
+                            cur.execute("INSERT INTO balances (phone, balance) VALUES (?, ?)", (receiver_acc, amt))
+                    else:
+                        cur.execute("SELECT balance FROM balances WHERE phone = %s LIMIT 1", (receiver_acc,))
+                        r = cur.fetchone()
+                        if r:
+                            cur.execute("UPDATE balances SET balance = balance + %s WHERE phone = %s", (amt, receiver_acc))
+                        else:
+                            cur.execute("INSERT INTO balances (phone, balance) VALUES (%s, %s)", (receiver_acc, amt))
+                except Exception as e:
+                    # if balances table doesn't exist or insert fails, rollback and return error
+                    conn.rollback()
+                    return jsonify({"status":"error","message":"Receiver credit failed","details": str(e)}), 500
+
+            # Optionally insert into transactions table if exists
+            try:
+                txn_ref = str(uuid.uuid4())
+                now = datetime.utcnow().isoformat()
+                if kind == "sqlite":
+                    cur.execute("""INSERT INTO transactions (reference, sender_phone, receiver_account, amount, created_at, status)
+                                   VALUES (?, ?, ?, ?, ?, ?)""", (txn_ref, sender_phone, receiver_acc, amt, now, "success"))
+                else:
+                    cur.execute("""INSERT INTO transactions (reference, sender_phone, receiver_account, amount, created_at, status)
+                                   VALUES (%s, %s, %s, %s, %s, %s)""", (txn_ref, sender_phone, receiver_acc, amt, now, "success"))
+            except Exception:
+                # ignore if transactions table missing
+                txn_ref = None
+
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            import traceback
+            traceback.print_exc()
+            return jsonify({"status":"error","message":"Transfer failed","details": str(e)}), 500
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+            try:
+                if kind == "pg":
+                    conn.autocommit = True
+            except Exception:
+                pass
+
+        result = {
+            "status": "success",
+            "sender_phone": sender_phone,
+            "receiver_account": receiver_acc,
+            "amount": amt,
+            "transaction_ref": txn_ref
+        }
+        return jsonify(result), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status":"error","message":"Internal server error", "details": str(e)}), 500
+
 # -------------------------------------------------
 # Startup
 # -------------------------------------------------
