@@ -105,6 +105,7 @@
 
   let receiverExists = false;
   let receiverUsername = "";
+  let lookupController = null;
 
   function showErrorPopup(message, title = "Error", onOk = null) {
     errorHeader.textContent = title;
@@ -137,7 +138,7 @@
     return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // Must be a registered recipient
+  // must be a registered recipient
   async function lookupReceiver(acc) {
     receiverExists = false;
     receiverUsername = "";
@@ -155,7 +156,10 @@
     }
 
     try {
-      const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
+      if (lookupController) lookupController.abort();
+      lookupController = new AbortController();
+      const res = await fetch(`${API_BASE}/user_by_account/${acc}`, { signal: lookupController.signal });
+      lookupController = null;
       const data = await res.json().catch(()=>null);
 
       if (res.ok && data && data.status === "success" && (data.username || data.name)) {
@@ -174,6 +178,7 @@
     } catch (err) {
       receiverExists = false;
       receiverUsername = "";
+      if (err.name === 'AbortError') return;
       errorBox.textContent = "❌ Invalid account or network error — recipient not registered";
       errorBox.style.display = "block";
       receiverInfo.style.display = "none";
@@ -190,63 +195,88 @@
     else { receiverExists = false; receiverUsername = ""; receiverInfo.style.display = "none"; errorBox.style.display = "none"; }
   });
 
+  function generateReference(){
+    return 'tx-' + Date.now() + '-' + Math.random().toString(36).slice(2,9);
+  }
+
+  function lockUI(){ sendBtn.disabled = true; sendBtn.textContent = 'Processing...'; }
+  function unlockUI(){ sendBtn.disabled = false; sendBtn.textContent = 'Send Money'; }
+
+  // click handler: builds pending_tx, ensures fresh balance, sets idempotency key and redirects
   sendBtn.addEventListener('click', async function(){
-    const receiverAcc = accountInput.value.trim();
-    const amount = parseFloat(amountInput.value);
-
-    if (!receiverAcc || receiverAcc.length !== 10) {
-      showErrorPopup("Please enter a valid 10-digit receiver account.", "Invalid account");
-      return;
-    }
-    if (!amount || isNaN(amount) || amount <= 0) {
-      showErrorPopup("Enter a valid amount.", "Invalid amount");
-      return;
-    }
-    if (!receiverExists) {
-      showErrorPopup("Invalid account — recipient not registered", "Invalid recipient");
-      return;
-    }
-
-    const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : null;
-    if (userAcc && receiverAcc === String(userAcc)) {
-      showErrorPopup("You cannot send money to your own account!", "Invalid transfer");
-      return;
-    }
-
-    const balance = await fetchBalance();
-    if (amount > balance) {
-      showErrorPopup("Insufficient funds.", "Insufficient balance");
-      return;
-    }
-
-    // Create pending_tx with all keys Mainauthentication expects
-    const pending = {
-      phone: (currentUser && currentUser.phone) || null,          // sender phone (Mainauth expects phone)
-      sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
-      senderAccount: (currentUser && (currentUser.account_number || '')) || '-',
-      receiver_acc: receiverAcc,                                  // IMPORTANT: Mainauth expects this key
-      recipient: receiverUsername || receiverAcc,                // friendly recipient name
-      recipientAccount: receiverAcc,                             // keep backward compatibility
-      amount: amount,
-      receiver_bank: "PAYME",                                    // forced bank name
-      receiver_bank_name: "PAYME",
-      network: "PAYME",                                          // include network (Mainauth may read this)
-      product: 'towallet',
-      created_at: new Date().toISOString()
-    };
-
+    lockUI();
     try {
-      sessionStorage.setItem('pending_tx', JSON.stringify(pending));
-    } catch (e) {
-      console.error('session storage failed', e);
-      showErrorPopup('Unable to create pending transaction. Try again.', 'Storage error');
-      return;
-    }
+      const receiverAcc = accountInput.value.trim();
+      const amount = parseFloat(amountInput.value);
 
-    // Redirect to PIN page for verification and execution
-    window.location.href = 'Mainauthentication.html';
+      if (!receiverAcc || receiverAcc.length !== 10) {
+        showErrorPopup("Please enter a valid 10-digit receiver account.", "Invalid account", function(){ unlockUI(); });
+        return;
+      }
+      if (!amount || isNaN(amount) || amount <= 0) {
+        showErrorPopup("Enter a valid amount.", "Invalid amount", function(){ unlockUI(); });
+        return;
+      }
+
+      if (!receiverExists) {
+        await lookupReceiver(receiverAcc);
+        if (!receiverExists) {
+          showErrorPopup("Invalid account — recipient not registered", "Invalid recipient", function(){ unlockUI(); });
+          return;
+        }
+      }
+
+      const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : null;
+      if (userAcc && receiverAcc === String(userAcc)) {
+        showErrorPopup("You cannot send money to your own account!", "Invalid transfer", function(){ unlockUI(); });
+        return;
+      }
+
+      // fetch freshest balance from server (avoid stale localStorage)
+      const balance = await fetchBalance();
+      if (amount > balance) {
+        showErrorPopup("Insufficient funds.", "Insufficient balance", function(){ unlockUI(); });
+        return;
+      }
+
+      const reference = generateReference();
+      const amountKobo = Math.round(amount * 100);
+
+      const pending = {
+        phone: (currentUser && currentUser.phone) || null,
+        sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
+        senderAccount: (currentUser && (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber)) || '-',
+        receiver_acc: receiverAcc,
+        recipient: receiverUsername || receiverAcc,
+        recipientAccount: receiverAcc,
+        amount: amount,
+        amount_kobo: amountKobo,
+        receiver_bank: "PAYME",
+        receiver_bank_name: "PAYME",
+        network: "PAYME",
+        product: 'towallet',
+        created_at: new Date().toISOString(),
+        reference: reference,
+        idempotency_key: reference
+      };
+
+      try { sessionStorage.setItem('pending_tx', JSON.stringify(pending)); }
+      catch (e) {
+        console.error('session storage failed', e);
+        showErrorPopup('Unable to create pending transaction. Try again.', 'Storage error', function(){ unlockUI(); });
+        return;
+      }
+
+      // Redirect to Mainauthentication for PIN confirmation and final execute
+      // Mainauthentication should read sessionStorage.pending_tx and use reference/idempotency_key
+      window.location.href = 'Mainauthentication.html';
+
+    } finally {
+      // deliberately leave UI locked when redirecting; unlock only if needed
+    }
   });
 
+  // When returning from Mainauthentication, show success popup if last_tx_success is set in sessionStorage
   (function showReturnPopupIfExists(){
     try {
       const last = sessionStorage.getItem('last_tx_success');
@@ -273,7 +303,7 @@
       addDetail('Date/Time', payload.datetime || new Date().toLocaleString());
       addDetail('Sender', (payload.sender || (currentUser && (currentUser.username || currentUser.name))) || 'You');
       addDetail('Sender Account', (payload.senderAccount || (currentUser && currentUser.account_number)) || '-');
-      addDetail('Bank Name','PAYME'); // forced
+      addDetail('Bank Name','PAYME');
       addDetail('Recipient', payload.recipient || payload.receiver_name || payload.receiver || '-');
       addDetail('Recipient Account', payload.recipientAccount || payload.receiver_acc || payload.receiver || '-');
       addDetail('Transaction NO.', payload.txnNo || payload.transaction_id || payload.reference || '-');
@@ -281,9 +311,7 @@
       successModal.classList.add('show');
       successModal.setAttribute('aria-hidden','false');
       closeSuccessBtn.focus();
-    } catch (e) {
-      console.warn('showReturnPopupIfExists error', e);
-    }
+    } catch (e) { console.warn('showReturnPopupIfExists error', e); }
   })();
 
   viewTransactionsBtn.addEventListener('click', function(){
