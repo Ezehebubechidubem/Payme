@@ -15,7 +15,6 @@
     button{width:100%;background:#00c853;border:none;color:#fff;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;margin-bottom:10px}
     button:hover{background:#009624}
     .receiver-info{font-size:14px;padding:10px;background:#e8f5e9;border-radius:6px;margin-bottom:16px;display:none}
-    .receiver-info.warn{background:#fff4e5;color:#664400}
     .error{color:red;font-size:13px;margin-bottom:10px;display:none}
     .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;z-index:9999}
     .modal-overlay.show{display:flex}
@@ -42,9 +41,9 @@
     <h2>Transfer Money</h2>
 
     <label for="accountNumber">Receiver Account Number</label>
-    <input type="text" id="accountNumber" placeholder="Enter 10-digit account number" maxlength="10" />
+    <input type="text" id="accountNumber" placeholder="Enter account number" maxlength="10" />
 
-    <div class="receiver-info" id="receiverInfo" aria-live="polite"></div>
+    <div class="receiver-info" id="receiverInfo"></div>
     <div class="error" id="error"></div>
 
     <label for="amount">Amount (₦)</label>
@@ -57,8 +56,8 @@
   <div id="successModal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal" role="document">
       <div class="badge">₦</div>
-      <h3 id="successTitle">Money sent</h3>
-      <p id="successSubtitle" style="font-weight:700;font-size:22px;margin:4px 0">₦<span id="successAmount">0.00</span></p>
+      <h3 id="successTitle">Money received</h3>
+      <p id="successSubtitle" style="font-weight:700;font-size:28px;margin:4px 0">₦<span id="successAmount">0.00</span></p>
       <div style="display:inline-block;padding:8px 12px;border-radius:8px;background:#e8f5e9;color:#0b8a39;font-weight:700;margin-bottom:12px" id="successStatus">Successful</div>
 
       <div class="detail-list" id="detailList"></div>
@@ -83,17 +82,13 @@
   </div>
 
 <script>
-  // =============== CONFIG ===============
-  // Point to your backend (no trailing slash)
-  const API_BASE = (window.BACKEND_URL || "https://payme-update.onrender.com").replace(/\/+$/, "");
+  const API_BASE = "https://payme-update.onrender.com";
 
-  // =============== DOM ===============
   const accountInput = document.getElementById("accountNumber");
   const receiverInfo = document.getElementById("receiverInfo");
   const errorBox = document.getElementById("error");
   const sendBtn = document.getElementById("sendBtn");
   const amountInput = document.getElementById("amount");
-
   const successModal = document.getElementById("successModal");
   const detailList = document.getElementById("detailList");
   const successAmountEl = document.getElementById("successAmount");
@@ -106,16 +101,11 @@
   const errorText = document.getElementById("errorText");
   const errorOkBtn = document.getElementById("errorOkBtn");
 
-  // current logged user stored in localStorage (same keys you used before)
   const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
 
-  // internal state
   let receiverExists = false;
   let receiverUsername = "";
-  let receiverPhone = null; // backend returns phone in user_by_account
-  let lastBalance = null;
 
-  // =============== helpers ===============
   function showErrorPopup(message, title = "Error", onOk = null) {
     errorHeader.textContent = title;
     errorText.textContent = message;
@@ -140,27 +130,22 @@
       const res = await fetch(`${API_BASE}/balance/${currentUser.phone}`);
       const data = await res.json().catch(()=>null);
       if (res.ok && data && (data.balance !== undefined)) {
-        lastBalance = parseFloat(data.balance);
-        localStorage.setItem("balance", lastBalance);
-        return lastBalance;
+        localStorage.setItem("balance", data.balance);
+        return parseFloat(data.balance);
       }
     } catch (e){}
-    lastBalance = parseFloat(localStorage.getItem("balance")) || 0;
-    return lastBalance;
+    return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // Lookup recipient by account (shows username when found)
+  // Must be a registered recipient
   async function lookupReceiver(acc) {
     receiverExists = false;
     receiverUsername = "";
-    receiverPhone = null;
     receiverInfo.style.display = "none";
-    receiverInfo.classList.remove("warn");
     errorBox.style.display = "none";
 
     if (!acc || acc.length !== 10) return;
 
-    // Prevent sending to self
     const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : '';
     if (userAcc && String(userAcc) === String(acc)) {
       errorBox.textContent = "❌ You cannot send money to yourself!";
@@ -173,156 +158,133 @@
       const res = await fetch(`${API_BASE}/user_by_account/${acc}`);
       const data = await res.json().catch(()=>null);
 
-      if (res.ok && data && data.status === "success" && (data.username || data.phone)) {
+      if (res.ok && data && data.status === "success" && (data.username || data.name)) {
         receiverExists = true;
-        receiverUsername = data.username || data.name || acc;
-        receiverPhone = data.phone || null;
-        receiverInfo.textContent = "✅ Recipient: " + receiverUsername;
+        receiverUsername = data.username || data.name || '';
+        receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
         receiverInfo.style.display = "block";
-        receiverInfo.classList.remove("warn");
         errorBox.style.display = "none";
       } else {
-        // Not found — allow external transfer but warn user
         receiverExists = false;
         receiverUsername = "";
-        receiverPhone = null;
-        receiverInfo.textContent = "⚠️ Recipient not registered — external transfer (receiver may not receive funds in app).";
-        receiverInfo.style.display = "block";
-        receiverInfo.classList.add("warn");
-        errorBox.style.display = "none";
+        errorBox.textContent = "❌ Invalid account — recipient not registered";
+        errorBox.style.display = "block";
+        receiverInfo.style.display = "none";
       }
     } catch (err) {
       receiverExists = false;
       receiverUsername = "";
-      receiverPhone = null;
-      receiverInfo.textContent = "⚠️ Network error checking recipient — will attempt transfer.";
-      receiverInfo.style.display = "block";
-      receiverInfo.classList.add("warn");
-      errorBox.style.display = "none";
+      errorBox.textContent = "❌ Invalid account or network error — recipient not registered";
+      errorBox.style.display = "block";
+      receiverInfo.style.display = "none";
       console.warn('lookupReceiver error', err);
     }
   }
 
-  // Execute send by calling backend /send_money
-  async function executeSend() {
-    const receiverAcc = accountInput.value.trim();
-    const rawAmount = amountInput.value;
-
-    if (!receiverAcc || receiverAcc.length !== 10) {
-      showErrorPopup("Please enter a valid 10-digit receiver account.", "Invalid account");
-      return;
-    }
-
-    const amount = parseFloat(rawAmount);
-    if (!amount || isNaN(amount) || amount <= 0) {
-      showErrorPopup("Enter a valid amount.", "Invalid amount");
-      return;
-    }
-
-    if (!currentUser || !currentUser.phone) {
-      showErrorPopup("No logged-in user found. Please login first.", "Not logged in", ()=> window.location.href = "paymelogin.html");
-      return;
-    }
-
-    // Prevent sending to self (just in case)
-    const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : '';
-    if (userAcc && receiverAcc === String(userAcc)) {
-      showErrorPopup("You cannot send money to your own account!", "Invalid transfer");
-      return;
-    }
-
-    // Check balance
-    const balance = await fetchBalance();
-    if (amount > balance) {
-      showErrorPopup("Insufficient funds.", "Insufficient balance");
-      return;
-    }
-
-    // Confirm with user (show username if available)
-    const friendly = receiverExists ? (receiverUsername || receiverAcc) : `external account ${receiverAcc}`;
-    if (!confirm(`Send ₦${formatMoney(amount)} to ${friendly}?`)) return;
-
-    // Build body for /send_money (matches your backend)
-    const body = {
-      sender_phone: String(currentUser.phone),
-      receiver_acc: receiverAcc,
-      amount: amount
-    };
-
-    try {
-      const res = await fetch(`${API_BASE}/send_money`, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(body)
-      });
-      const data = await res.json().catch(()=>null);
-
-      if (res.ok && data && data.status === "success") {
-        // update balance locally (fetch authoritative)
-        await fetchBalance();
-
-        // success modal payload
-        successAmountEl.textContent = formatMoney(amount);
-        successStatusEl.textContent = "Successful";
-        successTitle.textContent = "Money sent";
-
-        // build details
-        detailList.innerHTML = "";
-        function addDetail(label, value){
-          const row = document.createElement('div');
-          row.className = 'detail-item';
-          const lab = document.createElement('div'); lab.className='detail-label'; lab.textContent = label;
-          const val = document.createElement('div'); val.className='detail-value'; val.textContent = value ?? '-';
-          row.appendChild(lab); row.appendChild(val);
-          detailList.appendChild(row);
-        }
-
-        addDetail('Amount', '₦' + formatMoney(amount));
-        addDetail('Sender', (currentUser && (currentUser.username || currentUser.name)) || currentUser.phone);
-        addDetail('Sender Phone', currentUser.phone);
-        addDetail('Recipient', receiverExists ? (receiverUsername || receiverAcc) : `External - ${receiverAcc}`);
-        addDetail('Recipient Account', receiverAcc);
-        addDetail('Transaction Ref', (data && data.transaction_ref) || (data && data.txnRef) || '-');
-
-        // show modal
-        successModal.classList.add('show');
-        successModal.setAttribute('aria-hidden','false');
-
-        // clear inputs (but keep ability to send more from any phone)
-        accountInput.value = "";
-        amountInput.value = "";
-        receiverInfo.style.display = "none";
-        receiverInfo.classList.remove("warn");
-        receiverExists = false;
-        receiverUsername = "";
-      } else {
-        // backend returned an error
-        const msg = data && (data.message || data.error) ? (data.message || data.error) : `Failed (${res.status})`;
-        showErrorPopup(msg, "Send failed");
-      }
-    } catch (err) {
-      console.error("send_money error", err);
-      showErrorPopup("Network error during transfer", "Network error");
-    }
-  }
-
-  // =============== event wiring ===============
   accountInput.addEventListener('input', function() {
     let v = accountInput.value || '';
     v = v.replace(/\D/g,'');
     if (v.length > 10) v = v.slice(0,10);
     if (accountInput.value !== v) accountInput.value = v;
     if (v.length === 10) lookupReceiver(v);
-    else {
-      receiverExists = false;
-      receiverUsername = "";
-      receiverInfo.style.display = "none";
-      receiverInfo.classList.remove("warn");
-      errorBox.style.display = "none";
-    }
+    else { receiverExists = false; receiverUsername = ""; receiverInfo.style.display = "none"; errorBox.style.display = "none"; }
   });
 
-  sendBtn.addEventListener('click', executeSend);
+  sendBtn.addEventListener('click', async function(){
+    const receiverAcc = accountInput.value.trim();
+    const amount = parseFloat(amountInput.value);
+
+    if (!receiverAcc || receiverAcc.length !== 10) {
+      showErrorPopup("Please enter a valid 10-digit receiver account.", "Invalid account");
+      return;
+    }
+    if (!amount || isNaN(amount) || amount <= 0) {
+      showErrorPopup("Enter a valid amount.", "Invalid amount");
+      return;
+    }
+    if (!receiverExists) {
+      showErrorPopup("Invalid account — recipient not registered", "Invalid recipient");
+      return;
+    }
+
+    const userAcc = currentUser ? (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber || '') : null;
+    if (userAcc && receiverAcc === String(userAcc)) {
+      showErrorPopup("You cannot send money to your own account!", "Invalid transfer");
+      return;
+    }
+
+    const balance = await fetchBalance();
+    if (amount > balance) {
+      showErrorPopup("Insufficient funds.", "Insufficient balance");
+      return;
+    }
+
+    // Create pending_tx with all keys Mainauthentication expects
+    const pending = {
+      phone: (currentUser && currentUser.phone) || null,          // sender phone (Mainauth expects phone)
+      sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
+      senderAccount: (currentUser && (currentUser.account_number || '')) || '-',
+      receiver_acc: receiverAcc,                                  // IMPORTANT: Mainauth expects this key
+      recipient: receiverUsername || receiverAcc,                // friendly recipient name
+      recipientAccount: receiverAcc,                             // keep backward compatibility
+      amount: amount,
+      receiver_bank: "PAYME",                                    // forced bank name
+      receiver_bank_name: "PAYME",
+      network: "PAYME",                                          // include network (Mainauth may read this)
+      product: 'towallet',
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+    } catch (e) {
+      console.error('session storage failed', e);
+      showErrorPopup('Unable to create pending transaction. Try again.', 'Storage error');
+      return;
+    }
+
+    // Redirect to PIN page for verification and execution
+    window.location.href = 'Mainauthentication.html';
+  });
+
+  (function showReturnPopupIfExists(){
+    try {
+      const last = sessionStorage.getItem('last_tx_success');
+      if (!last) return;
+      const payload = JSON.parse(last);
+      sessionStorage.removeItem('last_tx_success');
+
+      const amount = Number(payload.amount || payload.orderAmount || payload.total || 0);
+      successAmountEl.textContent = formatMoney(amount);
+      successStatusEl.textContent = (payload.statusText || payload.message || 'Successful');
+      successTitle.textContent = payload.type === 'error' ? 'Transaction failed' : 'Money received';
+
+      detailList.innerHTML = '';
+      function addDetail(label, value){
+        const row = document.createElement('div');
+        row.className = 'detail-item';
+        const lab = document.createElement('div'); lab.className='detail-label'; lab.textContent = label;
+        const val = document.createElement('div'); val.className='detail-value'; val.textContent = value ?? '-';
+        row.appendChild(lab); row.appendChild(val);
+        detailList.appendChild(row);
+      }
+
+      addDetail('Order amount','₦'+formatMoney(amount));
+      addDetail('Date/Time', payload.datetime || new Date().toLocaleString());
+      addDetail('Sender', (payload.sender || (currentUser && (currentUser.username || currentUser.name))) || 'You');
+      addDetail('Sender Account', (payload.senderAccount || (currentUser && currentUser.account_number)) || '-');
+      addDetail('Bank Name','PAYME'); // forced
+      addDetail('Recipient', payload.recipient || payload.receiver_name || payload.receiver || '-');
+      addDetail('Recipient Account', payload.recipientAccount || payload.receiver_acc || payload.receiver || '-');
+      addDetail('Transaction NO.', payload.txnNo || payload.transaction_id || payload.reference || '-');
+
+      successModal.classList.add('show');
+      successModal.setAttribute('aria-hidden','false');
+      closeSuccessBtn.focus();
+    } catch (e) {
+      console.warn('showReturnPopupIfExists error', e);
+    }
+  })();
 
   viewTransactionsBtn.addEventListener('click', function(){
     successModal.classList.remove('show'); successModal.setAttribute('aria-hidden','true');
@@ -340,12 +302,8 @@
     }
   });
 
-  // check login
   if (!currentUser) {
     showErrorPopup("No logged-in user found. Please login first.", "Not logged in", function(){ window.location.href = "paymelogin.html"; });
-  } else {
-    // preload balance
-    fetchBalance().catch(()=>{});
   }
 </script>
 </body>
