@@ -82,6 +82,7 @@
   </div>
 
 <script>
+  // Improved towallet frontend — keeps all UI/markup exactly the same but hardens logic
   const API_BASE = "https://payme-update.onrender.com";
 
   const accountInput = document.getElementById("accountNumber");
@@ -128,17 +129,17 @@
   async function fetchBalance() {
     if (!currentUser || !currentUser.phone) return 0;
     try {
-      const res = await fetch(`${API_BASE}/balance/${currentUser.phone}`);
+      const res = await fetch(`${API_BASE}/balance/${encodeURIComponent(currentUser.phone)}`, { cache: 'no-store' });
       const data = await res.json().catch(()=>null);
-      if (res.ok && data && (data.balance !== undefined)) {
-        localStorage.setItem("balance", data.balance);
-        return parseFloat(data.balance);
+      if (res.ok && data && (data.balance !== undefined || data.new_balance !== undefined)) {
+        const bal = data.balance ?? data.new_balance;
+        localStorage.setItem("balance", String(bal));
+        return parseFloat(bal);
       }
-    } catch (e){}
+    } catch (e) { console.warn('fetchBalance error', e); }
     return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // must be a registered recipient
   async function lookupReceiver(acc) {
     receiverExists = false;
     receiverUsername = "";
@@ -158,11 +159,11 @@
     try {
       if (lookupController) lookupController.abort();
       lookupController = new AbortController();
-      const res = await fetch(`${API_BASE}/user_by_account/${acc}`, { signal: lookupController.signal });
+      const res = await fetch(`${API_BASE}/user_by_account/${encodeURIComponent(acc)}`, { signal: lookupController.signal });
       lookupController = null;
       const data = await res.json().catch(()=>null);
 
-      if (res.ok && data && data.status === "success" && (data.username || data.name)) {
+      if (res.ok && data && (data.status === "success" || data.found) && (data.username || data.name)) {
         receiverExists = true;
         receiverUsername = data.username || data.name || '';
         receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
@@ -202,7 +203,6 @@
   function lockUI(){ sendBtn.disabled = true; sendBtn.textContent = 'Processing...'; }
   function unlockUI(){ sendBtn.disabled = false; sendBtn.textContent = 'Send Money'; }
 
-  // click handler: builds pending_tx, ensures fresh balance, sets idempotency key and redirects
   sendBtn.addEventListener('click', async function(){
     lockUI();
     try {
@@ -232,7 +232,6 @@
         return;
       }
 
-      // fetch freshest balance from server (avoid stale localStorage)
       const balance = await fetchBalance();
       if (amount > balance) {
         showErrorPopup("Insufficient funds.", "Insufficient balance", function(){ unlockUI(); });
@@ -242,17 +241,25 @@
       const reference = generateReference();
       const amountKobo = Math.round(amount * 100);
 
+      // Build a robust pending object including multiple key names for compatibility
       const pending = {
-        phone: (currentUser && currentUser.phone) || null,
+        // sender identifiers
+        phone: (currentUser && currentUser.phone) || null,          // used by Mainauthentication
+        sender_phone: (currentUser && currentUser.phone) || null,   // alternative key
         sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
         senderAccount: (currentUser && (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber)) || '-',
+        sender_account: (currentUser && (currentUser.account_number || currentUser.acc_number || currentUser.accountNumber)) || '-',
+
+        // recipient identifiers
         receiver_acc: receiverAcc,
         recipient: receiverUsername || receiverAcc,
         recipientAccount: receiverAcc,
-        amount: amount,
-        amount_kobo: amountKobo,
         receiver_bank: "PAYME",
         receiver_bank_name: "PAYME",
+
+        // amounts & meta
+        amount: amount,
+        amount_kobo: amountKobo,
         network: "PAYME",
         product: 'towallet',
         created_at: new Date().toISOString(),
@@ -260,23 +267,28 @@
         idempotency_key: reference
       };
 
-      try { sessionStorage.setItem('pending_tx', JSON.stringify(pending)); }
-      catch (e) {
+      try {
+        sessionStorage.setItem('pending_tx', JSON.stringify(pending));
+      } catch (e) {
         console.error('session storage failed', e);
         showErrorPopup('Unable to create pending transaction. Try again.', 'Storage error', function(){ unlockUI(); });
         return;
       }
 
-      // Redirect to Mainauthentication for PIN confirmation and final execute
-      // Mainauthentication should read sessionStorage.pending_tx and use reference/idempotency_key
+      // For convenience: write a small flag so other tabs can detect a pending tx
+      try {
+        localStorage.setItem('payme_pending_tx_ts', String(Date.now()));
+      } catch(e) { /* ignore */ }
+
+      // Redirect to PIN page for verification and execution
       window.location.href = 'Mainauthentication.html';
 
     } finally {
-      // deliberately leave UI locked when redirecting; unlock only if needed
+      // intentionally keep UI locked while redirecting; if an error happened we already unlocked
     }
   });
 
-  // When returning from Mainauthentication, show success popup if last_tx_success is set in sessionStorage
+  // Show success modal when returning from Mainauthentication
   (function showReturnPopupIfExists(){
     try {
       const last = sessionStorage.getItem('last_tx_success');
@@ -303,7 +315,7 @@
       addDetail('Date/Time', payload.datetime || new Date().toLocaleString());
       addDetail('Sender', (payload.sender || (currentUser && (currentUser.username || currentUser.name))) || 'You');
       addDetail('Sender Account', (payload.senderAccount || (currentUser && currentUser.account_number)) || '-');
-      addDetail('Bank Name','PAYME');
+      addDetail('Bank Name', payload.bankName || 'PAYME');
       addDetail('Recipient', payload.recipient || payload.receiver_name || payload.receiver || '-');
       addDetail('Recipient Account', payload.recipientAccount || payload.receiver_acc || payload.receiver || '-');
       addDetail('Transaction NO.', payload.txnNo || payload.transaction_id || payload.reference || '-');
