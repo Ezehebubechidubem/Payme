@@ -104,7 +104,7 @@
   const currentUser = JSON.parse(localStorage.getItem("loggedInUser")) || JSON.parse(localStorage.getItem("user")) || null;
 
   let receiverExists = false;
-  let receiverUsername = "";
+  let receiverUsername = ""; // prefer username/name; never show raw account in UI
 
   function showErrorPopup(message, title = "Error", onOk = null) {
     errorHeader.textContent = title;
@@ -137,7 +137,7 @@
     return parseFloat(localStorage.getItem("balance")) || 0;
   }
 
-  // Must be a registered recipient
+  // Must be a registered recipient OR allow external transfer but show "Unregistered" (no raw account number shown)
   async function lookupReceiver(acc) {
     receiverExists = false;
     receiverUsername = "";
@@ -159,26 +159,25 @@
       const data = await res.json().catch(()=>null);
 
       if (res.ok && data && data.status === "success" && (data.username || data.name)) {
-        // Registered recipient -> normal flow
+        // Registered recipient -> use and show username/name only
         receiverExists = true;
         receiverUsername = data.username || data.name || '';
         receiverInfo.textContent = "✅ Receiver: " + receiverUsername;
         receiverInfo.style.display = "block";
         errorBox.style.display = "none";
       } else {
-        // NOT registered but allow transfer between phones: mark as valid recipient anyway.
-        receiverExists = true;
-        receiverUsername = acc;
-        // Show the receiver account info (keeps UI elements unchanged)
-        receiverInfo.textContent = "Receiver (external): " + acc;
+        // Not registered -> allow transfer, but DO NOT show the raw account number.
+        receiverExists = true;               // allow cross-phone transfer
+        receiverUsername = "";               // unknown
+        receiverInfo.textContent = "⚠️ Receiver: Unregistered";
         receiverInfo.style.display = "block";
         errorBox.style.display = "none";
       }
     } catch (err) {
-      // Network or other error while checking — allow transfer anyway.
+      // Network or other error while checking — allow transfer but do not show raw number
       receiverExists = true;
-      receiverUsername = acc;
-      receiverInfo.textContent = "Receiver (unverified): " + acc;
+      receiverUsername = "";
+      receiverInfo.textContent = "⚠️ Receiver: Unverified";
       receiverInfo.style.display = "block";
       errorBox.style.display = "none";
       console.warn('lookupReceiver error', err);
@@ -224,13 +223,14 @@
     }
 
     // Create pending_tx with all keys Mainauthentication expects
+    // NOTE: recipient uses username when known; otherwise we keep it blank so backend can process by account.
     const pending = {
       phone: (currentUser && currentUser.phone) || null,          // sender phone (Mainauth expects phone)
       sender: (currentUser && (currentUser.username || currentUser.name)) || 'You',
       senderAccount: (currentUser && (currentUser.account_number || '')) || '-',
       receiver_acc: receiverAcc,                                  // IMPORTANT: Mainauth expects this key
-      recipient: receiverUsername || receiverAcc,                // friendly recipient name
-      recipientAccount: receiverAcc,                             // keep backward compatibility
+      recipient: receiverUsername || '',                         // do NOT put the raw number here if username available; keep empty when unknown
+      recipientAccount: receiverAcc,                             // keep backward compatibility for backend processing
       amount: amount,
       receiver_bank: "PAYME",                                    // forced bank name
       receiver_bank_name: "PAYME",
