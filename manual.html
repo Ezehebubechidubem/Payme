@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BEWISE — Manual Credit & Debit</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .container{padding:18px}
+ .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 8px 20px rgba(15,23,42,0.06)}
+ input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px}
+ .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;font-weight:800;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
+  <h2 style="margin:6px 0">3 — Manual Credit & Debit</h2>
+  <div style="color:#6b7280">Add bonus, charge fee, give refund, reverse transaction.</div>
+</header>
+
+<div class="container">
+  <div class="card">
+    <h3 style="margin-top:0">Perform Manual Adjustment</h3>
+    <div style="display:grid;grid-template-columns:1fr 220px;gap:8px">
+      <input id="userId" placeholder="User phone/email/ID"/>
+      <select id="adjType">
+        <option value="credit">Credit (Add bonus / refund)</option>
+        <option value="debit">Debit (Charge fee)</option>
+        <option value="reverse">Reverse transaction</option>
+      </select>
+    </div>
+
+    <input id="amount" placeholder="Amount (e.g. 5000)" style="margin-top:8px"/>
+    <textarea id="reason" rows="3" placeholder="Reason / note" style="margin-top:8px"></textarea>
+
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn" onclick="applyAdjustment()">Apply Adjustment</button>
+      <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearForm()">Clear</button>
+    </div>
+
+    <div id="adjResult" style="margin-top:10px;color:#6b7280"></div>
+  </div>
+</div>
+
+<script>
+ function applyAdjustment(){
+   const user = document.getElementById('userId').value.trim();
+   const type = document.getElementById('adjType').value;
+   const amount = document.getElementById('amount').value.trim();
+   const reason = document.getElementById('reason').value.trim();
+   if(!user || !amount){ alert('User and amount are required'); return; }
+   // UI-only simulate:
+   document.getElementById('adjResult').innerText = `${type.toUpperCase()} of ₦${amount} applied to ${user}. Reason: ${reason}`;
+   // In real app: call backend to create audit & transaction record
+ }
+ function clearForm(){ document.getElementById('userId').value=''; document.getElementById('amount').value=''; document.getElementById('reason').value=''; document.getElementById('adjResult').innerText=''; }
+</script>
+</body>
+</html>
