@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Payme — Customer Complaints</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb;--shadow:0 8px 20px rgba(15,23,42,0.06)}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .container{display:flex;gap:18px;padding:18px}
+ .left{width:360px}
+ .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow)}
+ .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;font-weight:800;cursor:pointer}
+ table{width:100%;border-collapse:collapse;margin-top:10px}
+ th,td{padding:8px;border-bottom:1px solid #eee}
+ input,textarea,select{width:100%;padding:8px;border-radius:8px;border:1px solid #e6e6e6}
+ .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" style="text-decoration:none;color:var(--muted)">← Dashboard</a>
+  <h2 style="margin:6px 0">2 — Customer Complaints</h2>
+  <div class="muted">Track and resolve user complaints: missing transfers, wrong balance, wrong recipient, locked accounts.</div>
+</header>
+
+<div class="container">
+  <aside class="left">
+    <div class="card">
+      <h4 style="margin:0">Filters</h4>
+      <select id="filterType" style="margin-top:8px">
+        <option value="">All types</option>
+        <option>Missing transfer</option>
+        <option>Wrong balance</option>
+        <option>Wrong recipient</option>
+        <option>Locked account</option>
+      </select>
+      <input id="filterUser" placeholder="Filter by phone/email" style="margin-top:8px"/>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn" onclick="applyFilter()">Apply</button>
+        <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearFilter()">Clear</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h4 style="margin:0">Quick actions</h4>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        <button class="btn" onclick="location.href='manual.html'">Adjust Wallet Balance</button>
+        <button class="btn" onclick="location.href='fraud.html'">Investigate Fraud</button>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1">
+    <div class="card">
+      <h3 style="margin-top:0">Incoming Complaints</h3>
+      <table>
+        <thead><tr><th>ID</th><th>User</th><th>Type</th><th>Details</th><th>Action</th></tr></thead>
+        <tbody id="complaintsList"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3 style="margin-top:0">Resolve Complaint</h3>
+      <div style="display:grid;grid-template-columns:1fr 160px;gap:8px">
+        <input id="complUser" placeholder="User phone/email"/>
+        <select id="complAction">
+          <option>Investigate</option>
+          <option>Refund</option>
+          <option>Adjust balance</option>
+          <option>Escalate</option>
+        </select>
+      </div>
+      <textarea id="complNote" rows="3" placeholder="Notes or reason" style="margin-top:8px"></textarea>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn" onclick="resolveComplaint()">Submit</button>
+        <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearResolve()">Clear</button>
+      </div>
+      <div id="complResult" style="margin-top:8px;color:var(--muted)"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+ const sample = [
+  {id:'C1001',user:'+234703xxx',type:'Missing transfer',details:'Sent 5k to +234708xxx but not received'},
+  {id:'C1002',user:'+234701xxx',type:'Wrong balance',details:'Account shows lower balance'},
+  {id:'C1003',user:'+234800xxx',type:'Locked account',details:'Account locked after 5 wrong PINs'}
+ ];
+ function render(){
+   document.getElementById('complaintsList').innerHTML = sample.map(c=>`
+     <tr>
+       <td>${c.id}</td>
+       <td>${c.user}</td>
+       <td>${c.type}</td>
+       <td>${c.details}</td>
+       <td><button onclick="openComplaint('${c.id}')" style="padding:6px 8px;border-radius:6px;border:0;background:var(--green);color:#fff">Open</button></td>
+     </tr>
+   `).join('');
+ }
+ function openComplaint(id){
+   const c = sample.find(x=>x.id===id);
+   if(!c) return alert('Not found');
+   document.getElementById('complUser').value = c.user;
+   document.getElementById('complNote').value = `Opened complaint ${id}: ${c.details}`;
+ }
+ function resolveComplaint(){
+   const user = document.getElementById('complUser').value.trim();
+   const action = document.getElementById('complAction').value;
+   const note = document.getElementById('complNote').value.trim();
+   if(!user){ alert('Enter user'); return; }
+   document.getElementById('complResult').innerText = `Action "${action}" submitted for ${user}. Note: ${note}`;
+ }
+ function applyFilter(){ alert('Filter applied (UI only). Implement backend to filter server-side.'); }
+ function clearFilter(){ document.getElementById('filterType').value=''; document.getElementById('filterUser').value=''; render(); }
+ function clearResolve(){ document.getElementById('complUser').value=''; document.getElementById('complNote').value=''; document.getElementById('complResult').innerText=''; }
+ render();
+</script>
+</body>
+</html>
