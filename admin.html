@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>BEWISE — Admin Dashboard</title>
+<style>
+  :root{
+    --bg:#ffffff; --text:#000000; --muted:#6b7280;
+    --green:#10b981; --green-dark:#059669; --card:#f8fafb;
+    --shadow: 0 8px 20px rgba(15,23,42,0.06);
+  }
+  *{box-sizing:border-box;font-family:Inter, system-ui, Arial;}
+  body{margin:0;background:var(--bg);color:var(--text)}
+  .layout{display:flex;min-height:100vh}
+  aside{width:300px;padding:22px;border-right:1px solid #ececec}
+  .logo{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,var(--green),var(--green-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;margin-bottom:12px}
+  nav{display:flex;flex-direction:column;gap:8px}
+  a.navlink{display:block;padding:10px;border-radius:10px;text-decoration:none;color:var(--text);font-weight:700}
+  a.navlink:hover{background:#f3f7f6}
+  header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #f0f2f3}
+  main{flex:1;padding:22px}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow)}
+  .btn{padding:8px 12px;border-radius:8px;border:0;background:var(--green);color:#fff;font-weight:800;cursor:pointer}
+  .btn.ghost{background:transparent;border:2px solid var(--green);color:var(--green)}
+  .search{padding:8px 10px;border-radius:8px;border:1px solid #e6e6e6}
+  .quick-actions{display:flex;flex-direction:column;gap:8px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px;border-bottom:1px solid #eee;text-align:left}
+  @media(max-width:900px){aside{display:none}.metrics{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="logo">B</div>
+    <div style="font-weight:900">BEWISE Admin</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:12px">Crypto Trading & Fintech</div>
+    <nav>
+      <a class="navlink" href="index.html">🏠 Dashboard</a>
+      <a class="navlink" href="fraud.html">🛡️ 1 — Fraud Detection</a>
+      <a class="navlink" href="complaints.html">📣 2 — Customer Complaints</a>
+      <a class="navlink" href="manual.html">💸 3 — Manual Credit/Debit</a>
+      <a class="navlink" href="kyc.html">🪪 4 — KYC Verification</a>
+      <a class="navlink" href="monitoring.html">📊 5 — Monitoring</a>
+      <a class="navlink" href="control.html">⚙️ 6 — Control Services</a>
+      <a class="navlink" href="notifications.html">🔔 7 — Notifications</a>
+      <a class="navlink" href="staff.html">👥 8 — Staff Roles</a>
+      <a class="navlink" href="logs.html">📜 9 — Logs & Audits</a>
+      <a class="navlink" href="scaling.html">🚀 10 — Business Scaling</a>
+    </nav>
+    <div style="margin-top:18px;color:var(--muted)">Logged in as <strong>Dubem</strong></div>
+  </aside>
+
+  <div style="flex:1">
+    <header>
+      <div>
+        <h1 style="margin:0">Admin Dashboard</h1>
+        <div style="color:var(--muted);font-size:13px">Overview • Green primary buttons • White background • Black text</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="searchBox" class="search" placeholder="Search users, txns, logs..." />
+        <button class="btn ghost" onclick="location.href='notifications.html'">Broadcast</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="metrics">
+        <div class="card">
+          <div style="font-size:12px;color:var(--muted)">Total Volume (24h)</div>
+          <div style="font-size:20px;font-weight:900;margin-top:8px" id="vol">₦0.00</div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px;color:var(--muted)">Deposits</div>
+          <div style="font-size:20px;font-weight:900;margin-top:8px" id="dep">₦0.00</div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px;color:var(--muted)">Withdrawals</div>
+          <div style="font-size:20px;font-weight:900;margin-top:8px" id="wd">₦0.00</div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px;color:var(--muted)">Active Users</div>
+          <div style="font-size:20px;font-weight:900;margin-top:8px" id="users">0</div>
+        </div>
+      </section>
+
+      <section class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0">Recent Transactions</h3>
+            <div style="color:var(--muted);font-size:13px">Latest 10 — this is a UI prototype</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="location.href='manual.html'">Manual Credit/Debit</button>
+            <button class="btn ghost" onclick="location.href='logs.html'">View Logs</button>
+          </div>
+        </div>
+        <div style="margin-top:12px;overflow:auto">
+          <table>
+            <thead><tr><th>Tx ID</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody id="txBody">
+              <tr><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div class="card">
+          <h3 style="margin-top:0">Quick Actions</h3>
+          <div class="quick-actions">
+            <button class="btn" onclick="location.href='fraud.html'">Freeze Account / Fraud</button>
+            <button class="btn" onclick="location.href='complaints.html'">Handle Complaints</button>
+            <button class="btn" onclick="location.href='kyc.html'">Review KYC</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">Services</h3>
+          <p style="color:var(--muted);margin:0 0 10px 0">APIs & Fees control</p>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" onclick="location.href='control.html'">Service Control</button>
+            <button class="btn ghost" onclick="location.href='notifications.html'">Send Announcement</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">Compliance</h3>
+          <p style="color:var(--muted);margin:0 0 10px 0">KYC, logs & audits</p>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" onclick="location.href='logs.html'">View Logs</button>
+            <button class="btn ghost" onclick="location.href='monitoring.html'">Monitoring</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+  // Example UI-only default values (replace with backend)
+  document.getElementById('vol').innerText = '₦1,250,000';
+  document.getElementById('dep').innerText = '₦800,000';
+  document.getElementById('wd').innerText = '₦450,000';
+  document.getElementById('users').innerText = '1,234';
+  // tx table demo
+  const txBody = document.getElementById('txBody');
+  txBody.innerHTML = [
+    ['TX1001','+234703xxx','+234708xxx','₦5,000','Success','2025-11-25'],
+    ['TX1002','+234701xxx','+234709xxx','₦25,000','Failed','2025-11-25']
+  ].map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('');
+  // search example
+  document.getElementById('searchBox').addEventListener('keypress', (e)=> {
+    if(e.key==='Enter') alert('Search is UI-only in this frontend prototype. Integrate backend to run searches.');
+  });
+</script>
+</body>
+</html>
