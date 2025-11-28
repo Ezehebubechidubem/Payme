@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BEWISE — KYC Verification</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .container{display:flex;gap:18px;padding:18px}
+ .left{width:360px}
+ .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 8px 20px rgba(15,23,42,0.06)}
+ .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;font-weight:800;cursor:pointer}
+ img.preview{width:100%;border-radius:8px;border:1px solid #eee;margin-top:8px}
+ input,select,textarea{padding:8px;border-radius:8px;border:1px solid #e6e6e6;width:100%}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
+  <h2 style="margin:6px 0">4 — KYC Verification</h2>
+  <div style="color:#6b7280">Review NIN, BVN, government ID and selfie verification.</div>
+</header>
+
+<div class="container">
+  <aside class="left">
+    <div class="card">
+      <h4 style="margin:0">Filters</h4>
+      <select id="kycStatus" style="margin-top:8px">
+        <option value="">All statuses</option>
+        <option>Pending</option>
+        <option>Approved</option>
+        <option>Rejected</option>
+      </select>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn" onclick="applyKycFilter()">Apply</button>
+        <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearFilter()">Clear</button>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1">
+    <div class="card">
+      <h3 style="margin-top:0">KYC Requests</h3>
+      <div id="kycList"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+ const kyc = [
+   {id:'K1001',user:'+234703xxx',status:'Pending',doc:'NIN',image:'',note:'NIN uploaded'},
+   {id:'K1002',user:'+234701xxx',status:'Pending',doc:'BVN',image:'',note:'BVN mismatch'}
+ ];
+ function renderList(){
+   document.getElementById('kycList').innerHTML = kyc.map(item=>`
+     <div style="border-bottom:1px solid #eee;padding:10px 0;display:flex;justify-content:space-between;align-items:center">
+       <div>
+         <div style="font-weight:800">${item.user} • ${item.doc}</div>
+         <div style="color:#6b7280">${item.note}</div>
+         <div style="margin-top:6px"><strong>Status:</strong> ${item.status}</div>
+       </div>
+       <div style="display:flex;flex-direction:column;gap:8px">
+         <button style="padding:8px 10px;border-radius:8px;border:0;background:var(--green);color:#fff" onclick="approve('${item.id}')">Approve</button>
+         <button style="padding:8px 10px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="reject('${item.id}')">Reject</button>
+       </div>
+     </div>
+   `).join('');
+ }
+ function approve(id){
+   const i = kyc.find(x=>x.id===id); if(!i) return;
+   i.status='Approved';
+   renderList();
+   alert(`KYC ${id} approved — send notification to user.`);
+ }
+ function reject(id){
+   const i = kyc.find(x=>x.id===id); if(!i) return;
+   const reason = prompt('Reason for rejection:') || 'Not specified';
+   i.status='Rejected';
+   i.note += ` • Rejected: ${reason}`;
+   renderList();
+   alert(`KYC ${id} rejected. Reason: ${reason}`);
+ }
+ function applyKycFilter(){ alert('Filter applied UI-only. Connect backend to filter real data.'); }
+ function clearFilter(){ document.getElementById('kycStatus').value=''; renderList(); }
+ renderList();
+</script>
+</body>
+</html>
