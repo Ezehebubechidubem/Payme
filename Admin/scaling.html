@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BEWISE — Business Scaling</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .container{padding:18px}
+ .card{background:var(--card);padding:14px;border-radius:12px}
+ .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+ table{width:100%;border-collapse:collapse;margin-top:8px}
+ th,td{padding:8px;border-bottom:1px solid #eee}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
+  <h2 style="margin:6px 0">10 — Business Scaling</h2>
+  <div style="color:#6b7280">Metrics and tools for scaling: branches, roles, growth reports, automation.</div>
+</header>
+
+<div class="container">
+  <div class="card">
+    <h3 style="margin-top:0">Scaling Overview</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px">
+      <div style="background:#fff;padding:10px;border-radius:8px">Branches <div style="font-weight:800">3</div></div>
+      <div style="background:#fff;padding:10px;border-radius:8px">Monthly Active Users <div style="font-weight:800">12,300</div></div>
+      <div style="background:#fff;padding:10px;border-radius:8px">Monthly Volume <div style="font-weight:800">₦45,000,000</div></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <h4>Growth Actions</h4>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="alert('Open partner onboarding flow (backend required)')">Onboard Partners</button>
+        <button class="btn" onclick="alert('Open API keys management')">Issue API Keys</button>
+        <button class="btn" onclick="alert('Open tariff management')">Setup Tariffs</button>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <h4>Reports</h4>
+      <table>
+        <thead><tr><th>Report</th><th>Last Generated</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>Monthly P&L</td><td>2025-11-01</td><td><button class="btn" onclick="alert('Download report')">Download</button></td></tr>
+          <tr><td>Fraud Summary</td><td>2025-11-24</td><td><button class="btn" onclick="location.href='fraud.html'">Open</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>
