@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Payme — Logs & Audits</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .container{padding:18px}
+ .card{background:var(--card);padding:14px;border-radius:12px}
+ table{width:100%;border-collapse:collapse}
+ th,td{padding:8px;border-bottom:1px solid #eee}
+ input,select{padding:8px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px}
+ .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
+  <h2 style="margin:6px 0">9 — Logs & Audits</h2>
+  <div style="color:#6b7280">PIN attempts, login attempts, IP addresses, failed txns, suspicious behavior.</div>
+</header>
+
+<div class="container">
+  <div class="card">
+    <h3 style="margin-top:0">Search Logs</h3>
+    <div style="display:flex;gap:8px">
+      <input id="logQuery" placeholder="Search by user/IP/txid"/>
+      <button class="btn" onclick="searchLogs()">Search</button>
+    </div>
+    <div style="margin-top:12px">
+      <table>
+        <thead><tr><th>Time</th><th>Event</th><th>User</th><th>IP / Device</th></tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+ const logs = [
+   {t:'2025-11-25 12:34',e:'Failed PIN attempt',u:'+234703xxx',ip:'41.189.2.1 / Android'},
+   {t:'2025-11-25 13:05',e:'Login',u:'+234701xxx',ip:'197.210.0.2 / iPhone'},
+   {t:'2025-11-25 13:30',e:'Failed transfer - insufficient funds',u:'+234703xxx',ip:'41.189.2.1 / Android'},
+ ];
+ function renderRows(arr){
+   document.getElementById('logBody').innerHTML = arr.map(l=>`<tr><td>${l.t}</td><td>${l.e}</td><td>${l.u}</td><td>${l.ip}</td></tr>`).join('');
+ }
+ function searchLogs(){
+   const q = document.getElementById('logQuery').value.trim().toLowerCase();
+   if(!q){ renderRows(logs); return; }
+   const res = logs.filter(l=>JSON.stringify(l).toLowerCase().includes(q));
+   renderRows(res);
+ }
+ renderRows(logs);
+</script>
+</body>
+</html>
