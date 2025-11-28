@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BEWISE — Staff Roles</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .container{display:flex;gap:18px;padding:18px}
+ .card{background:var(--card);padding:14px;border-radius:12px}
+ input,select{padding:8px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px;width:100%}
+ .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+ table{width:100%;border-collapse:collapse;margin-top:8px}
+ th,td{padding:8px;border-bottom:1px solid #eee}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
+  <h2 style="margin:6px 0">8 — Staff Roles</h2>
+  <div style="color:#6b7280">Manage support, transaction-review, super-admin, API manager, developer roles.</div>
+</header>
+
+<div class="container">
+  <div class="card" style="width:380px">
+    <h4 style="margin-top:0">Create Staff</h4>
+    <input id="staffName" placeholder="Full name"/>
+    <input id="staffEmail" placeholder="Email"/>
+    <select id="staffRole">
+      <option>Customer-support</option>
+      <option>Transaction-review</option>
+      <option>Super admin</option>
+      <option>API manager</option>
+      <option>Developer</option>
+    </select>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" onclick="createStaff()">Create</button>
+      <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearForm()">Clear</button>
+    </div>
+    <div id="staffResult" style="margin-top:8px;color:#6b7280"></div>
+  </div>
+
+  <div class="card" style="flex:1">
+    <h4 style="margin-top:0">Existing Staff</h4>
+    <table>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Action</th></tr></thead>
+      <tbody id="staffList"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+ const staff = [
+   {name:'Aisha',email:'aisha@bewise.com',role:'Customer-support'},
+   {name:'Tunde',email:'tunde@bewise.com',role:'Super admin'}
+ ];
+ function render(){ document.getElementById('staffList').innerHTML = staff.map((s,i)=>`<tr><td>${s.name}</td><td>${s.email}</td><td>${s.role}</td><td><button onclick="removeStaff(${i})" style="padding:6px 8px;border-radius:6px;border:0;background:#ff4d4f;color:#fff">Remove</button></td></tr>`).join(''); }
+ function createStaff(){
+   const n=document.getElementById('staffName').value.trim(), e=document.getElementById('staffEmail').value.trim(), r=document.getElementById('staffRole').value;
+   if(!n||!e){ alert('Name & email required'); return; }
+   staff.push({name:n,email:e,role:r});
+   document.getElementById('staffResult').innerText='Staff created (UI-only)';
+   document.getElementById('staffName').value=''; document.getElementById('staffEmail').value='';
+   render();
+ }
+ function removeStaff(i){ if(!confirm('Remove staff?')) return; staff.splice(i,1); render(); }
+ function clearForm(){ document.getElementById('staffName').value=''; document.getElementById('staffEmail').value=''; document.getElementById('staffResult').innerText=''; }
+ render();
+</script>
+</body>
+</html>
