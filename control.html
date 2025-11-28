@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Payme — Services Control</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .container{display:flex;gap:18px;padding:18px}
+ .card{background:var(--card);padding:14px;border-radius:12px}
+ .switch{display:flex;align-items:center;gap:10px}
+ .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+ input[type=range]{width:100%}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
+  <h2 style="margin:6px 0">6 — Control Over Services</h2>
+  <div style="color:#6b7280">Switch APIs On/Off, change prices, referral bonus, service fees.</div>
+</header>
+
+<div class="container">
+  <div class="card" style="width:360px">
+    <h4 style="margin-top:0">Service Toggles</h4>
+    <div class="switch"><label>Airtime API</label><input id="airtime" type="checkbox" onchange="toggleService('Airtime',this.checked)"/></div>
+    <div class="switch" style="margin-top:8px"><label>Data API</label><input id="dataapi" type="checkbox" onchange="toggleService('Data',this.checked)"/></div>
+    <div class="switch" style="margin-top:8px"><label>Wallet Transfers</label><input id="wallet" type="checkbox" onchange="toggleService('Wallet Transfers',this.checked)"/></div>
+    <div style="margin-top:12px">
+      <h4 style="margin:0">Referral Bonus (%)</h4>
+      <input id="refBonus" type="range" min="0" max="50" value="10" oninput="updateRef(this.value)"/>
+      <div style="margin-top:6px;color:#6b7280">Current: <span id="refVal">10%</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="flex:1">
+    <h4 style="margin-top:0">Pricing & Fees</h4>
+    <div style="display:grid;grid-template-columns:1fr 200px;gap:8px">
+      <div>
+        <label>Service</label>
+        <select id="serviceSel" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e6e6;margin-top:6px">
+          <option value="airtime">Airtime</option>
+          <option value="data">Data</option>
+          <option value="transfer">Wallet Transfer</option>
+        </select>
+      </div>
+      <div>
+        <label>Fee (%)</label>
+        <input id="feeVal" type="number" value="1.5" style="padding:8px;border-radius:8px;border:1px solid #e6e6e6;margin-top:6px"/>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn" onclick="updateFee()">Save</button>
+      <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="resetFee()">Reset</button>
+    </div>
+
+    <div id="ctrlResult" style="margin-top:12px;color:#6b7280"></div>
+  </div>
+</div>
+
+<script>
+ function toggleService(name, on){
+   alert(`${name} turned ${on?'ON':'OFF'} (UI only)`);
+   document.getElementById('ctrlResult').innerText = `${name} now ${on?'ON':'OFF'}`;
+ }
+ function updateRef(v){ document.getElementById('refVal').innerText = `${v}%`; }
+ function updateFee(){
+   const s = document.getElementById('serviceSel').value;
+   const f = document.getElementById('feeVal').value;
+   document.getElementById('ctrlResult').innerText = `Updated ${s} fee to ${f}% (UI only)`;
+ }
+ function resetFee(){ document.getElementById('feeVal').value='1.5'; document.getElementById('ctrlResult').innerText='Reset to default'; }
+</script>
+</body>
+</html>
