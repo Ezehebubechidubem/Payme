@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Payme — Fraud Detection</title>
+<style>
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb;--shadow:0 8px 20px rgba(15,23,42,0.06)}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter, Arial}
+ header{padding:18px;border-bottom:1px solid #f0f2f3}
+ .wrap{display:flex;gap:18px;padding:18px}
+ .side{width:300px}
+ .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow);margin-bottom:12px}
+ .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;font-weight:800;cursor:pointer}
+ input,select{padding:10px;border-radius:8px;border:1px solid #e6e6e6;width:100%;margin-top:8px}
+ table{width:100%;border-collapse:collapse;margin-top:12px}
+ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+ .muted{color:var(--muted)}
+ a.back{display:inline-block;margin-bottom:8px;color:var(--muted);text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← Back to Dashboard</a>
+  <h2 style="margin:6px 0">1 — Fraud Detection & Control</h2>
+  <div class="muted">Freeze accounts, block suspicious txns, restore accounts, view IP/device and audit logs.</div>
+</header>
+
+<div class="wrap">
+  <aside class="side">
+    <div class="card">
+      <h4 style="margin:0">Quick Actions</h4>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+        <button class="btn" onclick="showFreeze()">Freeze Account</button>
+        <button class="btn" onclick="showBlock()">Block Transaction</button>
+        <button class="btn" onclick="showRestore()">Restore Account</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4 style="margin:0">Active Alerts</h4>
+      <div class="muted" id="alerts">No active alerts (frontend prototype)</div>
+    </div>
+  </aside>
+
+  <main style="flex:1">
+    <div class="card" id="freezeCard">
+      <h3 style="margin-top:0">Freeze / Suspend Account</h3>
+      <input id="freezeIdentifier" placeholder="Phone, email or user ID" />
+      <select id="freezeReason">
+        <option>Multiple failed PIN attempts</option>
+        <option>Suspected account takeover</option>
+        <option>Reported stolen phone</option>
+        <option>Money laundering suspicion</option>
+        <option>Other</option>
+      </select>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn" onclick="freezeAccount()">Freeze Now</button>
+        <button style="padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer" onclick="clearFreeze()">Clear</button>
+      </div>
+      <div id="freezeResult" style="margin-top:10px;color:var(--muted)"></div>
+    </div>
+
+    <div class="card" id="blockCard">
+      <h3 style="margin-top:0">Block Transaction</h3>
+      <input id="blockTx" placeholder="Transaction ID to block" />
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn" onclick="blockTxn()">Block Transaction</button>
+      </div>
+      <div id="blockResult" style="margin-top:10px;color:var(--muted)"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Recent Fraud-Related Logs</h3>
+      <table>
+        <thead><tr><th>Event</th><th>User</th><th>IP</th><th>Date</th></tr></thead>
+        <tbody id="fraudLogs">
+          <tr><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  function showFreeze(){ document.getElementById('freezeCard').scrollIntoView({behavior:'smooth'}); }
+  function showBlock(){ document.getElementById('blockCard').scrollIntoView({behavior:'smooth'}); }
+  function showRestore(){ alert('Restore flow: verify identity then unfreeze. Backend required.'); }
+
+  function freezeAccount(){
+    const id = document.getElementById('freezeIdentifier').value.trim();
+    const reason = document.getElementById('freezeReason').value;
+    if(!id){ alert('Enter user identifier to freeze'); return; }
+    // UI-only: simulate freeze
+    document.getElementById('freezeResult').innerText = `Account "${id}" frozen — reason: ${reason}`;
+    // append to fraud logs
+    const row = `<tr><td>Account frozen</td><td>${id}</td><td>192.0.2.1</td><td>${new Date().toLocaleString()}</td></tr>`;
+    document.getElementById('fraudLogs').insertAdjacentHTML('afterbegin', row);
+  }
+  function blockTxn(){
+    const tx = document.getElementById('blockTx').value.trim();
+    if(!tx){ alert('Enter transaction ID'); return; }
+    document.getElementById('blockResult').innerText = `Transaction ${tx} marked blocked.`;
+    const row = `<tr><td>Transaction blocked (${tx})</td><td>—</td><td>—</td><td>${new Date().toLocaleString()}</td></tr>`;
+    document.getElementById('fraudLogs').insertAdjacentHTML('afterbegin', row);
+  }
+  function clearFreeze(){
+    document.getElementById('freezeIdentifier').value='';
+    document.getElementById('freezeResult').innerText='';
+  }
+</script>
+</body>
+</html>
