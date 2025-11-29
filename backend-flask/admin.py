@@ -124,3 +124,8 @@ def delete_staff(staff_id):
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+@admin_bp.route("/staff/debug_create", methods=["POST"])
+def debug_create_staff():
+    data = request.get_json() or {}
+    print("DEBUG create payload:", data)
+    # then call same logic as create_staff and print results before return
