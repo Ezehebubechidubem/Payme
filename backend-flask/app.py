@@ -237,7 +237,7 @@ def init_db():
                 )
             """)
 
--- SQLite
+#-- SQLite
 CREATE TABLE IF NOT EXISTS staff (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS staff (
     created_at TEXT
 );
 
--- PostgreSQL
+#-- PostgreSQL
 CREATE TABLE IF NOT EXISTS staff (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
