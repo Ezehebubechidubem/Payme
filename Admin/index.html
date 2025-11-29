@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>BEWISE — Admin Dashboard</title>
+<title>Payme — Admin Dashboard</title>
 <style>
   :root{
     --bg:#ffffff; --text:#000000; --muted:#6b7280;
@@ -140,20 +140,19 @@
 </div>
 
 <script>
-const BACKEND = "https://payme-update.onrender.com"; // fixed URL, no spaces
+const BACKEND = "https://payme-update.onrender.com"; // replace with your backend
 
 async function loadMetrics() {
   try {
     const res = await fetch(`${BACKEND}/admin/metrics`);
-    if(!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
-    console.log("Metrics:", data); // debug
-
-    document.getElementById('vol').innerText = `₦${data.total_volume ?? 0}`;
-    document.getElementById('dep').innerText = `₦${data.deposits ?? 0}`;
-    document.getElementById('wd').innerText = `₦${data.withdrawals ?? 0}`;
-    document.getElementById('users').innerText = data.active_users ?? 0;
-  } catch (e) {
+    if(data.status==="success"){
+      document.getElementById('vol').innerText = `₦${data.total_volume.toLocaleString()}`;
+      document.getElementById('dep').innerText = `₦${data.deposits.toLocaleString()}`;
+      document.getElementById('wd').innerText = `₦${data.withdrawals.toLocaleString()}`;
+      document.getElementById('users').innerText = data.active_users;
+    }
+  } catch(e){
     console.error("Metrics load error:", e);
   }
 }
@@ -161,26 +160,23 @@ async function loadMetrics() {
 async function loadRecentTransactions() {
   try {
     const res = await fetch(`${BACKEND}/admin/recent_tx`);
-    if(!res.ok) throw new Error(`HTTP error ${res.status}`);
     const tx = await res.json();
     const txBody = document.getElementById('txBody');
-
-    if(tx.length === 0){
-      txBody.innerHTML = `<tr><td colspan="6">No transactions yet</td></tr>`;
+    if(tx.length===0){
+      txBody.innerHTML = `<tr><td colspan="6">No transactions found</td></tr>`;
       return;
     }
-
     txBody.innerHTML = tx.map(r => `
       <tr>
         <td>${r.id}</td>
-        <td>${r.type === "Transfer Out" ? "Self" : r.other_party}</td>
+        <td>${r.type==="Transfer Out" ? "Self" : r.other_party}</td>
         <td>${r.other_party}</td>
-        <td>₦${r.amount}</td>
+        <td>₦${Number(r.amount).toLocaleString()}</td>
         <td>Success</td>
         <td>${r.date}</td>
       </tr>
     `).join("");
-  } catch (e) {
+  } catch(e){
     console.error("Transactions load error:", e);
     document.getElementById('txBody').innerHTML = `<tr><td colspan="6">Error loading transactions</td></tr>`;
   }
