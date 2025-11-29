@@ -237,6 +237,25 @@ def init_db():
                 )
             """)
 
+-- SQLite
+CREATE TABLE IF NOT EXISTS staff (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT NOT NULL,
+    password TEXT NOT NULL,
+    created_at TEXT
+);
+
+-- PostgreSQL
+CREATE TABLE IF NOT EXISTS staff (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT NOT NULL,
+    password TEXT NOT NULL,
+    created_at TIMESTAMP
+);
 
 # -------------------------------------------------
 # Utilities
