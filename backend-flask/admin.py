@@ -157,6 +157,36 @@ def staff_debug_echo():
         "headers": dict(request.headers),
         "method": request.method
     })
+# --- Metrics ---
+@app.route("/admin/metrics", methods=["GET"])
+def admin_metrics():
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # Total deposits
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as deposits FROM transactions WHERE type = 'Deposit'")
+        deposits = cur.fetchone()["deposits"]
+
+        # Total withdrawals (Transfer Out)
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as withdrawals FROM transactions WHERE type = 'Transfer Out'")
+        withdrawals = cur.fetchone()["withdrawals"]
+
+        # Total volume
+        total_volume = deposits + withdrawals
+
+        # Active users (at least 1 transaction)
+        cur.execute("SELECT COUNT(DISTINCT user_id) as active_users FROM transactions")
+        active_users = cur.fetchone()["active_users"]
+
+    return jsonify({
+        "status": "success",
+        "deposits": deposits,
+        "withdrawals": withdrawals,
+        "total_volume": total_volume,
+        "active_users": active_users
+    }), 200
+
+# --- Recent Transactions ---
 @app.route("/admin/recent_tx", methods=["GET"])
 def admin_recent_tx():
     with get_conn() as conn:
@@ -167,42 +197,16 @@ def admin_recent_tx():
         """)
         rows = cur.fetchall()
 
+    # Convert to list of dicts
     result = [
         {
             "id": r["id"],
             "type": r["type"],
-            "amount": r["amount"],
+            "amount": float(r["amount"]),
             "other_party": r["other_party"],
             "date": r["date"]
         }
         for r in rows
     ]
-
     return jsonify(result), 200
-@app.route("/admin/metrics", methods=["GET"])
-def admin_metrics():
-    with get_conn() as conn:
-        cur = conn.cursor()
 
-        # Total deposits
-        cur.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'Deposit'")
-        deposits = cur.fetchone()[0]
-
-        # Total withdrawals (Transfer Out)
-        cur.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'Transfer Out'")
-        withdrawals = cur.fetchone()[0]
-
-        # Total volume = deposits + withdrawals
-        total_volume = deposits + withdrawals
-
-        # Active users = users with at least 1 transaction
-        cur.execute("SELECT COUNT(DISTINCT user_id) FROM transactions")
-        active_users = cur.fetchone()[0]
-
-    return jsonify({
-        "status": "success",
-        "deposits": deposits,
-        "withdrawals": withdrawals,
-        "total_volume": total_volume,
-        "active_users": active_users
-    }), 200
