@@ -1,39 +1,37 @@
 # admin.py
 import uuid
 import re
-from flask import Flask, jsonify
-from flask_cors import CORS
-import sqlite3  # or psycopg2 for Postgres
-import random
 import string
-from app import app
+import random
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
 
-app = Flask(__name__)
-DB_PATH = "your_db_file.db"
-
+# Admin blueprint
 admin_bp = Blueprint("admin_bp", __name__)
+
+# Global get_conn function to be injected
 _get_conn = None
 
-# Initialize admin module by injecting get_conn function from app.py
+# ---- Initialization ----
 def init_admin(get_conn_func):
+    """Inject get_conn function from main app"""
     global _get_conn
     _get_conn = get_conn_func
-    # ensure table exists (app.py may also already create it)
+
+    # Create staff table if not exists
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS staff (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                role TEXT NOT NULL,
-                password TEXT NOT NULL,
-                created_at TEXT
-            )
+                CREATE TABLE IF NOT EXISTS staff (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    role TEXT NOT NULL,
+                    password TEXT NOT NULL,
+                    created_at TEXT
+                )
             """)
             try:
                 conn.commit()
@@ -43,7 +41,7 @@ def init_admin(get_conn_func):
         current_app.logger.exception("init_admin/create table failed: %s", e)
         raise
 
-# ---- utilities ----
+# ---- Utility functions ----
 def _generate_password(length=10):
     chars = string.ascii_letters + string.digits + "!@#$%^&*()"
     return ''.join(random.choice(chars) for _ in range(length))
@@ -51,19 +49,14 @@ def _generate_password(length=10):
 def _validate_email(email):
     return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
 
-# ---- routes ----
-
+# ---- Staff routes ----
 @admin_bp.route("/staff/create", methods=["POST", "OPTIONS"])
 def create_staff():
-    # allow OPTIONS for CORS preflight
     if request.method == "OPTIONS":
         return "", 204
 
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
-
-    if not request.is_json:
-        return jsonify({"status":"error","message":"Content-Type must be application/json"}), 400
 
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
@@ -74,36 +67,32 @@ def create_staff():
         return jsonify({"status":"error","message":"All fields are required"}), 400
 
     if not _validate_email(email):
-        return jsonify({"status":"error","message":"Invalid email address"}), 400
+        return jsonify({"status":"error","message":"Invalid email"}), 400
 
-    # generate password and hash it
     plain_pw = _generate_password(10)
-    hashed = generate_password_hash(plain_pw)
+    hashed_pw = generate_password_hash(plain_pw)
     staff_id = str(uuid.uuid4())
     created_at = datetime.now().isoformat()
 
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
-            # check for duplicate email
             cur.execute("SELECT id FROM staff WHERE email = ?", (email,))
             if cur.fetchone():
                 return jsonify({"status":"error","message":"Email already exists"}), 400
 
             cur.execute(
                 "INSERT INTO staff (id, name, email, role, password, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (staff_id, name, email, role, hashed, created_at)
+                (staff_id, name, email, role, hashed_pw, created_at)
             )
             try:
                 conn.commit()
             except Exception:
                 pass
-
     except Exception as e:
         current_app.logger.exception("create_staff failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to create staff (see server logs)"}), 500
+        return jsonify({"status":"error","message":"Failed to create staff"}), 500
 
-    # return the plaintext password only once for admin to show to staff
     return jsonify({
         "status": "success",
         "staff": {"id": staff_id, "name": name, "email": email, "role": role},
@@ -121,7 +110,6 @@ def list_staff():
             rows = cur.fetchall()
             staff_list = []
             for r in rows:
-                # sqlite3.Row -> supports keys(); psycopg2 -> dict-like
                 if hasattr(r, "keys"):
                     staff_list.append({k: r[k] for k in r.keys()})
                 elif isinstance(r, dict):
@@ -153,66 +141,60 @@ def delete_staff(staff_id):
         return jsonify({"status":"error","message":"Failed to delete staff"}), 500
     return jsonify({"status":"success"}), 200
 
-# ---- small debug helper inside admin blueprint (optional) ----
-@admin_bp.route("/staff/debug_echo", methods=["POST","OPTIONS"])
-def staff_debug_echo():
-    if request.method == "OPTIONS":
-        return "", 204
-    return jsonify({
-        "received": request.get_json(silent=True),
-        "headers": dict(request.headers),
-        "method": request.method
-    })
-# --- Metrics ---
-@app.route("/admin/metrics", methods=["GET"])
+# ---- Admin metrics and recent transactions ----
+@admin_bp.route("/admin/metrics", methods=["GET"])
 def admin_metrics():
-    with get_conn() as conn:
-        cur = conn.cursor()
+    if _get_conn is None:
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
 
-        # Total deposits
-        cur.execute("SELECT COALESCE(SUM(amount), 0) as deposits FROM transactions WHERE type = 'Deposit'")
-        deposits = cur.fetchone()["deposits"]
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COALESCE(SUM(amount),0) as deposits FROM transactions WHERE type='Deposit'")
+            deposits = cur.fetchone()["deposits"]
 
-        # Total withdrawals (Transfer Out)
-        cur.execute("SELECT COALESCE(SUM(amount), 0) as withdrawals FROM transactions WHERE type = 'Transfer Out'")
-        withdrawals = cur.fetchone()["withdrawals"]
+            cur.execute("SELECT COALESCE(SUM(amount),0) as withdrawals FROM transactions WHERE type='Transfer Out'")
+            withdrawals = cur.fetchone()["withdrawals"]
 
-        # Total volume
-        total_volume = deposits + withdrawals
+            total_volume = deposits + withdrawals
 
-        # Active users (at least 1 transaction)
-        cur.execute("SELECT COUNT(DISTINCT user_id) as active_users FROM transactions")
-        active_users = cur.fetchone()["active_users"]
+            cur.execute("SELECT COUNT(DISTINCT user_id) as active_users FROM transactions")
+            active_users = cur.fetchone()["active_users"]
 
-    return jsonify({
-        "status": "success",
-        "deposits": deposits,
-        "withdrawals": withdrawals,
-        "total_volume": total_volume,
-        "active_users": active_users
-    }), 200
+        return jsonify({
+            "status": "success",
+            "deposits": deposits,
+            "withdrawals": withdrawals,
+            "total_volume": total_volume,
+            "active_users": active_users
+        }), 200
+    except Exception as e:
+        current_app.logger.exception("admin_metrics failed: %s", e)
+        return jsonify({"status":"error","message":"Failed to fetch metrics"}), 500
 
-# --- Recent Transactions ---
-@app.route("/admin/recent_tx", methods=["GET"])
+@admin_bp.route("/admin/recent_tx", methods=["GET"])
 def admin_recent_tx():
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, user_id, type, amount, other_party, date 
-            FROM transactions ORDER BY id DESC LIMIT 10
-        """)
-        rows = cur.fetchall()
+    if _get_conn is None:
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
 
-    # Convert to list of dicts
-    result = [
-        {
-            "id": r["id"],
-            "type": r["type"],
-            "amount": float(r["amount"]),
-            "other_party": r["other_party"],
-            "date": r["date"]
-        }
-        for r in rows
-    ]
-    return jsonify(result), 200
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, user_id, type, amount, other_party, date FROM transactions ORDER BY id DESC LIMIT 10")
+            rows = cur.fetchall()
 
+        result = []
+        for r in rows:
+            row = {
+                "id": r["id"],
+                "type": r["type"],
+                "amount": float(r["amount"]),
+                "other_party": r["other_party"],
+                "date": r["date"]
+            }
+            result.append(row)
+
+        return jsonify(result), 200
+    except Exception as e:
+        current_app.logger.exception("admin_recent_tx failed: %s", e)
+        return jsonify({"status":"error","message":"Failed to fetch recent transactions"}), 500
