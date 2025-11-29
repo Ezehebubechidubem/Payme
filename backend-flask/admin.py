@@ -1,28 +1,20 @@
 # admin.py
 import uuid
+import re
 import random
 import string
-import re
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
 
 admin_bp = Blueprint("admin_bp", __name__)
-
-# Will be set by init_admin(get_conn) from app.py
 _get_conn = None
 
+# Initialize admin module by injecting get_conn function from app.py
 def init_admin(get_conn_func):
-    """
-    Inject the DB connector function from app.py.
-    Call this from app.py AFTER get_conn() is defined:
-        from admin import admin_bp, init_admin
-        init_admin(get_conn)
-        app.register_blueprint(admin_bp, url_prefix="/api")
-    """
     global _get_conn
     _get_conn = get_conn_func
-    # ensure staff table exists
+    # ensure table exists (app.py may also already create it)
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
@@ -40,59 +32,33 @@ def init_admin(get_conn_func):
                 conn.commit()
             except Exception:
                 pass
-        current_app.logger.info("admin.init_admin: staff table ensured")
     except Exception as e:
-        # If current_app isn't available during import, fallback to print
-        try:
-            current_app.logger.exception("admin.init_admin failed: %s", e)
-        except Exception:
-            print("admin.init_admin failed:", e)
+        current_app.logger.exception("init_admin/create table failed: %s", e)
         raise
 
-# -------------------------
-# Helpers
-# -------------------------
-_email_re = re.compile(r"[^@]+@[^@]+\.[^@]+")
-
-def _is_email(s):
-    return bool(s and _email_re.match(s))
-
-def _rand_password(length=10):
+# ---- utilities ----
+def _generate_password(length=10):
     chars = string.ascii_letters + string.digits + "!@#$%^&*()"
     return ''.join(random.choice(chars) for _ in range(length))
 
-def _row_to_dict(r):
-    if r is None:
-        return None
-    if hasattr(r, "keys"):
-        return {k: r[k] for k in r.keys()}
-    if isinstance(r, dict):
-        return r
-    if isinstance(r, (list, tuple)):
-        return {
-            "id": r[0] if len(r) > 0 else None,
-            "name": r[1] if len(r) > 1 else None,
-            "email": r[2] if len(r) > 2 else None,
-            "role": r[3] if len(r) > 3 else None
-        }
-    return dict(r)
+def _validate_email(email):
+    return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
 
-# -------------------------
-# Routes (admin/staff)
-# -------------------------
+# ---- routes ----
 
 @admin_bp.route("/staff/create", methods=["POST", "OPTIONS"])
-def staff_create():
+def create_staff():
+    # allow OPTIONS for CORS preflight
     if request.method == "OPTIONS":
         return "", 204
 
     if _get_conn is None:
-        return jsonify({"status":"error","message":"DB connector not initialized"}), 500
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     if not request.is_json:
-        return jsonify({"status":"error","message":"JSON required"}), 400
+        return jsonify({"status":"error","message":"Content-Type must be application/json"}), 400
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     role = (data.get("role") or "").strip()
@@ -100,35 +66,37 @@ def staff_create():
     if not name or not email or not role:
         return jsonify({"status":"error","message":"All fields are required"}), 400
 
-    if not _is_email(email):
-        return jsonify({"status":"error","message":"Invalid email"}), 400
+    if not _validate_email(email):
+        return jsonify({"status":"error","message":"Invalid email address"}), 400
 
-    plain_pw = _rand_password(10)
-    hashed_pw = generate_password_hash(plain_pw)
+    # generate password and hash it
+    plain_pw = _generate_password(10)
+    hashed = generate_password_hash(plain_pw)
     staff_id = str(uuid.uuid4())
-    created_at = datetime.utcnow().isoformat()
+    created_at = datetime.now().isoformat()
 
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
-            # friendly duplicate check
+            # check for duplicate email
             cur.execute("SELECT id FROM staff WHERE email = ?", (email,))
             if cur.fetchone():
                 return jsonify({"status":"error","message":"Email already exists"}), 400
 
             cur.execute(
                 "INSERT INTO staff (id, name, email, role, password, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (staff_id, name, email, role, hashed_pw, created_at)
+                (staff_id, name, email, role, hashed, created_at)
             )
             try:
                 conn.commit()
             except Exception:
                 pass
-    except Exception as e:
-        current_app.logger.exception("staff_create failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to create staff"}), 500
 
-    # IMPORTANT: return plain password only once
+    except Exception as e:
+        current_app.logger.exception("create_staff failed: %s", e)
+        return jsonify({"status":"error","message":"Failed to create staff (see server logs)"}), 500
+
+    # return the plaintext password only once for admin to show to staff
     return jsonify({
         "status": "success",
         "staff": {"id": staff_id, "name": name, "email": email, "role": role},
@@ -136,26 +104,35 @@ def staff_create():
     }), 201
 
 @admin_bp.route("/staff/list", methods=["GET"])
-def staff_list():
+def list_staff():
     if _get_conn is None:
-        return jsonify({"status":"error","message":"DB connector not initialized"}), 500
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("SELECT id, name, email, role, created_at FROM staff ORDER BY created_at DESC")
             rows = cur.fetchall()
-            out = []
+            staff_list = []
             for r in rows:
-                out.append(_row_to_dict(r))
+                # sqlite3.Row -> supports keys(); psycopg2 -> dict-like
+                if hasattr(r, "keys"):
+                    staff_list.append({k: r[k] for k in r.keys()})
+                elif isinstance(r, dict):
+                    staff_list.append(r)
+                else:
+                    staff_list.append({
+                        "id": r[0], "name": r[1], "email": r[2], "role": r[3],
+                        "created_at": r[4] if len(r) > 4 else None
+                    })
     except Exception as e:
-        current_app.logger.exception("staff_list failed: %s", e)
+        current_app.logger.exception("list_staff failed: %s", e)
         return jsonify({"status":"error","message":"Unable to list staff"}), 500
-    return jsonify({"status":"success","staff": out}), 200
+    return jsonify({"status":"success","staff": staff_list}), 200
 
 @admin_bp.route("/staff/<staff_id>", methods=["DELETE"])
-def staff_delete(staff_id):
+def delete_staff(staff_id):
     if _get_conn is None:
-        return jsonify({"status":"error","message":"DB connector not initialized"}), 500
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
@@ -165,11 +142,11 @@ def staff_delete(staff_id):
             except Exception:
                 pass
     except Exception as e:
-        current_app.logger.exception("staff_delete failed: %s", e)
+        current_app.logger.exception("delete_staff failed: %s", e)
         return jsonify({"status":"error","message":"Failed to delete staff"}), 500
     return jsonify({"status":"success"}), 200
 
-# optional debug endpoint inside this blueprint (only for dev)
+# ---- small debug helper inside admin blueprint (optional) ----
 @admin_bp.route("/staff/debug_echo", methods=["POST","OPTIONS"])
 def staff_debug_echo():
     if request.method == "OPTIONS":
