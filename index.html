@@ -39,8 +39,8 @@
   <div class="form-container" role="main">
     <h2>Login</h2>
     <form id="loginForm" autocomplete="on" novalidate>
-      <label for="login">Username or Phone</label>
-      <input type="text" id="login" name="login" placeholder="Enter username or phone" required autocomplete="username">
+      <label for="login">Username or Email/Phone</label>
+      <input type="text" id="login" name="login" placeholder="Enter username, email, or phone" required autocomplete="username">
 
       <label for="password">Password</label>
       <input type="password" id="password" name="password" placeholder="Enter password" required autocomplete="current-password">
@@ -77,132 +77,154 @@
   </div>
 
   <script>
-    (function(){
-      // <-- your backend URL used explicitly as requested
-      const API = "https://payme-update.onrender.com/login";
+  (function(){
+    const API = "https://payme-update.onrender.com/login";
 
-      const form = document.getElementById('loginForm');
-      const loginInput = document.getElementById('login');
-      const pwdInput = document.getElementById('password');
-      const submitBtn = document.getElementById('submitBtn');
+    const form = document.getElementById('loginForm');
+    const loginInput = document.getElementById('login');
+    const pwdInput = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
 
-      const successModal = document.getElementById('successModal');
-      const successOk = document.getElementById('successOk');
-      const successText = document.getElementById('successText');
+    const successModal = document.getElementById('successModal');
+    const successOk = document.getElementById('successOk');
+    const successText = document.getElementById('successText');
 
-      const errorModal = document.getElementById('errorModal');
-      const errorOk = document.getElementById('errorOk');
-      const errorText = document.getElementById('errorText');
+    const errorModal = document.getElementById('errorModal');
+    const errorOk = document.getElementById('errorOk');
+    const errorText = document.getElementById('errorText');
 
-      function showSuccess(message, onOk) {
-        successText.textContent = message || "You are now logged in.";
-        successModal.classList.add('show');
-        successModal.setAttribute('aria-hidden', 'false');
-        successOk.focus();
-        successOk.onclick = () => {
-          hideModal(successModal);
-          successOk.onclick = null;
-          if (typeof onOk === 'function') onOk();
-        };
+    function showSuccess(message, onOk) {
+      successText.textContent = message || "You are now logged in.";
+      successModal.classList.add('show');
+      successModal.setAttribute('aria-hidden', 'false');
+      successOk.focus();
+      successOk.onclick = () => {
+        hideModal(successModal);
+        successOk.onclick = null;
+        if (typeof onOk === 'function') onOk();
+      };
+    }
+    function showError(message, onOk) {
+      errorText.textContent = message || "An error occurred.";
+      errorModal.classList.add('show');
+      errorModal.setAttribute('aria-hidden', 'false');
+      errorOk.focus();
+      errorOk.onclick = () => {
+        hideModal(errorModal);
+        errorOk.onclick = null;
+        if (typeof onOk === 'function') onOk();
+      };
+    }
+    function hideModal(m) {
+      m.classList.remove('show');
+      m.setAttribute('aria-hidden', 'true');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (successModal.classList.contains('show')) hideModal(successModal);
+        if (errorModal.classList.contains('show')) hideModal(errorModal);
       }
-      function showError(message, onOk) {
-        errorText.textContent = message || "An error occurred.";
-        errorModal.classList.add('show');
-        errorModal.setAttribute('aria-hidden', 'false');
-        errorOk.focus();
-        errorOk.onclick = () => {
-          hideModal(errorModal);
-          errorOk.onclick = null;
-          if (typeof onOk === 'function') onOk();
-        };
-      }
-      function hideModal(m) {
-        m.classList.remove('show');
-        m.setAttribute('aria-hidden', 'true');
-      }
+    });
 
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          if (successModal.classList.contains('show')) hideModal(successModal);
-          if (errorModal.classList.contains('show')) hideModal(errorModal);
-        }
-      });
+    function setLoading(isLoading) {
+      if (isLoading) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Logging in <span class="spinner" aria-hidden="true"></span>';
+      } else {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Login';
+      }
+    }
 
-      function setLoading(isLoading) {
-        if (isLoading) {
-          submitBtn.disabled = true;
-          submitBtn.innerHTML = 'Logging in <span class="spinner" aria-hidden="true"></span>';
-        } else {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = 'Login';
-        }
+    function looksLikeEmail(s) {
+      return typeof s === 'string' && s.includes('@') && s.indexOf(' ') === -1;
+    }
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const login = loginInput.value.trim();
+      const password = pwdInput.value;
+
+      if (!login || !password) {
+        showError('Please enter both login and password');
+        return;
       }
 
-      form.addEventListener('submit', async function (e) {
-        e.preventDefault();
+      const payload = { login, password };
+      if (looksLikeEmail(login)) payload.email = login;
 
-        const login = loginInput.value.trim();
-        const password = pwdInput.value;
+      setLoading(true);
+      try {
+        const res = await fetch(API, {
+          method: "POST",
+          credentials: 'include',
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(payload)
+        });
 
-        if (!login || !password) {
-          showError('Please enter both login and password');
-          return;
-        }
+        let data = null;
+        try { data = await res.json(); } catch (err) { data = null; }
 
-        setLoading(true);
-        try {
-          const res = await fetch(API, {
-            method: "POST",
-            credentials: 'include', // <<-- IMPORTANT: send session cookie to backend
-            headers: { "Content-Type": "application/json", "Accept": "application/json" },
-            body: JSON.stringify({ login, password })
-          });
+        if (res.ok && data && data.status === "success") {
+          const role = data.role || (data.user ? "user" : null);
 
-          let data = null;
-          try { data = await res.json(); } catch (err) { data = null; }
+          if (role === "admin") {
+            showSuccess("✅ Admin login successful", () => {
+              window.location.href = "admin.html";
+            });
+            return;
+          }
 
-          if (res.ok && data && data.status === "success" && data.user) {
-            // backend returns user with keys: id, username, phone, account_number, balance
+          if (role === "staff") {
+            showSuccess("✅ Staff login successful", () => {
+              window.location.href = "staff.html";
+            });
+            return;
+          }
+
+          if (role === "user" || data.user) {
             const backendUser = data.user || {};
             const user = {
               id: backendUser.id,
               username: backendUser.username,
               phone: backendUser.phone,
-              // keep both key shapes for compatibility across your app:
               account_number: backendUser.account_number || backendUser.accountNumber || null,
               accountNumber: backendUser.account_number || backendUser.accountNumber || null,
               balance: (backendUser.balance !== undefined) ? backendUser.balance : null
             };
-
-            // Save into localStorage exactly as many of your other pages expect
             localStorage.setItem("user", JSON.stringify(user));
             localStorage.setItem("loggedInUser", JSON.stringify(user));
 
             showSuccess("✅ Login successful!", () => {
-              // redirect to the requested page
-              window.location.href = "Loginauthentication.html";
+              window.location.href = "mainauthentication.html";
             });
             return;
           }
 
-          // if not OK, prefer JSON message; if missing, create friendly fallback
-          let msg = "Login failed";
-          if (data && data.message) msg = data.message;
-          else if (res.status === 401) msg = "Invalid credentials";
-          else if (res.status >= 500) msg = "Server error. Try again later.";
-          showError("❌ " + msg);
-
-        } catch (err) {
-          console.error("Login error:", err);
-          showError("⚠️ Server/network error. Please try again later.");
-        } finally {
-          setLoading(false);
+          showSuccess("✅ Login successful", () => {
+            window.location.href = "mainauthentication.html";
+          });
+          return;
         }
-      });
 
-      // Autofocus on load
-      window.addEventListener('load', () => loginInput.focus());
-    })();
+        let msg = "Login failed";
+        if (data && data.message) msg = data.message;
+        else if (res.status === 401) msg = "Invalid credentials";
+        else if (res.status >= 500) msg = "Server error. Try again later.";
+        showError("❌ " + msg);
+
+      } catch (err) {
+        console.error("Login error:", err);
+        showError("⚠️ Server/network error. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    window.addEventListener('load', () => loginInput.focus());
+  })();
   </script>
 </body>
 </html>
