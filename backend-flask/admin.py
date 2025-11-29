@@ -7,6 +7,7 @@ import string
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
+import traceback  # <-- for detailed error logs
 
 admin_bp = Blueprint("admin_bp", __name__)
 _get_conn = None  # Will be set via init_admin
@@ -53,27 +54,27 @@ def row_to_dict(cur, row):
 def create_staff():
     if request.method == "OPTIONS":
         return "", 204
-    if _get_conn is None:
-        return jsonify({"status":"error","message":"DB not initialized"}), 500
-    if not request.is_json:
-        return jsonify({"status":"error","message":"Content-Type must be application/json"}), 400
-
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    email = (data.get("email") or "").strip().lower()
-    role = (data.get("role") or "").strip()
-
-    if not name or not email or not role:
-        return jsonify({"status":"error","message":"All fields are required"}), 400
-    if not _validate_email(email):
-        return jsonify({"status":"error","message":"Invalid email address"}), 400
-
-    plain_pw = _generate_password(10)
-    hashed = generate_password_hash(plain_pw)
-    staff_id = str(uuid.uuid4())
-    created_at = datetime.now().isoformat()
-
     try:
+        if _get_conn is None:
+            return jsonify({"status":"error","message":"DB not initialized"}), 500
+        if not request.is_json:
+            return jsonify({"status":"error","message":"Content-Type must be application/json"}), 400
+
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        email = (data.get("email") or "").strip().lower()
+        role = (data.get("role") or "").strip()
+
+        if not name or not email or not role:
+            return jsonify({"status":"error","message":"All fields are required"}), 400
+        if not _validate_email(email):
+            return jsonify({"status":"error","message":"Invalid email address"}), 400
+
+        plain_pw = _generate_password(10)
+        hashed = generate_password_hash(plain_pw)
+        staff_id = str(uuid.uuid4())
+        created_at = datetime.now().isoformat()
+
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("SELECT id FROM staff WHERE email = ?", (email,))
@@ -85,63 +86,67 @@ def create_staff():
             )
             try: conn.commit()
             except Exception: pass
-    except Exception as e:
-        current_app.logger.exception("create_staff failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to create staff"}), 500
 
-    return jsonify({
-        "status": "success",
-        "staff": {"id": staff_id, "name": name, "email": email, "role": role},
-        "generated_password": plain_pw
-    }), 201
+        return jsonify({
+            "status": "success",
+            "staff": {"id": staff_id, "name": name, "email": email, "role": role},
+            "generated_password": plain_pw
+        }), 201
+    except Exception as e:
+        current_app.logger.error("create_staff failed: %s", traceback.format_exc())
+        return jsonify({"status":"error","message":"Failed to create staff, check server logs"}), 500
 
 @admin_bp.route("/staff/list", methods=["GET"])
 def list_staff():
-    if _get_conn is None:
-        return jsonify({"status":"error","message":"DB not initialized"}), 500
     try:
+        if _get_conn is None:
+            return jsonify({"status":"error","message":"DB not initialized"}), 500
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("SELECT id, name, email, role, created_at FROM staff ORDER BY created_at DESC")
             rows = cur.fetchall()
             staff_list = [row_to_dict(cur,r) for r in rows]
         return jsonify({"status":"success","staff":staff_list}), 200
-    except Exception as e:
-        current_app.logger.exception("list_staff failed: %s", e)
-        return jsonify({"status":"error","message":"Unable to list staff"}), 500
+    except Exception:
+        current_app.logger.error("list_staff failed: %s", traceback.format_exc())
+        return jsonify({"status":"error","message":"Unable to list staff, check server logs"}), 500
 
 @admin_bp.route("/staff/<staff_id>", methods=["DELETE"])
 def delete_staff(staff_id):
-    if _get_conn is None:
-        return jsonify({"status":"error","message":"DB not initialized"}), 500
     try:
+        if _get_conn is None:
+            return jsonify({"status":"error","message":"DB not initialized"}), 500
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("DELETE FROM staff WHERE id = ?", (staff_id,))
             try: conn.commit()
             except Exception: pass
         return jsonify({"status":"success"}), 200
-    except Exception as e:
-        current_app.logger.exception("delete_staff failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to delete staff"}), 500
+    except Exception:
+        current_app.logger.error("delete_staff failed: %s", traceback.format_exc())
+        return jsonify({"status":"error","message":"Failed to delete staff, check server logs"}), 500
 
 # ---- metrics ----
 @admin_bp.route("/admin/metrics", methods=["GET"])
 def admin_metrics():
-    if _get_conn is None:
-        return jsonify({"status":"error","message":"DB not initialized"}), 500
     try:
+        if _get_conn is None:
+            return jsonify({"status":"error","message":"DB not initialized"}), 500
         with _get_conn() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='Deposit'")
+
+            # deposits
+            cur.execute("SELECT COALESCE(SUM(amount),0) as deposits FROM transactions WHERE type='Deposit'")
             deposits = cur.fetchone()[0]
 
-            cur.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='Transfer Out'")
+            # withdrawals
+            cur.execute("SELECT COALESCE(SUM(amount),0) as withdrawals FROM transactions WHERE type='Transfer Out'")
             withdrawals = cur.fetchone()[0]
 
             total_volume = deposits + withdrawals
 
-            cur.execute("SELECT COUNT(DISTINCT user_id) FROM transactions")
+            # active users
+            cur.execute("SELECT COUNT(DISTINCT user_id) as active_users FROM transactions")
             active_users = cur.fetchone()[0]
 
         return jsonify({
@@ -151,16 +156,16 @@ def admin_metrics():
             "total_volume": total_volume,
             "active_users": active_users
         }), 200
-    except Exception as e:
-        current_app.logger.exception("admin_metrics failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to fetch metrics"}), 500
+    except Exception:
+        current_app.logger.error("admin_metrics failed: %s", traceback.format_exc())
+        return jsonify({"status":"error","message":"Failed to fetch metrics, see server logs"}), 500
 
 # ---- recent transactions ----
 @admin_bp.route("/admin/recent_tx", methods=["GET"])
 def admin_recent_tx():
-    if _get_conn is None:
-        return jsonify({"status":"error","message":"DB not initialized"}), 500
     try:
+        if _get_conn is None:
+            return jsonify({"status":"error","message":"DB not initialized"}), 500
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("""
@@ -171,6 +176,6 @@ def admin_recent_tx():
             result = [row_to_dict(cur,r) for r in rows]
 
         return jsonify(result), 200
-    except Exception as e:
-        current_app.logger.exception("admin_recent_tx failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to fetch recent transactions"}), 500
+    except Exception:
+        current_app.logger.error("admin_recent_tx failed: %s", traceback.format_exc())
+        return jsonify({"status":"error","message":"Failed to fetch recent transactions, see server logs"}), 500
