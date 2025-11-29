@@ -89,7 +89,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <h3 style="margin:0">Recent Transactions</h3>
-            <div style="color:var(--muted);font-size:13px">Latest 10 — this is a UI prototype</div>
+            <div style="color:var(--muted);font-size:13px">Latest 10</div>
           </div>
           <div style="display:flex;gap:8px">
             <button class="btn" onclick="location.href='manual.html'">Manual Credit/Debit</button>
@@ -100,7 +100,7 @@
           <table>
             <thead><tr><th>Tx ID</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
             <tbody id="txBody">
-              <tr><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td colspan="6">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -140,21 +140,50 @@
 </div>
 
 <script>
-  // Example UI-only default values (replace with backend)
-  document.getElementById('vol').innerText = '₦1,250,000';
-  document.getElementById('dep').innerText = '₦800,000';
-  document.getElementById('wd').innerText = '₦450,000';
-  document.getElementById('users').innerText = '1,234';
-  // tx table demo
-  const txBody = document.getElementById('txBody');
-  txBody.innerHTML = [
-    ['TX1001','+234703xxx','+234708xxx','₦5,000','Success','2025-11-25'],
-    ['TX1002','+234701xxx','+234709xxx','₦25,000','Failed','2025-11-25']
-  ].map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('');
-  // search example
-  document.getElementById('searchBox').addEventListener('keypress', (e)=> {
-    if(e.key==='Enter') alert('Search is UI-only in this frontend prototype. Integrate backend to run searches.');
-  });
+const BACKEND = "https://YOUR_BACKEND_URL"; // <-- replace with your actual backend URL
+
+async function loadMetrics() {
+  try {
+    const res = await fetch(`${BACKEND}/admin/metrics`);
+    const data = await res.json();
+
+    document.getElementById('vol').innerText = `₦${data.total_volume}`;
+    document.getElementById('dep').innerText = `₦${data.deposits}`;
+    document.getElementById('wd').innerText = `₦${data.withdrawals}`;
+    document.getElementById('users').innerText = data.active_users;
+  } catch (e) {
+    console.error("Metrics load error:", e);
+  }
+}
+
+async function loadRecentTransactions() {
+  try {
+    const res = await fetch(`${BACKEND}/admin/recent_tx`);
+    const tx = await res.json();
+
+    const txBody = document.getElementById('txBody');
+    txBody.innerHTML = tx.map(r => `
+      <tr>
+        <td>${r.id}</td>
+        <td>${r.type === "Transfer Out" ? "Self" : r.other_party}</td>
+        <td>${r.other_party}</td>
+        <td>₦${r.amount}</td>
+        <td>Success</td>
+        <td>${r.date}</td>
+      </tr>
+    `).join("");
+  } catch (e) {
+    console.error("Transactions load error:", e);
+  }
+}
+
+loadMetrics();
+loadRecentTransactions();
+
+// search box placeholder
+document.getElementById('searchBox').addEventListener('keypress', (e)=>{
+  if(e.key==='Enter') alert('Search not yet integrated with backend.');
+});
 </script>
 </body>
 </html>
