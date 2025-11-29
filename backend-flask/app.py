@@ -264,6 +264,12 @@ def init_db():
             )
             """)
             conn.commit()
+from admin import admin_bp, init_admin
+
+# Initialize the admin blueprint with your DB connector
+init_admin(get_conn)   # <-- pass the function, not a result
+app.register_blueprint(admin_bp)
+print("admin blueprint registered")
 # -------------------------------------------------
 # Utilities
 # -------------------------------------------------
