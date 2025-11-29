@@ -327,6 +327,42 @@ def login():
     login_value = data["login"].strip()
     password = data["password"]
 
+    # Admin shortcut: environment-driven admin user using hashed password
+    ADMIN_USERNAME_ENV = os.environ.get("ADMIN_USERNAME", "admin")
+    ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", None)
+    ADMIN_PASSWORD_PLAIN = os.environ.get("ADMIN_PASSWORD", None)  # fallback if hash not provided
+
+    if login_value == ADMIN_USERNAME_ENV:
+        # prefer hashed password check if provided
+        if ADMIN_PASSWORD_HASH:
+            try:
+                if check_password_hash(ADMIN_PASSWORD_HASH, password):
+                    session["is_admin"] = True
+                    session["admin_name"] = ADMIN_USERNAME_ENV
+                    return jsonify({
+                        "status": "success",
+                        "role": "admin",
+                        "admin_name": ADMIN_USERNAME_ENV,
+                        "message": "admin logged in"
+                    }), 200
+            except Exception:
+                # fall through to failure below
+                pass
+        else:
+            # fallback to plain-text admin check (only if ADMIN_PASSWORD set)
+            if ADMIN_PASSWORD_PLAIN and password == ADMIN_PASSWORD_PLAIN:
+                session["is_admin"] = True
+                session["admin_name"] = ADMIN_USERNAME_ENV
+                return jsonify({
+                    "status": "success",
+                    "role": "admin",
+                    "admin_name": ADMIN_USERNAME_ENV,
+                    "message": "admin logged in"
+                }), 200
+        # if admin username matched but password failed, return invalid credentials
+        return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+    # Existing user login flow (unchanged)
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -347,6 +383,7 @@ def login():
         account_number = row["account_number"]
         balance = row["balance"]
     except Exception:
+        # fallback for different row types
         stored_pw = row[3] if len(row) > 3 else None
         user_id = int(row[0]) if len(row) > 0 else None
         username = row[1] if len(row) > 1 else None
@@ -357,8 +394,50 @@ def login():
     if not stored_pw or not check_password_hash(stored_pw, password):
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
-    # Set session (optional)
+    # Set session for regular user
     session['user_id'] = user_id
+
+    # Detect if this user is a staff member (if staff table exists).
+    role = "user"
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # try matching staff by email (common) using username or raw login_value
+            s = None
+            try:
+                cur.execute("SELECT id, name, email, role FROM staff WHERE email = ? LIMIT 1", (username or login_value,))
+                s = cur.fetchone()
+            except Exception:
+                s = None
+
+            if not s:
+                try:
+                    cur.execute("SELECT id, name, email, role FROM staff WHERE email = ? LIMIT 1", (login_value,))
+                    s = cur.fetchone()
+                except Exception:
+                    s = None
+
+            if s:
+                # determine role value safely
+                try:
+                    role_val = None
+                    if isinstance(s, dict):
+                        role_val = s.get("role") or "staff"
+                    else:
+                        # tuple-like fallback
+                        role_val = s[3] if len(s) > 3 and s[3] else "staff"
+                    role = role_val
+                    session["is_staff"] = True
+                    try:
+                        session["staff_id"] = s["id"] if isinstance(s, dict) else (s[0] if len(s) > 0 else None)
+                        session["staff_name"] = s.get("name") if isinstance(s, dict) else (s[1] if len(s) > 1 else None)
+                    except Exception:
+                        pass
+                except Exception:
+                    role = "staff"
+    except Exception:
+        # ignore staff-detection failure — don't block login because staff table missing
+        pass
 
     user = {
         "id": user_id,
@@ -367,7 +446,7 @@ def login():
         "account_number": account_number,
         "balance": balance,
     }
-    return jsonify({"status": "success", "user": user}), 200
+    return jsonify({"status": "success", "role": role, "user": user}), 200
 
 # -------------------------------------------------
 # Money: balance, add, send, transactions, users
