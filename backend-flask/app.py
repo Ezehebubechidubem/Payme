@@ -236,7 +236,16 @@ def init_db():
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
             """)
-
+# Create staff table if not exists
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS staff (
+        id SERIAL PRIMARY KEY, -- use INTEGER PRIMARY KEY AUTOINCREMENT if SQLite
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'staff'
+    )
+""")
 # -------------------------------------------------
 # Utilities
 # -------------------------------------------------
