@@ -324,16 +324,24 @@ def login():
     if err:
         return err, code
 
-    login_value = data["login"].strip()
-    password = data["password"]
+    login_value = (data.get("login") or "").strip()
+    password = data.get("password", "")
+    payload_email = (data.get("email") or "").strip() or None
 
-    # Admin shortcut: environment-driven admin user using hashed password
+    # Admin config
     ADMIN_USERNAME_ENV = os.environ.get("ADMIN_USERNAME", "admin")
     ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", None)
-    ADMIN_PASSWORD_PLAIN = os.environ.get("ADMIN_PASSWORD", None)  # fallback if hash not provided
+    ADMIN_PASSWORD_PLAIN = os.environ.get("ADMIN_PASSWORD", None)
 
-    if login_value == ADMIN_USERNAME_ENV:
-        # prefer hashed password check if provided
+    # If plain admin provided but no hash, create an in-process hash for checks
+    if ADMIN_PASSWORD_PLAIN and not ADMIN_PASSWORD_HASH:
+        try:
+            ADMIN_PASSWORD_HASH = generate_password_hash(ADMIN_PASSWORD_PLAIN)
+        except Exception:
+            ADMIN_PASSWORD_HASH = None
+
+    # Admin shortcut (match by login or provided email)
+    if login_value == ADMIN_USERNAME_ENV or (payload_email and payload_email == ADMIN_USERNAME_ENV):
         if ADMIN_PASSWORD_HASH:
             try:
                 if check_password_hash(ADMIN_PASSWORD_HASH, password):
@@ -346,23 +354,97 @@ def login():
                         "message": "admin logged in"
                     }), 200
             except Exception:
-                # fall through to failure below
                 pass
-        else:
-            # fallback to plain-text admin check (only if ADMIN_PASSWORD set)
-            if ADMIN_PASSWORD_PLAIN and password == ADMIN_PASSWORD_PLAIN:
-                session["is_admin"] = True
-                session["admin_name"] = ADMIN_USERNAME_ENV
-                return jsonify({
-                    "status": "success",
-                    "role": "admin",
-                    "admin_name": ADMIN_USERNAME_ENV,
-                    "message": "admin logged in"
-                }), 200
-        # if admin username matched but password failed, return invalid credentials
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
+    # -------------------------
+    # STAFF: try staff authentication by email (preferred) or by login_value
+    # -------------------------
+    try:
+        # ensure staff table has password column (safe to run; ignore errors)
+        try:
+            with get_conn() as conn:
+                cur = conn.cursor()
+                # add password column if missing (no-op if exists)
+                try:
+                    cur.execute("ALTER TABLE staff ADD COLUMN password TEXT")
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
+                except Exception:
+                    # ignore: either column exists or alter not allowed
+                    pass
+        except Exception:
+            # ignore any connection / alter errors
+            pass
+
+        # look up staff row by provided email first, then username/login_value
+        staff_row = None
+        with get_conn() as conn:
+            cur = conn.cursor()
+            if payload_email:
+                try:
+                    cur.execute("SELECT id, name, email, role, password FROM staff WHERE email = ? LIMIT 1", (payload_email,))
+                    staff_row = cur.fetchone()
+                except Exception:
+                    staff_row = None
+
+            if not staff_row:
+                try:
+                    cur.execute("SELECT id, name, email, role, password FROM staff WHERE email = ? LIMIT 1", (login_value,))
+                    staff_row = cur.fetchone()
+                except Exception:
+                    staff_row = None
+    except Exception:
+        staff_row = None
+
+    # If staff row found and has a password hash, verify it
+    if staff_row:
+        try:
+            # support sqlite Row/dict or tuple
+            s_pass = None
+            s_id = None
+            s_name = None
+            s_role_val = None
+            if hasattr(staff_row, "keys"):  # sqlite Row or dict-like
+                s_pass = staff_row.get("password")
+                s_id = staff_row.get("id")
+                s_name = staff_row.get("name")
+                s_role_val = staff_row.get("role") or "staff"
+            else:
+                # tuple fallback: id, name, email, role, password
+                try:
+                    # in case ordering differs, try to extract safely
+                    s_id = staff_row[0] if len(staff_row) > 0 else None
+                    s_name = staff_row[1] if len(staff_row) > 1 else None
+                    s_role_val = staff_row[3] if len(staff_row) > 3 and staff_row[3] else "staff"
+                    s_pass = staff_row[4] if len(staff_row) > 4 else None
+                except Exception:
+                    s_pass = None
+
+            if s_pass:
+                try:
+                    if check_password_hash(s_pass, password):
+                        # staff authenticated
+                        session["is_staff"] = True
+                        try:
+                            session["staff_id"] = s_id
+                            session["staff_name"] = s_name
+                        except Exception:
+                            pass
+                        return jsonify({"status":"success","role":"staff","user":None}), 200
+                except Exception:
+                    # password check failure -> continue to user auth
+                    pass
+            # if no password set for staff or check failed, fallthrough to user auth
+        except Exception:
+            # ignore and fall through
+            pass
+
+    # -------------------------
     # Existing user login flow (unchanged)
+    # -------------------------
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -383,7 +465,7 @@ def login():
         account_number = row["account_number"]
         balance = row["balance"]
     except Exception:
-        # fallback for different row types
+        # fallback for tuple-like rows
         stored_pw = row[3] if len(row) > 3 else None
         user_id = int(row[0]) if len(row) > 0 else None
         username = row[1] if len(row) > 1 else None
@@ -397,13 +479,11 @@ def login():
     # Set session for regular user
     session['user_id'] = user_id
 
-    # Detect if this user is a staff member (if staff table exists).
+    # After successful user auth, detect if this user is also staff (staff email matching)
     role = "user"
     try:
         with get_conn() as conn:
             cur = conn.cursor()
-            # try matching staff by email (common) using username or raw login_value
-            s = None
             try:
                 cur.execute("SELECT id, name, email, role FROM staff WHERE email = ? LIMIT 1", (username or login_value,))
                 s = cur.fetchone()
@@ -418,25 +498,20 @@ def login():
                     s = None
 
             if s:
-                # determine role value safely
+                # if staff row exists but has no password, treat user as staff (legacy) OR mark staff role
                 try:
-                    role_val = None
                     if isinstance(s, dict):
-                        role_val = s.get("role") or "staff"
+                        role = s.get("role") or "staff"
+                        session["staff_id"] = s.get("id")
+                        session["staff_name"] = s.get("name")
                     else:
-                        # tuple-like fallback
-                        role_val = s[3] if len(s) > 3 and s[3] else "staff"
-                    role = role_val
+                        role = s[3] if len(s) > 3 and s[3] else "staff"
+                        session["staff_id"] = s[0] if len(s) > 0 else None
+                        session["staff_name"] = s[1] if len(s) > 1 else None
                     session["is_staff"] = True
-                    try:
-                        session["staff_id"] = s["id"] if isinstance(s, dict) else (s[0] if len(s) > 0 else None)
-                        session["staff_name"] = s.get("name") if isinstance(s, dict) else (s[1] if len(s) > 1 else None)
-                    except Exception:
-                        pass
                 except Exception:
                     role = "staff"
     except Exception:
-        # ignore staff-detection failure — don't block login because staff table missing
         pass
 
     user = {
@@ -446,7 +521,7 @@ def login():
         "account_number": account_number,
         "balance": balance,
     }
-    return jsonify({"status": "success", "role": role, "user": user}), 200
+    return jsonify({"status":"success","role": role, "user": user}), 200
 
 # -------------------------------------------------
 # Money: balance, add, send, transactions, users
