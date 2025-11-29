@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payme — Staff Roles</title>
+<title>PayMe — Staff Roles</title>
 <style>
- :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
- body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
- header{padding:18px;border-bottom:1px solid #f0f2f3}
- .container{display:flex;gap:18px;padding:18px}
- .card{background:var(--card);padding:14px;border-radius:12px}
- input,select{padding:8px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px;width:100%}
- .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
- table{width:100%;border-collapse:collapse;margin-top:8px}
- th,td{padding:8px;border-bottom:1px solid #eee}
+:root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+header{padding:18px;border-bottom:1px solid #f0f2f3}
+.container{display:flex;gap:18px;padding:18px}
+.card{background:var(--card);padding:14px;border-radius:12px}
+input,select{padding:8px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px;width:100%}
+.btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th,td{padding:8px;border-bottom:1px solid #eee}
 </style>
 </head>
 <body>
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
-  <h2 style="margin:6px 0">8 — Staff Roles</h2>
+  <h2 style="margin:6px 0">Staff Roles</h2>
   <div style="color:#6b7280">Manage support, transaction-review, super-admin, API manager, developer roles.</div>
 </header>
 <div class="container">
@@ -38,7 +38,7 @@
       <button class="btn" onclick="createStaff()">Create</button>
       <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearForm()">Clear</button>
     </div>
-    <div id="staffResult" style="margin-top:8px;color:#6b7280"></div>
+    <div id="staffResult" style="margin-top:8px;color:#6b7280;font-weight:bold"></div>
   </div>
   <div class="card" style="flex:1">
     <h4 style="margin-top:0">Existing Staff</h4>
@@ -50,20 +50,22 @@
 </div>
 
 <script>
-const API_BASE = "https://payme-update.onrender.com/api";
+const API_BASE = "https://payme-update.onrender.com/api"; // backend URL
 
+// Fetch all staff
 async function fetchStaff() {
   try {
     const res = await fetch(`${API_BASE}/staff/list`);
     const data = await res.json();
-    if (res.ok && Array.isArray(data.staff)) {
+    if(res.ok && Array.isArray(data.staff)){
       renderStaff(data.staff);
     }
-  } catch (err) { console.error(err); }
+  } catch(err){ console.error(err); }
 }
 
-function renderStaff(staffArray) {
-  document.getElementById('staffList').innerHTML = staffArray.map((s) =>
+// Render staff table
+function renderStaff(staffArray){
+  document.getElementById('staffList').innerHTML = staffArray.map(s =>
     `<tr>
       <td>${s.name}</td>
       <td>${s.email}</td>
@@ -74,30 +76,43 @@ function renderStaff(staffArray) {
     </tr>`).join('');
 }
 
-function clearForm() {
-  document.getElementById('staffName').value='';
-  document.getElementById('staffEmail').value='';
-  document.getElementById('staffResult').innerText='';
+// Clear input form
+function clearForm(){
+  document.getElementById('staffName').value = '';
+  document.getElementById('staffEmail').value = '';
+  document.getElementById('staffResult').innerText = '';
 }
 
-async function createStaff() {
+// Generate 10-character random password (frontend only, just for display)
+function generatePassword(length=10){
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
+  let pass = '';
+  for(let i=0;i<length;i++) pass += chars.charAt(Math.floor(Math.random()*chars.length));
+  return pass;
+}
+
+// Create new staff
+async function createStaff(){
   const name = document.getElementById('staffName').value.trim();
   const email = document.getElementById('staffEmail').value.trim();
   const role = document.getElementById('staffRole').value;
 
-  if(!name || !email){ alert('Name & email required'); return; }
+  if(!name || !email){
+    alert("Name & Email are required");
+    return;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/staff/create`, {
       method:'POST',
-      headers: {'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({name,email,role})
     });
 
     const data = await res.json();
-    
+
     if(res.ok && data.status==='success'){
-      document.getElementById('staffResult').innerText=
+      document.getElementById('staffResult').innerText = 
         `STAFF CREATED — Password: ${data.generated_password}`;
       clearForm();
       fetchStaff();
@@ -107,14 +122,16 @@ async function createStaff() {
   } catch(err){ console.error(err); }
 }
 
+// Remove staff
 async function removeStaff(id){
-  if(!confirm('Remove staff?')) return;
+  if(!confirm('Remove this staff?')) return;
   try {
-    const res = await fetch(`${API_BASE}/staff/${id}`,{method:'DELETE'});
+    const res = await fetch(`${API_BASE}/staff/${id}`, {method:'DELETE'});
     if(res.ok) fetchStaff();
   } catch(err){ console.error(err); }
 }
 
+// Initial load
 fetchStaff();
 </script>
 </body>
