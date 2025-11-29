@@ -52,38 +52,44 @@ def validate_email(email):
 @admin_bp.route("/staff/create", methods=["POST"])
 def create_staff():
     if _get_conn is None:
-        return jsonify({"status": "error", "message": "DB not initialized"}), 500
-    
-    data = request.get_json() or {}
-    name = data.get("name", "").strip()
-    email = data.get("email", "").strip()
-    role = data.get("role", "").strip()
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip()
+    role = (data.get("role") or "").strip()
+    if not (name and email and role):
+        return jsonify({"status":"error","message":"All fields are required"}), 400
 
-    if not name or not email or not role:
-        return jsonify({"status": "error", "message": "All fields are required"}), 400
-    
-    if not validate_email(email):
-        return jsonify({"status": "error", "message": "Invalid email"}), 400
+    # validate email simple
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        return jsonify({"status":"error","message":"Invalid email"}), 400
 
     password_plain = generate_password()
     password_hashed = generate_password_hash(password_plain)
-
     staff_id = str(uuid.uuid4())
     created_at = datetime.now().isoformat()
 
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO staff (id, name, email, role, password, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (staff_id, name, email, role, password_hashed, created_at))
+            cur.execute(
+                "INSERT INTO staff (id, name, email, role, password, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (staff_id, name, email, role, password_hashed, created_at)
+            )
             conn.commit()
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        msg = str(e)
+        # friendly duplicate email handling
+        if "UNIQUE" in msg.upper() and "EMAIL" in msg.upper():
+            return jsonify({"status":"error","message":"Email already exists"}), 400
+        print("create_staff error:", e)   # server logs
+        return jsonify({"status":"error","message":msg}), 500
 
-    return jsonify({"status": "success", "generated_password": password_plain}), 201
-
+    return jsonify({
+        "status":"success",
+        "staff":{"id":staff_id,"name":name,"email":email,"role":role},
+        "generated_password": password_plain
+    }), 201
 @admin_bp.route("/staff/list", methods=["GET"])
 def list_staff():
     if _get_conn is None:
