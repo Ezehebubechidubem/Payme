@@ -219,3 +219,52 @@ def search():
     }
     return jsonify(results)
 
+@app.route("/admin/recent_transactions", methods=["GET"])
+def admin_recent_transactions():
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT id, user_id, type, amount, other_party, date
+            FROM transactions
+            ORDER BY id DESC
+            LIMIT 10
+        """)
+
+        rows = cur.fetchall()
+
+    return jsonify([dict(r) for r in rows]), 200
+@app.route("/admin/metrics", methods=["GET"])
+def admin_metrics():
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # Total system volume (sum of all transactions)
+        cur.execute("SELECT SUM(amount) AS total FROM transactions")
+        volume = cur.fetchone()["total"] or 0.0
+
+        # Deposits
+        cur.execute("SELECT SUM(amount) AS total FROM transactions WHERE type = 'Deposit'")
+        deposits = cur.fetchone()["total"] or 0.0
+
+        # Withdrawals
+        cur.execute("SELECT SUM(amount) AS total FROM transactions WHERE type = 'Withdrawal'")
+        withdrawals = cur.fetchone()["total"] or 0.0
+
+        # Active users = users who made a transaction in last 30 days
+        cur.execute("""
+            SELECT COUNT(DISTINCT user_id) AS active
+            FROM transactions
+            WHERE date >= date('now', '-30 day')
+        """)
+        active_users = cur.fetchone()["active"] or 0
+
+    return jsonify({
+        "status": "success",
+        "metrics": {
+            "total_volume": volume,
+            "deposits": deposits,
+            "withdrawals": withdrawals,
+            "active_users": active_users
+        }
+    }), 200
