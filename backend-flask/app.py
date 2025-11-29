@@ -59,7 +59,9 @@ try:
 except Exception as e:
     print("Failed to register betting blueprint:", e)
 
-from admin import admin_bp
+from admin import admin_bp, init_admin
+
+init_admin(get_conn)      # pass the DB connection function
 app.register_blueprint(admin_bp)
 print("admin blueprint registered")
 
