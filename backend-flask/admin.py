@@ -178,3 +178,30 @@ def admin_recent_tx():
     ]
 
     return jsonify(result), 200
+@app.route("/admin/metrics", methods=["GET"])
+def admin_metrics():
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # Total deposits
+        cur.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'Deposit'")
+        deposits = cur.fetchone()[0]
+
+        # Total withdrawals (Transfer Out)
+        cur.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'Transfer Out'")
+        withdrawals = cur.fetchone()[0]
+
+        # Total volume = deposits + withdrawals
+        total_volume = deposits + withdrawals
+
+        # Active users = users with at least 1 transaction
+        cur.execute("SELECT COUNT(DISTINCT user_id) FROM transactions")
+        active_users = cur.fetchone()[0]
+
+    return jsonify({
+        "status": "success",
+        "deposits": deposits,
+        "withdrawals": withdrawals,
+        "total_volume": total_volume,
+        "active_users": active_users
+    }), 200
