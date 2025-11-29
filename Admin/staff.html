@@ -12,21 +12,28 @@ header{padding:18px;border-bottom:1px solid #f0f2f3}
 .card{background:var(--card);padding:14px;border-radius:12px}
 input,select{padding:8px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px;width:100%}
 .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+.table-wrap{overflow:auto}
 table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{padding:8px;border-bottom:1px solid #eee}
+th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+.small-muted{color:var(--muted);font-size:13px}
+.result-box{margin-top:10px;padding:10px;border-radius:8px;background:#f1f8f5;border:1px solid #d1f0df;color:#065f46}
+.copy-btn{background:#065f46;color:#fff;padding:6px 10px;border-radius:6px;border:0;cursor:pointer;margin-left:8px}
+.password-field{font-weight:700;letter-spacing:1px}
+.notice{margin-top:6px;font-size:13px;color:#374151}
 </style>
 </head>
 <body>
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
-  <h2 style="margin:6px 0">Staff Roles</h2>
-  <div style="color:#6b7280">Manage support, transaction-review, super-admin, API manager, developer roles.</div>
+  <h2 style="margin:6px 0">8 — Staff Roles</h2>
+  <div class="small-muted">Manage support, transaction-review, super-admin, API manager, developer roles.</div>
 </header>
+
 <div class="container">
   <div class="card" style="width:380px">
     <h4 style="margin-top:0">Create Staff</h4>
-    <input id="staffName" placeholder="Full name"/>
-    <input id="staffEmail" placeholder="Email"/>
+    <input id="staffName" placeholder="Full name" autocomplete="name"/>
+    <input id="staffEmail" placeholder="Email" type="email" autocomplete="email"/>
     <select id="staffRole">
       <option>Customer-support</option>
       <option>Transaction-review</option>
@@ -34,104 +41,187 @@ th,td{padding:8px;border-bottom:1px solid #eee}
       <option>API manager</option>
       <option>Developer</option>
     </select>
+
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn" onclick="createStaff()">Create</button>
       <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearForm()">Clear</button>
     </div>
-    <div id="staffResult" style="margin-top:8px;color:#6b7280;font-weight:bold"></div>
+
+    <div id="staffResult" style="margin-top:8px"></div>
+
+    <div id="passwordArea" style="display:none" class="result-box">
+      <div>Share this temporary password with the staff (show once):</div>
+      <div style="margin-top:8px;display:flex;align-items:center">
+        <div id="generatedPassword" class="password-field" style="background:#fff;padding:6px 10px;border-radius:6px"></div>
+        <button class="copy-btn" onclick="copyPassword()">Copy</button>
+      </div>
+      <div class="notice">Passwords are shown only once. Instruct staff to change it after first login.</div>
+    </div>
   </div>
+
   <div class="card" style="flex:1">
     <h4 style="margin-top:0">Existing Staff</h4>
-    <table>
-      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Action</th></tr></thead>
-      <tbody id="staffList"></tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Action</th></tr></thead>
+        <tbody id="staffList"></tbody>
+      </table>
+    </div>
+    <div id="listMsg" class="small-muted" style="margin-top:10px"></div>
   </div>
 </div>
 
 <script>
-const API_BASE = "https://payme-update.onrender.com/api"; // backend URL
+// ------ CONFIG ------
+const API_BASE = "https://payme-update.onrender.com/api"; // update if needed
 
-// Fetch all staff
-async function fetchStaff() {
-  try {
-    const res = await fetch(`${API_BASE}/staff/list`);
-    const data = await res.json();
-    if(res.ok && Array.isArray(data.staff)){
-      renderStaff(data.staff);
-    }
-  } catch(err){ console.error(err); }
+// ------ HELPERS ------
+function showResult(msg, isError=false){
+  const el = document.getElementById('staffResult');
+  el.innerText = msg;
+  el.style.color = isError ? '#b91c1c' : '#065f46';
 }
 
-// Render staff table
-function renderStaff(staffArray){
-  document.getElementById('staffList').innerHTML = staffArray.map(s =>
-    `<tr>
-      <td>${s.name}</td>
-      <td>${s.email}</td>
-      <td>${s.role}</td>
-      <td>
-        <button onclick="removeStaff('${s.id}')" style="padding:6px 8px;border-radius:6px;border:0;background:#ff4d4f;color:#fff">Remove</button>
-      </td>
-    </tr>`).join('');
-}
-
-// Clear input form
 function clearForm(){
   document.getElementById('staffName').value = '';
   document.getElementById('staffEmail').value = '';
   document.getElementById('staffResult').innerText = '';
+  hidePassword();
 }
 
-// Generate 10-character random password (frontend only, just for display)
-function generatePassword(length=10){
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
-  let pass = '';
-  for(let i=0;i<length;i++) pass += chars.charAt(Math.floor(Math.random()*chars.length));
-  return pass;
+// copy generated password to clipboard
+function copyPassword(){
+  const pw = document.getElementById('generatedPassword').innerText;
+  if(!pw) return;
+  navigator.clipboard?.writeText(pw).then(() => {
+    showResult('Password copied to clipboard');
+  }, () => {
+    showResult('Unable to copy — select and copy manually', true);
+  });
 }
 
-// Create new staff
+function showPassword(pw){
+  document.getElementById('generatedPassword').innerText = pw;
+  document.getElementById('passwordArea').style.display = 'block';
+  // auto-hide after 30s for safety
+  setTimeout(hidePassword, 30000);
+}
+
+function hidePassword(){
+  document.getElementById('passwordArea').style.display = 'none';
+  document.getElementById('generatedPassword').innerText = '';
+}
+
+// basic email check
+function isValidEmail(email){
+  return /\S+@\S+\.\S+/.test(email);
+}
+
+// ------ API CALLS ------
+async function fetchStaff(){
+  try {
+    document.getElementById('listMsg').innerText = 'Loading...';
+    const res = await fetch(`${API_BASE}/staff/list`);
+    const data = await res.json();
+    if(!res.ok) {
+      document.getElementById('listMsg').innerText = data.message || 'Failed to load staff';
+      return;
+    }
+    const staff = data.staff || [];
+    renderStaff(staff);
+    document.getElementById('listMsg').innerText = staff.length ? '' : 'No staff yet';
+  } catch(err){
+    console.error(err);
+    document.getElementById('listMsg').innerText = 'Unable to fetch staff';
+  }
+}
+
+function renderStaff(staffArray){
+  const tbody = document.getElementById('staffList');
+  if(!Array.isArray(staffArray)){ tbody.innerHTML = ''; return; }
+  tbody.innerHTML = staffArray.map(s => {
+    // support sqlite rows (dict-like) or arrays
+    const id = s.id || s['id'] || s[0] || '';
+    const name = s.name || s['name'] || s[1] || '';
+    const email = s.email || s['email'] || s[2] || '';
+    const role = s.role || s['role'] || s[3] || '';
+    return `<tr>
+      <td>${escapeHtml(name)}</td>
+      <td>${escapeHtml(email)}</td>
+      <td>${escapeHtml(role)}</td>
+      <td><button onclick="removeStaff('${id}')" style="padding:6px 8px;border-radius:6px;border:0;background:#ff4d4f;color:#fff">Remove</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// simple escape to avoid injection in table cells
+function escapeHtml(unsafe){
+  if(!unsafe) return '';
+  return String(unsafe).replace(/[&<>"'`=\/]/g, function(s){ return ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'
+  })[s]; });
+}
+
+// create staff (backend generates password and returns generated_password)
 async function createStaff(){
+  hidePassword();
   const name = document.getElementById('staffName').value.trim();
   const email = document.getElementById('staffEmail').value.trim();
   const role = document.getElementById('staffRole').value;
 
-  if(!name || !email){
-    alert("Name & Email are required");
-    return;
-  }
+  if(!name || !email){ alert('Name & email required'); return; }
+  if(!isValidEmail(email)){ alert('Enter a valid email'); return; }
 
   try {
+    showResult('Creating staff...');
     const res = await fetch(`${API_BASE}/staff/create`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name,email,role})
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, email, role})
     });
 
     const data = await res.json();
 
-    if(res.ok && data.status==='success'){
-      document.getElementById('staffResult').innerText = 
-        `STAFF CREATED — Password: ${data.generated_password}`;
-      clearForm();
-      fetchStaff();
-    } else {
-      document.getElementById('staffResult').innerText = data.message || 'Error creating staff';
+    if(!res.ok || data.status !== 'success'){
+      const msg = data.message || 'Failed to create staff';
+      showResult(msg, true);
+      return;
     }
-  } catch(err){ console.error(err); }
+
+    // show the generated password (backend must return generated_password)
+    if(data.generated_password){
+      showPassword(data.generated_password);
+      showResult('Staff created — password shown below. Copy and share securely.');
+    } else {
+      showResult('Staff created. (No password returned by backend)', true);
+    }
+
+    clearForm();
+    fetchStaff();
+  } catch(err){
+    console.error(err);
+    showResult('Error creating staff', true);
+  }
 }
 
-// Remove staff
 async function removeStaff(id){
-  if(!confirm('Remove this staff?')) return;
+  if(!confirm('Remove staff?')) return;
   try {
     const res = await fetch(`${API_BASE}/staff/${id}`, {method:'DELETE'});
-    if(res.ok) fetchStaff();
-  } catch(err){ console.error(err); }
+    if(res.ok){
+      showResult('Staff removed');
+      fetchStaff();
+    } else {
+      const data = await res.json();
+      showResult(data.message || 'Failed to remove', true);
+    }
+  } catch(err){
+    console.error(err);
+    showResult('Error removing staff', true);
+  }
 }
 
-// Initial load
+// initial load
 fetchStaff();
 </script>
 </body>
