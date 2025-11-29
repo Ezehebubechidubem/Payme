@@ -156,3 +156,25 @@ def staff_debug_echo():
         "headers": dict(request.headers),
         "method": request.method
     })
+@app.route("/admin/recent_tx", methods=["GET"])
+def admin_recent_tx():
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, user_id, type, amount, other_party, date 
+            FROM transactions ORDER BY id DESC LIMIT 10
+        """)
+        rows = cur.fetchall()
+
+    result = [
+        {
+            "id": r["id"],
+            "type": r["type"],
+            "amount": r["amount"],
+            "other_party": r["other_party"],
+            "date": r["date"]
+        }
+        for r in rows
+    ]
+
+    return jsonify(result), 200
