@@ -140,17 +140,19 @@
 </div>
 
 <script>
-const BACKEND = "https://payme-update.onrender.com"; // <-- replace with your actual backend URL
+const BACKEND = "https://payme-update.onrender.com"; // fixed URL, no spaces
 
 async function loadMetrics() {
   try {
     const res = await fetch(`${BACKEND}/admin/metrics`);
+    if(!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
+    console.log("Metrics:", data); // debug
 
-    document.getElementById('vol').innerText = `₦${data.total_volume}`;
-    document.getElementById('dep').innerText = `₦${data.deposits}`;
-    document.getElementById('wd').innerText = `₦${data.withdrawals}`;
-    document.getElementById('users').innerText = data.active_users;
+    document.getElementById('vol').innerText = `₦${data.total_volume ?? 0}`;
+    document.getElementById('dep').innerText = `₦${data.deposits ?? 0}`;
+    document.getElementById('wd').innerText = `₦${data.withdrawals ?? 0}`;
+    document.getElementById('users').innerText = data.active_users ?? 0;
   } catch (e) {
     console.error("Metrics load error:", e);
   }
@@ -159,9 +161,15 @@ async function loadMetrics() {
 async function loadRecentTransactions() {
   try {
     const res = await fetch(`${BACKEND}/admin/recent_tx`);
+    if(!res.ok) throw new Error(`HTTP error ${res.status}`);
     const tx = await res.json();
-
     const txBody = document.getElementById('txBody');
+
+    if(tx.length === 0){
+      txBody.innerHTML = `<tr><td colspan="6">No transactions yet</td></tr>`;
+      return;
+    }
+
     txBody.innerHTML = tx.map(r => `
       <tr>
         <td>${r.id}</td>
@@ -174,13 +182,13 @@ async function loadRecentTransactions() {
     `).join("");
   } catch (e) {
     console.error("Transactions load error:", e);
+    document.getElementById('txBody').innerHTML = `<tr><td colspan="6">Error loading transactions</td></tr>`;
   }
 }
 
 loadMetrics();
 loadRecentTransactions();
 
-// search box placeholder
 document.getElementById('searchBox').addEventListener('keypress', (e)=>{
   if(e.key==='Enter') alert('Search not yet integrated with backend.');
 });
