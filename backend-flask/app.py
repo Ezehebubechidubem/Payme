@@ -8,7 +8,6 @@ import math
 import time
 import uuid
 from datetime import datetime, timedelta
-from admin import admin_bp, init_staff_table
 
 from flask import Flask, request, jsonify, make_response, session
 from flask_cors import CORS
@@ -1527,8 +1526,17 @@ def execute_transfer():
         traceback.print_exc()
         return jsonify({"status":"error","message":"Internal server error", "details": str(e)}), 500
 
-init_staff_table()
+# ---------------------------------------
+# IMPORT ADMIN BLUEPRINT (after get_conn)
+# ---------------------------------------
+from admin import admin_bp, init_admin
+
+# pass DB connector function to admin module
+init_admin(get_conn)
+
+# register blueprint
 app.register_blueprint(admin_bp, url_prefix="/api")
+print("admin blueprint registered")
 # -------------------------------------------------
 # Startup
 # -------------------------------------------------
