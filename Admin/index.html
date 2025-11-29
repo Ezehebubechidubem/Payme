@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>BEWISE — Admin Dashboard</title>
+<title>Payme— Admin Dashboard</title>
 <style>
   :root{
     --bg:#ffffff; --text:#000000; --muted:#6b7280;
@@ -13,7 +13,8 @@
   *{box-sizing:border-box;font-family:Inter, system-ui, Arial;}
   body{margin:0;background:var(--bg);color:var(--text)}
   .layout{display:flex;min-height:100vh}
-  aside{width:300px;padding:22px;border-right:1px solid #ececec;transition: transform 0.3s ease;}
+  aside{width:300px;padding:22px;border-right:1px solid #ececec;transition:transform 0.3s ease;}
+  aside.hidden{transform:translateX(-100%)}
   .logo{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,var(--green),var(--green-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;margin-bottom:12px}
   nav{display:flex;flex-direction:column;gap:8px}
   a.navlink{display:block;padding:10px;border-radius:10px;text-decoration:none;color:var(--text);font-weight:700}
@@ -33,13 +34,12 @@
   .popup button{margin-top:12px;}
   .overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);display:none;z-index:900;}
   .hamburger{display:none;cursor:pointer;font-size:24px;font-weight:900;user-select:none;}
+  .tx-container{max-height:200px;overflow-y:auto;margin-top:12px;}
   @media(max-width:900px){
-    aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);transform:translateX(-100%);}
-    aside.active{transform:translateX(0);}
+    aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);z-index:800}
     .hamburger{display:block;}
     .metrics{grid-template-columns:repeat(2,1fr)}
   }
-  .tx-container{max-height:200px;overflow-y:auto;}
 </style>
 </head>
 <body>
@@ -117,12 +117,10 @@
             <button class="btn ghost" onclick="location.href='./logs.html'">View Logs</button>
           </div>
         </div>
-        <div class="tx-container" id="txContainer">
+        <div class="tx-container">
           <table>
             <thead><tr><th>Tx ID</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
-            <tbody id="txBody">
-              <tr><td colspan="6">Loading...</td></tr>
-            </tbody>
+            <tbody id="txBody"><tr><td colspan="6">Loading...</td></tr></tbody>
           </table>
         </div>
         <div style="display:flex;gap:8px;margin-top:6px;">
@@ -166,94 +164,63 @@
 </div>
 
 <script>
-const BACKEND = "https://payme-update.onrender.com"; // replace with your backend
+const BACKEND = "https://your-backend-url.com"; // replace with your backend
+let allTx=[], showing=5;
 
-let allTransactions = [];
-let showingCount = 5;
+// Hamburger
+const hamburger=document.getElementById('hamburger');
+const sidebar=document.getElementById('sidebar');
+hamburger.addEventListener('click',()=>{sidebar.classList.toggle('hidden');});
 
-async function loadMetrics() {
-  try {
-    const res = await fetch(`${BACKEND}/admin/metrics`);
-    const data = await res.json();
-    if(data.status === "success") {
-      document.getElementById('vol').innerText = `₦${data.total_volume}`;
-      document.getElementById('dep').innerText = `₦${data.deposits}`;
-      document.getElementById('wd').innerText = `₦${data.withdrawals}`;
-      document.getElementById('users').innerText = data.active_users;
-    } else {
-      showPopup(data.message || "Error loading metrics");
-    }
-  } catch(e) {
-    showPopup(e);
-  }
+// Popups
+const popup=document.getElementById('popup');
+const overlay=document.getElementById('overlay');
+function showPopup(msg){document.getElementById('popupMessage').innerText=msg;popup.style.display='block';overlay.style.display='block';}
+function closePopup(){popup.style.display='none';overlay.style.display='none';}
+
+// Metrics
+async function loadMetrics(){
+  try{
+    const res=await fetch(`${BACKEND}/admin/metrics`);
+    const data=await res.json();
+    if(data.status==="success"){
+      document.getElementById('vol').innerText=`₦${data.total_volume}`;
+      document.getElementById('dep').innerText=`₦${data.deposits}`;
+      document.getElementById('wd').innerText=`₦${data.withdrawals}`;
+      document.getElementById('users').innerText=data.active_users;
+    }else showPopup(data.message||"Error loading metrics");
+  }catch(e){showPopup(e);}
 }
 
-async function loadRecentTransactions() {
-  try {
-    const res = await fetch(`${BACKEND}/admin/recent_tx`);
-    const tx = await res.json();
-    if(Array.isArray(tx)) {
-      allTransactions = tx;
-      renderTransactions();
-    } else {
-      showPopup(tx.message || "Unexpected response for transactions");
-    }
-  } catch(e) {
-    showPopup(e);
-  }
+// Recent Transactions
+async function loadTx(){
+  try{
+    const res=await fetch(`${BACKEND}/admin/recent_tx`);
+    const tx=await res.json();
+    if(Array.isArray(tx)){allTx=tx;renderTx();}
+    else showPopup(tx.message||"Unexpected response");
+  }catch(e){showPopup(e);}
 }
-
-function renderTransactions() {
-  const txBody = document.getElementById('txBody');
-  const visibleTx = allTransactions.slice(0, showingCount);
-  txBody.innerHTML = visibleTx.map(r => `
-    <tr>
-      <td>${r.id}</td>
-      <td>${r.type === "Transfer Out" ? "Self" : r.other_party}</td>
-      <td>${r.other_party}</td>
-      <td>₦${r.amount}</td>
-      <td>Success</td>
-      <td>${r.date}</td>
-    </tr>
-  `).join("");
+function renderTx(){
+  const body=document.getElementById('txBody');
+  const visible=allTx.slice(0,showing);
+  body.innerHTML=visible.map(r=>`<tr>
+    <td>${r.id}</td>
+    <td>${r.type==="Transfer Out"?"Self":r.other_party}</td>
+    <td>${r.other_party}</td>
+    <td>₦${r.amount}</td>
+    <td>Success</td>
+    <td>${r.date}</td>
+  </tr>`).join("");
 }
+document.getElementById('seeMore').addEventListener('click',()=>{showing=Math.min(allTx.length,showing+5);renderTx();});
+document.getElementById('seeLess').addEventListener('click',()=>{showing=Math.max(5,showing-5);renderTx();});
 
-document.getElementById('seeMore').addEventListener('click', () => {
-  showingCount = Math.min(allTransactions.length, showingCount + 5);
-  renderTransactions();
-});
-
-document.getElementById('seeLess').addEventListener('click', () => {
-  showingCount = Math.max(5, showingCount - 5);
-  renderTransactions();
-});
-
-document.getElementById('searchBox').addEventListener('keypress', (e)=>{
-  if(e.key==='Enter') showPopup('Search not yet integrated with backend.');
-});
-
-// Hamburger menu toggle
-const hamburger = document.getElementById('hamburger');
-const sidebar = document.getElementById('sidebar');
-hamburger.addEventListener('click', () => {
-  sidebar.classList.toggle('active');
-});
-
-// Popup functions
-const popup = document.getElementById('popup');
-const overlay = document.getElementById('overlay');
-function showPopup(message){
-  document.getElementById('popupMessage').innerText = message;
-  popup.style.display = 'block';
-  overlay.style.display = 'block';
-}
-function closePopup(){
-  popup.style.display = 'none';
-  overlay.style.display = 'none';
-}
+// Search box popup
+document.getElementById('searchBox').addEventListener('keypress',(e)=>{if(e.key==='Enter')showPopup('Search not yet integrated with backend.')});
 
 loadMetrics();
-loadRecentTransactions();
+loadTx();
 </script>
 </body>
 </html>
