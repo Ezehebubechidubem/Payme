@@ -148,14 +148,19 @@ class PGConnectionContext:
             pass
 
 def get_conn():
+    """
+    Returns a valid DB connection:
+    - PGConnectionContext for Postgres
+    - SQLite connection for SQLite
+    """
     if DATABASE_URL:
         return PGConnectionContext(DATABASE_URL)
     else:
         conn = sqlite3.connect(DB, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        with conn:
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA foreign_keys=ON;")
+        # DO NOT use "with conn:" here
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
         return conn
 
 def init_db():
