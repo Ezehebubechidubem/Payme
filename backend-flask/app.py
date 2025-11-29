@@ -423,8 +423,10 @@ def login():
 
     return jsonify({"status":"success","role":"user","user":user}), 200
 
-# ---------- List Staff ----------
-@staff_bp.route('/list', methods=['GET'])
+
+# ---------- Staff Routes ----------
+
+@app.route("/api/staff/list", methods=["GET"])
 def list_staff():
     try:
         conn = get_conn()
@@ -433,7 +435,6 @@ def list_staff():
         rows = cur.fetchall()
         staff_list = []
         for r in rows:
-            # sqlite Row or Postgres dict
             staff_list.append({
                 'id': r['id'] if DATABASE_URL else r[0],
                 'name': r['name'] if DATABASE_URL else r[1],
@@ -444,14 +445,14 @@ def list_staff():
     except Exception as e:
         return jsonify({'staff': [], 'error': str(e)}), 500
 
-# ---------- Create Staff ----------
-@staff_bp.route('/create', methods=['POST'])
+
+@app.route("/api/staff/create", methods=["POST"])
 def create_staff():
     data = request.get_json()
-    name = data.get('name')
-    email = data.get('email')
-    role = data.get('role')
-    password = data.get('password')  # frontend-generated
+    name = data.get("name")
+    email = data.get("email")
+    role = data.get("role")
+    password = data.get("password")  # frontend sends generated password
 
     if not name or not email or not role or not password:
         return jsonify({'status':'error', 'message':'Name, email, role, and password required'}), 400
@@ -476,21 +477,21 @@ def create_staff():
         if DATABASE_URL:
             cur.execute(
                 "INSERT INTO staff (id, name, email, role, password, created_at) VALUES (%s,%s,%s,%s,%s,%s)",
-                (staff_id, name, email, role, hashed_password, now_iso())
+                (staff_id, name, email, role, hashed_password, datetime.now())
             )
+            conn.commit()
         else:
             cur.execute(
                 "INSERT INTO staff (id, name, email, role, password, created_at) VALUES (?,?,?,?,?,?)",
-                (staff_id, name, email, role, hashed_password, now_iso())
+                (staff_id, name, email, role, hashed_password, datetime.now().isoformat())
             )
-        if DATABASE_URL:
-            conn.commit()
+
         return jsonify({'status':'success', 'staff': {'id': staff_id, 'name': name, 'email': email, 'role': role}})
     except Exception as e:
         return jsonify({'status':'error', 'message': str(e)}), 500
 
-# ---------- Delete Staff ----------
-@staff_bp.route('/<staff_id>', methods=['DELETE'])
+
+@app.route("/api/staff/<staff_id>", methods=["DELETE"])
 def delete_staff(staff_id):
     try:
         conn = get_conn()
@@ -505,10 +506,10 @@ def delete_staff(staff_id):
             cur.execute("DELETE FROM staff WHERE id=?", (staff_id,))
             if cur.rowcount == 0:
                 return jsonify({'status':'error', 'message':'Staff not found'}), 404
+
         return jsonify({'status':'success', 'message':'Staff removed'})
     except Exception as e:
         return jsonify({'status':'error', 'message': str(e)}), 500
-
 
 # -------------------------------------------------
 # Money: balance, add, send, transactions, users
