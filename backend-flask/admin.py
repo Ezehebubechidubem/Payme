@@ -3,6 +3,7 @@ import uuid
 import re
 import random
 import string
+from app import app
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
