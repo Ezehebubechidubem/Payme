@@ -13,7 +13,7 @@
   *{box-sizing:border-box;font-family:Inter, system-ui, Arial;}
   body{margin:0;background:var(--bg);color:var(--text)}
   .layout{display:flex;min-height:100vh}
-  aside{width:300px;padding:22px;border-right:1px solid #ececec}
+  aside{width:300px;padding:22px;border-right:1px solid #ececec;transition: transform 0.3s ease;}
   .logo{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,var(--green),var(--green-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;margin-bottom:12px}
   nav{display:flex;flex-direction:column;gap:8px}
   a.navlink{display:block;padding:10px;border-radius:10px;text-decoration:none;color:var(--text);font-weight:700}
@@ -29,16 +29,32 @@
   table{width:100%;border-collapse:collapse}
   th,td{padding:10px;border-bottom:1px solid #eee;text-align:left}
   .error{color:red;font-size:13px;margin-top:6px;}
-  @media(max-width:900px){aside{display:none}.metrics{grid-template-columns:repeat(2,1fr)}}
+  .popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:18px 22px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.2);display:none;z-index:1000;}
+  .popup button{margin-top:12px;}
+  .overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);display:none;z-index:900;}
+  .hamburger{display:none;cursor:pointer;font-size:24px;font-weight:900;user-select:none;}
+  @media(max-width:900px){
+    aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);transform:translateX(-100%);}
+    aside.active{transform:translateX(0);}
+    .hamburger{display:block;}
+    .metrics{grid-template-columns:repeat(2,1fr)}
+  }
+  .tx-container{max-height:200px;overflow-y:auto;}
 </style>
 </head>
 <body>
+<div class="overlay" id="overlay"></div>
+<div class="popup" id="popup">
+  <div id="popupMessage"></div>
+  <button onclick="closePopup()">Close</button>
+</div>
+
 <div class="layout">
-  <aside>
+  <aside id="sidebar">
     <div class="logo">B</div>
     <div style="font-weight:900">BEWISE Admin</div>
     <div style="color:var(--muted);font-size:13px;margin-bottom:12px">Crypto Trading & Fintech</div>
-    <nav>
+    <nav id="navlinks">
       <a class="navlink" href="index.html">🏠 Dashboard</a>
       <a class="navlink" href="fraud.html">🛡️ 1 — Fraud Detection</a>
       <a class="navlink" href="complaints.html">📣 2 — Customer Complaints</a>
@@ -56,9 +72,9 @@
 
   <div style="flex:1">
     <header>
-      <div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="hamburger" id="hamburger">&#9776;</div>
         <h1 style="margin:0">Admin Dashboard</h1>
-        <div style="color:var(--muted);font-size:13px">Overview • Green primary buttons • White background • Black text</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <input id="searchBox" class="search" placeholder="Search users, txns, logs..." />
@@ -94,22 +110,26 @@
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <h3 style="margin:0">Recent Transactions</h3>
-            <div style="color:var(--muted);font-size:13px">Latest 10</div>
+            <div style="color:var(--muted);font-size:13px">Latest 5</div>
           </div>
           <div style="display:flex;gap:8px">
             <button class="btn" onclick="location.href='manual.html'">Manual Credit/Debit</button>
             <button class="btn ghost" onclick="location.href='./logs.html'">View Logs</button>
           </div>
         </div>
-        <div style="margin-top:12px;overflow:auto">
+        <div class="tx-container" id="txContainer">
           <table>
             <thead><tr><th>Tx ID</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
             <tbody id="txBody">
               <tr><td colspan="6">Loading...</td></tr>
             </tbody>
           </table>
-          <div class="error" id="txError"></div>
         </div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="btn" id="seeMore">See More</button>
+          <button class="btn ghost" id="seeLess">See Less</button>
+        </div>
+        <div class="error" id="txError"></div>
       </section>
 
       <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
@@ -146,7 +166,10 @@
 </div>
 
 <script>
-const BACKEND = "https://your-backend-url.com"; // replace with your actual backend
+const BACKEND = "https://payme-update.onrender.com"; // replace with your backend
+
+let allTransactions = [];
+let showingCount = 5;
 
 async function loadMetrics() {
   try {
@@ -158,17 +181,10 @@ async function loadMetrics() {
       document.getElementById('wd').innerText = `₦${data.withdrawals}`;
       document.getElementById('users').innerText = data.active_users;
     } else {
-      document.getElementById('volError').innerText = data.message;
-      document.getElementById('depError').innerText = data.message;
-      document.getElementById('wdError').innerText = data.message;
-      document.getElementById('usersError').innerText = data.message;
+      showPopup(data.message || "Error loading metrics");
     }
   } catch(e) {
-    console.error("Metrics load error:", e);
-    document.getElementById('volError').innerText = e;
-    document.getElementById('depError').innerText = e;
-    document.getElementById('wdError').innerText = e;
-    document.getElementById('usersError').innerText = e;
+    showPopup(e);
   }
 }
 
@@ -177,32 +193,67 @@ async function loadRecentTransactions() {
     const res = await fetch(`${BACKEND}/admin/recent_tx`);
     const tx = await res.json();
     if(Array.isArray(tx)) {
-      const txBody = document.getElementById('txBody');
-      txBody.innerHTML = tx.map(r => `
-        <tr>
-          <td>${r.id}</td>
-          <td>${r.type === "Transfer Out" ? "Self" : r.other_party}</td>
-          <td>${r.other_party}</td>
-          <td>₦${r.amount}</td>
-          <td>Success</td>
-          <td>${r.date}</td>
-        </tr>
-      `).join("");
+      allTransactions = tx;
+      renderTransactions();
     } else {
-      document.getElementById('txError').innerText = tx.message || "Unexpected response";
+      showPopup(tx.message || "Unexpected response for transactions");
     }
   } catch(e) {
-    console.error("Transactions load error:", e);
-    document.getElementById('txError').innerText = e;
+    showPopup(e);
   }
+}
+
+function renderTransactions() {
+  const txBody = document.getElementById('txBody');
+  const visibleTx = allTransactions.slice(0, showingCount);
+  txBody.innerHTML = visibleTx.map(r => `
+    <tr>
+      <td>${r.id}</td>
+      <td>${r.type === "Transfer Out" ? "Self" : r.other_party}</td>
+      <td>${r.other_party}</td>
+      <td>₦${r.amount}</td>
+      <td>Success</td>
+      <td>${r.date}</td>
+    </tr>
+  `).join("");
+}
+
+document.getElementById('seeMore').addEventListener('click', () => {
+  showingCount = Math.min(allTransactions.length, showingCount + 5);
+  renderTransactions();
+});
+
+document.getElementById('seeLess').addEventListener('click', () => {
+  showingCount = Math.max(5, showingCount - 5);
+  renderTransactions();
+});
+
+document.getElementById('searchBox').addEventListener('keypress', (e)=>{
+  if(e.key==='Enter') showPopup('Search not yet integrated with backend.');
+});
+
+// Hamburger menu toggle
+const hamburger = document.getElementById('hamburger');
+const sidebar = document.getElementById('sidebar');
+hamburger.addEventListener('click', () => {
+  sidebar.classList.toggle('active');
+});
+
+// Popup functions
+const popup = document.getElementById('popup');
+const overlay = document.getElementById('overlay');
+function showPopup(message){
+  document.getElementById('popupMessage').innerText = message;
+  popup.style.display = 'block';
+  overlay.style.display = 'block';
+}
+function closePopup(){
+  popup.style.display = 'none';
+  overlay.style.display = 'none';
 }
 
 loadMetrics();
 loadRecentTransactions();
-
-document.getElementById('searchBox').addEventListener('keypress', (e)=>{
-  if(e.key==='Enter') alert('Search not yet integrated with backend.');
-});
 </script>
 </body>
 </html>
