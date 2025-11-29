@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Payme — Staff Roles</title>
 <style>
  :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
@@ -21,7 +22,6 @@
   <h2 style="margin:6px 0">8 — Staff Roles</h2>
   <div style="color:#6b7280">Manage support, transaction-review, super-admin, API manager, developer roles.</div>
 </header>
-
 <div class="container">
   <div class="card" style="width:380px">
     <h4 style="margin-top:0">Create Staff</h4>
@@ -40,7 +40,6 @@
     </div>
     <div id="staffResult" style="margin-top:8px;color:#6b7280"></div>
   </div>
-
   <div class="card" style="flex:1">
     <h4 style="margin-top:0">Existing Staff</h4>
     <table>
@@ -51,22 +50,79 @@
 </div>
 
 <script>
- const staff = [
-   {name:'Aisha',email:'aisha@bewise.com',role:'Customer-support'},
-   {name:'Tunde',email:'tunde@bewise.com',role:'Super admin'}
- ];
- function render(){ document.getElementById('staffList').innerHTML = staff.map((s,i)=>`<tr><td>${s.name}</td><td>${s.email}</td><td>${s.role}</td><td><button onclick="removeStaff(${i})" style="padding:6px 8px;border-radius:6px;border:0;background:#ff4d4f;color:#fff">Remove</button></td></tr>`).join(''); }
- function createStaff(){
-   const n=document.getElementById('staffName').value.trim(), e=document.getElementById('staffEmail').value.trim(), r=document.getElementById('staffRole').value;
-   if(!n||!e){ alert('Name & email required'); return; }
-   staff.push({name:n,email:e,role:r});
-   document.getElementById('staffResult').innerText='Staff created (UI-only)';
-   document.getElementById('staffName').value=''; document.getElementById('staffEmail').value='';
-   render();
- }
- function removeStaff(i){ if(!confirm('Remove staff?')) return; staff.splice(i,1); render(); }
- function clearForm(){ document.getElementById('staffName').value=''; document.getElementById('staffEmail').value=''; document.getElementById('staffResult').innerText=''; }
- render();
+const API_BASE = "https://payme-update.onrender.com/api"; // your backend base URL
+
+async function fetchStaff() {
+  try {
+    const res = await fetch(`${API_BASE}/staff/list`);
+    const data = await res.json();
+    if (res.ok && Array.isArray(data.staff)) {
+      renderStaff(data.staff);
+    }
+  } catch (err) { console.error(err); }
+}
+
+function renderStaff(staffArray) {
+  document.getElementById('staffList').innerHTML = staffArray.map((s,i) =>
+    `<tr>
+      <td>${s.name}</td>
+      <td>${s.email}</td>
+      <td>${s.role}</td>
+      <td>
+        <button onclick="removeStaff('${s.id}')" style="padding:6px 8px;border-radius:6px;border:0;background:#ff4d4f;color:#fff">Remove</button>
+      </td>
+    </tr>`).join('');
+}
+
+function clearForm() {
+  document.getElementById('staffName').value='';
+  document.getElementById('staffEmail').value='';
+  document.getElementById('staffResult').innerText='';
+}
+
+function generatePassword(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
+  let pass = '';
+  for(let i=0;i<length;i++) pass += chars.charAt(Math.floor(Math.random()*chars.length));
+  return pass;
+}
+
+async function createStaff() {
+  const name = document.getElementById('staffName').value.trim();
+  const email = document.getElementById('staffEmail').value.trim();
+  const role = document.getElementById('staffRole').value;
+
+  if(!name || !email){ alert('Name & email required'); return; }
+
+  const password = generatePassword(10); // generate unique password
+
+  try {
+    const res = await fetch(`${API_BASE}/staff/create`, {
+      method:'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name,email,role,password})
+    });
+    const data = await res.json();
+    if(res.ok && data.status==='success'){
+      document.getElementById('staffResult').innerText=`Staff created! Password: ${password} (show to staff securely)`;
+      clearForm();
+      fetchStaff();
+    } else {
+      document.getElementById('staffResult').innerText = data.message || 'Error creating staff';
+    }
+  } catch(err){ console.error(err); }
+}
+
+async function removeStaff(id){
+  if(!confirm('Remove staff?')) return;
+  try {
+    const res = await fetch(`${API_BASE}/staff/${id}`,{method:'DELETE'});
+    if(res.ok) fetchStaff();
+  } catch(err){ console.error(err); }
+}
+
+// initial load
+fetchStaff();
 </script>
 </body>
 </html>
