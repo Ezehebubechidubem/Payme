@@ -1,4 +1,3 @@
-# admin.py
 import os
 import traceback
 import importlib
@@ -401,7 +400,6 @@ def admin_kyc_update():
             target = phone
         _record_admin_action(conn, session.get("admin_name"), f"kyc_{status}", "user", target, note)
     return jsonify({"status":"success","message":"kyc updated"}), 200
-
 # -------------------------
 # Service control & notifications
 # -------------------------
@@ -502,22 +500,6 @@ def create_staff():
         _record_admin_action(conn, session.get("admin_name"), "staff_create", "staff", email, role)
     return jsonify({"status":"success","message":"staff created"}), 200
 
-admin_bp.route("/staff/create", methods=["POST"])
-@admin_only
-def create_staff():
-    ensure_admin_tables()
-    data = request.get_json(silent=True) or {}
-    name = data.get("name")
-    email = data.get("email")
-    role = data.get("role", "support")
-    if not (name and email):
-        return jsonify({"status":"error","message":"name and email required"}), 400
-    get_conn = _get_app_get_conn()
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("INSERT INTO staff (name, email, role, created_at) VALUES (?, ?, ?, ?)", (name, email, role, _now_iso()))
-        _record_admin_action(conn, session.get("admin_name"), "staff_create", "staff", email, role)
-    return jsonify({"status":"success","message":"staff created"}), 200
 
 @admin_bp.route("/staff/delete", methods=["POST"])
 @admin_only
@@ -620,4 +602,3 @@ def admin_ping():
     return jsonify({"status":"success","message":"admin ok"}), 200
 
 # End of admin.py
-
