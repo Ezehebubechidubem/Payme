@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Payme— Admin Dashboard</title>
+<title>BEWISE — Admin Dashboard</title>
 <style>
   :root{
     --bg:#ffffff; --text:#000000; --muted:#6b7280;
@@ -24,9 +24,7 @@
   .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
   .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow)}
   .btn{padding:8px 12px;border-radius:8px;border:0;background:var(--green);color:#fff;font-weight:800;cursor:pointer}
-  .btn.ghost{background:transparent;border:2px solid var(--green);color:var(--green)}
   .search{padding:8px 10px;border-radius:8px;border:1px solid #e6e6e6}
-  .quick-actions{display:flex;flex-direction:column;gap:8px}
   table{width:100%;border-collapse:collapse}
   th,td{padding:10px;border-bottom:1px solid #eee;text-align:left}
   .error{color:red;font-size:13px;margin-top:6px;}
@@ -34,12 +32,8 @@
   .popup button{margin-top:12px;}
   .overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);display:none;z-index:900;}
   .hamburger{display:none;cursor:pointer;font-size:24px;font-weight:900;user-select:none;}
-  .tx-container{max-height:200px;overflow-y:auto;margin-top:12px;}
-  @media(max-width:900px){
-    aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);z-index:800}
-    .hamburger{display:block;}
-    .metrics{grid-template-columns:repeat(2,1fr)}
-  }
+  .tx-container{max-height:250px;overflow-y:auto;margin-top:12px;}
+  @media(max-width:900px){aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);z-index:800}.hamburger{display:block;}.metrics{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -56,16 +50,16 @@
     <div style="color:var(--muted);font-size:13px;margin-bottom:12px">Crypto Trading & Fintech</div>
     <nav id="navlinks">
       <a class="navlink" href="index.html">🏠 Dashboard</a>
-      <a class="navlink" href="fraud.html">🛡️ 1 — Fraud Detection</a>
-      <a class="navlink" href="complaints.html">📣 2 — Customer Complaints</a>
-      <a class="navlink" href="manual.html">💸 3 — Manual Credit/Debit</a>
-      <a class="navlink" href="kyc.html">🪪 4 — KYC Verification</a>
-      <a class="navlink" href="monitoring.html">📊 5 — Monitoring</a>
-      <a class="navlink" href="control.html">⚙️ 6 — Control Services</a>
-      <a class="navlink" href="notifications.html">🔔 7 — Notifications</a>
-      <a class="navlink" href="staff.html">👥 8 — Staff Roles</a>
-      <a class="navlink" href="logs.html">📜 9 — Logs & Audits</a>
-      <a class="navlink" href="scaling.html">🚀 10 — Business Scaling</a>
+      <a class="navlink" href="fraud.html">🛡️ Fraud Detection</a>
+      <a class="navlink" href="complaints.html">📣 Customer Complaints</a>
+      <a class="navlink" href="manual.html">💸 Manual Credit/Debit</a>
+      <a class="navlink" href="kyc.html">🪪 KYC Verification</a>
+      <a class="navlink" href="monitoring.html">📊 Monitoring</a>
+      <a class="navlink" href="control.html">⚙️ Control Services</a>
+      <a class="navlink" href="notifications.html">🔔 Notifications</a>
+      <a class="navlink" href="staff.html">👥 Staff Roles</a>
+      <a class="navlink" href="logs.html">📜 Logs & Audits</a>
+      <a class="navlink" href="scaling.html">🚀 Business Scaling</a>
     </nav>
     <div style="margin-top:18px;color:var(--muted)">Logged in as <strong>Dubem</strong></div>
   </aside>
@@ -78,7 +72,6 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <input id="searchBox" class="search" placeholder="Search users, txns, logs..." />
-        <button class="btn ghost" onclick="location.href='notifications.html'">Broadcast</button>
       </div>
     </header>
 
@@ -110,11 +103,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <h3 style="margin:0">Recent Transactions</h3>
-            <div style="color:var(--muted);font-size:13px">Latest 5</div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn" onclick="location.href='manual.html'">Manual Credit/Debit</button>
-            <button class="btn ghost" onclick="location.href='./logs.html'">View Logs</button>
+            <div style="color:var(--muted);font-size:13px">Latest Transactions</div>
           </div>
         </div>
         <div class="tx-container">
@@ -123,41 +112,8 @@
             <tbody id="txBody"><tr><td colspan="6">Loading...</td></tr></tbody>
           </table>
         </div>
-        <div style="display:flex;gap:8px;margin-top:6px;">
-          <button class="btn" id="seeMore">See More</button>
-          <button class="btn ghost" id="seeLess">See Less</button>
-        </div>
+        <button class="btn" id="toggleTx" style="margin-top:6px;">See More</button>
         <div class="error" id="txError"></div>
-      </section>
-
-      <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-        <div class="card">
-          <h3 style="margin-top:0">Quick Actions</h3>
-          <div class="quick-actions">
-            <button class="btn" onclick="location.href='fraud.html'">Freeze Account / Fraud</button>
-            <button class="btn" onclick="location.href='complaints.html'">Handle Complaints</button>
-            <button class="btn" onclick="location.href='kyc.html'">Review KYC</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-top:0">Services</h3>
-          <p style="color:var(--muted);margin:0 0 10px 0">APIs & Fees control</p>
-          <div style="display:flex;gap:8px">
-            <button class="btn ghost" onclick="location.href='control.html'">Service Control</button>
-            <button class="btn ghost" onclick="location.href='notifications.html'">Send Announcement</button>
-            <button class="btn ghost" onclick="location.href='staff.html'">Manage Staff</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-top:0">Compliance</h3>
-          <p style="color:var(--muted);margin:0 0 10px 0">KYC, logs & audits</p>
-          <div style="display:flex;gap:8px">
-            <button class="btn ghost" onclick="location.href='./logs.html'">View Logs</button>
-            <button class="btn ghost" onclick="location.href='monitoring.html'">Monitoring</button>
-          </div>
-        </div>
       </section>
     </main>
   </div>
@@ -213,11 +169,24 @@ function renderTx(){
     <td>${r.date}</td>
   </tr>`).join("");
 }
-document.getElementById('seeMore').addEventListener('click',()=>{showing=Math.min(allTx.length,showing+5);renderTx();});
-document.getElementById('seeLess').addEventListener('click',()=>{showing=Math.max(5,showing-5);renderTx();});
+
+// Toggle See More / See Less
+const toggleBtn=document.getElementById('toggleTx');
+toggleBtn.addEventListener('click',()=>{
+  if(toggleBtn.innerText==="See More"){
+    showing=allTx.length;
+    toggleBtn.innerText="See Less";
+  }else{
+    showing=5;
+    toggleBtn.innerText="See More";
+  }
+  renderTx();
+});
 
 // Search box popup
-document.getElementById('searchBox').addEventListener('keypress',(e)=>{if(e.key==='Enter')showPopup('Search not yet integrated with backend.')});
+document.getElementById('searchBox').addEventListener('keypress',(e)=>{
+  if(e.key==='Enter')showPopup('Search not yet integrated with backend.');
+});
 
 loadMetrics();
 loadTx();
