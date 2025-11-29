@@ -51,33 +51,40 @@ def db_execute(query, values=(), fetch=False, many=False):
 
 @admin_bp.route("/staff/create", methods=["POST"])
 def create_staff():
-    data = request.json
+    data = request.get_json() or {}
     name = data.get("name")
     email = data.get("email")
     role = data.get("role")
 
     if not name or not email:
-        return jsonify({"status": "error", "message": "Name and Email required"}), 400
+        return jsonify({"status": "error", "message": "Name & Email required"}), 400
 
-    raw_password = generate_password()   # auto 10-digit
-    hashed_password = generate_password_hash(raw_password)
-
+    generated_password = generate_password()  # auto-generate 10-digit password
     staff_id = str(uuid.uuid4())
 
+    created_at = datetime.now().isoformat()
+
     try:
-        db_execute("""
-            INSERT INTO staff(id,name,email,role,password)
-            VALUES(?,?,?,?,?)
-        """, (staff_id, name, email, role, hashed_password))
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO staff (id, name, email, role, password, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (staff_id, name, email, role, generated_password, created_at))
+        conn.commit()
 
         return jsonify({
             "status": "success",
-            "generated_password": raw_password,
-            "id": staff_id
+            "message": "Staff created successfully",
+            "password": generated_password  # ⬅️ return password for UI
         }), 201
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+    finally:
+        try: conn.close()
+        except: pass
 
 
 
