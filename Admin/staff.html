@@ -20,6 +20,7 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
 .copy-btn{background:#065f46;color:#fff;padding:6px 10px;border-radius:6px;border:0;cursor:pointer;margin-left:8px}
 .password-field{font-weight:700;letter-spacing:1px}
 .notice{margin-top:6px;font-size:13px;color:#374151}
+.debug{margin-top:8px;font-size:12px;color:#6b7280}
 </style>
 </head>
 <body>
@@ -44,7 +45,7 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
 
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn" onclick="createStaff()">Create</button>
-      <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearForm()">Clear</button>
+      <button id="clearBtn" style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearForm()">Clear</button>
     </div>
 
     <div id="staffResult" style="margin-top:8px"></div>
@@ -57,6 +58,8 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
       </div>
       <div class="notice">Passwords are shown only once. Instruct staff to change it after first login.</div>
     </div>
+
+    <div id="debugBox" class="debug" style="display:none"></div>
   </div>
 
   <div class="card" style="flex:1">
@@ -83,10 +86,18 @@ function showResult(msg, isError=false){
 }
 
 function clearForm(){
+  // This function is used by the CLEAR button — it should clear inputs AND hide password.
   document.getElementById('staffName').value = '';
   document.getElementById('staffEmail').value = '';
   document.getElementById('staffResult').innerText = '';
   hidePassword();
+}
+
+function clearInputsOnly(){
+  // Use this after successful create: clear only inputs but KEEP password visible.
+  document.getElementById('staffName').value = '';
+  document.getElementById('staffEmail').value = '';
+  // keep staffResult and passwordArea intact
 }
 
 // copy generated password to clipboard
@@ -104,12 +115,17 @@ function showPassword(pw){
   document.getElementById('generatedPassword').innerText = pw;
   document.getElementById('passwordArea').style.display = 'block';
   // auto-hide after 30s for safety
-  setTimeout(hidePassword, 30000);
+  setTimeout(() => {
+    // do not auto-hide if user cleared via Clear button — check if still visible
+    const area = document.getElementById('passwordArea');
+    if(area && area.style.display !== 'none') hidePassword();
+  }, 30000);
 }
 
 function hidePassword(){
   document.getElementById('passwordArea').style.display = 'none';
   document.getElementById('generatedPassword').innerText = '';
+  // preserve last server debug only in debug box
 }
 
 // basic email check
@@ -117,17 +133,23 @@ function isValidEmail(email){
   return /\S+@\S+\.\S+/.test(email);
 }
 
+function showDebug(msg){
+  const el = document.getElementById('debugBox');
+  el.style.display = 'block';
+  el.innerText = msg;
+}
+
 // ------ API CALLS ------
 async function fetchStaff(){
   try {
     document.getElementById('listMsg').innerText = 'Loading...';
     const res = await fetch(`${API_BASE}/staff/list`);
-    const data = await res.json();
-    if(!res.ok) {
-      document.getElementById('listMsg').innerText = data.message || 'Failed to load staff';
+    const data = await res.json().catch(()=>null);
+    if(!res.ok){
+      document.getElementById('listMsg').innerText = (data && data.message) ? data.message : 'Failed to load staff';
       return;
     }
-    const staff = data.staff || [];
+    const staff = (data && data.staff) ? data.staff : [];
     renderStaff(staff);
     document.getElementById('listMsg').innerText = staff.length ? '' : 'No staff yet';
   } catch(err){
@@ -140,7 +162,6 @@ function renderStaff(staffArray){
   const tbody = document.getElementById('staffList');
   if(!Array.isArray(staffArray)){ tbody.innerHTML = ''; return; }
   tbody.innerHTML = staffArray.map(s => {
-    // support sqlite rows (dict-like) or arrays
     const id = s.id || s['id'] || s[0] || '';
     const name = s.name || s['name'] || s[1] || '';
     const email = s.email || s['email'] || s[2] || '';
@@ -165,6 +186,7 @@ function escapeHtml(unsafe){
 // create staff (backend generates password and returns generated_password)
 async function createStaff(){
   hidePassword();
+  document.getElementById('debugBox').style.display = 'none';
   const name = document.getElementById('staffName').value.trim();
   const email = document.getElementById('staffEmail').value.trim();
   const role = document.getElementById('staffRole').value;
@@ -180,27 +202,49 @@ async function createStaff(){
       body: JSON.stringify({name, email, role})
     });
 
-    const data = await res.json();
+    // read raw text first so we can debug malformed responses
+    const raw = await res.text();
+    let data = null;
+    try { data = JSON.parse(raw); } catch(e) { data = null; }
 
-    if(!res.ok || data.status !== 'success'){
-      const msg = data.message || 'Failed to create staff';
+    console.log('POST /staff/create => status:', res.status, 'raw:', raw, 'parsed:', data);
+
+    if(!res.ok){
+      // show server returned message if available
+      const msg = data && data.message ? data.message : `Server error (${res.status})`;
       showResult(msg, true);
+      // show raw server response in debug box for easier diagnosing
+      showDebug(`RAW RESPONSE: ${raw}`);
       return;
     }
 
-    // show the generated password (backend must return generated_password)
-    if(data.generated_password){
-      showPassword(data.generated_password);
+    // Accept many possible keys the backend might return
+    const pw = data && (data.generated_password || data.password || data.generatedPassword || data.generatedPass);
+    if(pw){
+      // IMPORTANT: do not call clearForm here because that hides password.
+      // clear only inputs and keep password visible
+      clearInputsOnly();
+      showPassword(pw);
       showResult('Staff created — password shown below. Copy and share securely.');
-    } else {
-      showResult('Staff created. (No password returned by backend)', true);
+      fetchStaff();
+      return;
     }
 
-    clearForm();
-    fetchStaff();
+    // If the server returned success but no password, show debug info
+    if(data && data.status === 'success'){
+      showResult('Staff created but no password returned by backend (see debug).', true);
+      showDebug(`RAW RESPONSE: ${raw}`);
+      fetchStaff();
+      return;
+    }
+
+    // fallback: show server message
+    showResult(data && data.message ? data.message : 'Unexpected server response', true);
+    showDebug(`RAW RESPONSE: ${raw}`);
   } catch(err){
     console.error(err);
     showResult('Error creating staff', true);
+    showDebug(String(err));
   }
 }
 
@@ -212,12 +256,16 @@ async function removeStaff(id){
       showResult('Staff removed');
       fetchStaff();
     } else {
-      const data = await res.json();
-      showResult(data.message || 'Failed to remove', true);
+      const raw = await res.text();
+      let data = null;
+      try { data = JSON.parse(raw); } catch(e){ data = null; }
+      showResult(data && data.message ? data.message : 'Failed to remove', true);
+      showDebug(`RAW RESPONSE: ${raw}`);
     }
   } catch(err){
     console.error(err);
     showResult('Error removing staff', true);
+    showDebug(String(err));
   }
 }
 
