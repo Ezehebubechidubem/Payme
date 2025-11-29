@@ -236,30 +236,7 @@ def init_db():
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
             """)
-# Create staff table if not exists
-cur.execute("""
-    CREATE TABLE IF NOT EXISTS staff (
-        id SERIAL PRIMARY KEY, -- use INTEGER PRIMARY KEY AUTOINCREMENT if SQLite
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT DEFAULT 'staff'
-    )
-""")
-         # Insert default staff if empty
-            cur.execute("SELECT COUNT(*) FROM staff")
-            staff_count = cur.fetchone()[0]
-            if staff_count == 0:
-                alice_hash = generate_password_hash("AlicePassword123")
-                bob_hash = generate_password_hash("BobPassword123")
-                cur.execute(
-                    "INSERT INTO staff (name, email, password, role) VALUES (?, ?, ?, ?)",
-                    ("Alice", "alice@example.com", alice_hash, "staff")
-                )
-                cur.execute(
-                    "INSERT INTO staff (name, email, password, role) VALUES (?, ?, ?, ?)",
-                    ("Bob", "bob@example.com", bob_hash, "staff")
-                )
+
 
 # -------------------------------------------------
 # Utilities
