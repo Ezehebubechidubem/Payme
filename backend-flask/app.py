@@ -246,6 +246,21 @@ cur.execute("""
         role TEXT DEFAULT 'staff'
     )
 """)
+         # Insert default staff if empty
+            cur.execute("SELECT COUNT(*) FROM staff")
+            staff_count = cur.fetchone()[0]
+            if staff_count == 0:
+                alice_hash = generate_password_hash("AlicePassword123")
+                bob_hash = generate_password_hash("BobPassword123")
+                cur.execute(
+                    "INSERT INTO staff (name, email, password, role) VALUES (?, ?, ?, ?)",
+                    ("Alice", "alice@example.com", alice_hash, "staff")
+                )
+                cur.execute(
+                    "INSERT INTO staff (name, email, password, role) VALUES (?, ?, ?, ?)",
+                    ("Bob", "bob@example.com", bob_hash, "staff")
+                )
+
 # -------------------------------------------------
 # Utilities
 # -------------------------------------------------
