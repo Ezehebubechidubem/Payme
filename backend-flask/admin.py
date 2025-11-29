@@ -8,6 +8,9 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
 
+app = Flask(__name__)
+DB_PATH = "your_db_file.db"
+
 admin_bp = Blueprint("admin_bp", __name__)
 _get_conn = None
 
