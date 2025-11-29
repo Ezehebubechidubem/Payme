@@ -2,7 +2,8 @@
 import uuid
 import re
 from flask import Flask, jsonify
-import sqlite3
+from flask_cors import CORS
+import sqlite3  # or psycopg2 for Postgres
 import random
 import string
 from app import app
