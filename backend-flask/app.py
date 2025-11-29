@@ -1532,6 +1532,8 @@ def execute_transfer():
         traceback.print_exc()
         return jsonify({"status":"error","message":"Internal server error", "details": str(e)}), 500
 
+init_staff_table()
+app.register_blueprint(admin_bp, url_prefix="/api")
 # -------------------------------------------------
 # Startup
 # -------------------------------------------------
