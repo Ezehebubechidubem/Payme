@@ -345,6 +345,8 @@ def register():
         elif "phone" in str(ie).lower():
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
+
+
 @app.route("/login", methods=["POST"])
 def login():
     data, err, code = json_required(["login", "password"])
@@ -368,15 +370,38 @@ def login():
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
     # -------------------------
-    # STAFF: environment-driven
+    # STAFF: database-driven
     # -------------------------
-    STAFF_EMAIL = os.environ.get("STAFF_EMAIL")
-    STAFF_PASSWORD_HASH = os.environ.get("STAFF_PASSWORD_HASH")
-    if (login_value == STAFF_EMAIL or (payload_email and payload_email == STAFF_EMAIL)) and STAFF_PASSWORD_HASH:
-        if check_password_hash(STAFF_PASSWORD_HASH, password):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, name, email, role, password "
+            "FROM staff WHERE email = ? LIMIT 1",
+            (login_value,)
+        )
+        staff_row = cur.fetchone()
+
+    if staff_row:
+        try:
+            stored_pw = staff_row["password"]
+            staff_id = staff_row["id"]
+            staff_name = staff_row["name"]
+            staff_role = staff_row["role"]
+        except Exception:
+            # fallback for tuple-like rows
+            stored_pw = staff_row[4] if len(staff_row) > 4 else None
+            staff_id = staff_row[0] if len(staff_row) > 0 else None
+            staff_name = staff_row[1] if len(staff_row) > 1 else None
+            staff_role = staff_row[3] if len(staff_row) > 3 else None
+
+        if stored_pw and check_password_hash(stored_pw, password):
             session["is_staff"] = True
-            session["staff_name"] = STAFF_EMAIL
+            session["staff_id"] = staff_id
+            session["staff_name"] = staff_name
+            session["staff_role"] = staff_role
             return jsonify({"status":"success","role":"staff","user":None}), 200
+        else:
+            return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
     # -------------------------
     # REGULAR USER: database
@@ -424,9 +449,6 @@ def login():
     }
 
     return jsonify({"status":"success","role":"user","user":user}), 200
-
-
-
 # -------------------------------------------------
 # Money: balance, add, send, transactions, users
 # -------------------------------------------------
