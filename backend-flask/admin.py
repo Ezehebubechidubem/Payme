@@ -6,6 +6,9 @@ import string
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
+from flask import Blueprint, jsonify, request
+from app import db  # your SQLAlchemy db instance
+from models import User, Transaction  # adjust imports to your models
 
 admin_bp = Blueprint("admin_bp", __name__)
 _get_conn = None
@@ -156,3 +159,94 @@ def staff_debug_echo():
         "headers": dict(request.headers),
         "method": request.method
     })
+# ===== Metrics Route =====
+@admin_bp.route('/api/metrics', methods=['GET'])
+def get_metrics():
+    total_volume = db.session.query(db.func.sum(Transaction.amount)).scalar() or 0
+    deposits = db.session.query(db.func.sum(Transaction.amount)).filter(Transaction.type=='deposit').scalar() or 0
+    withdrawals = db.session.query(db.func.sum(Transaction.amount)).filter(Transaction.type=='withdrawal').scalar() or 0
+    active_users = db.session.query(User).filter(User.is_active==True).count()
+    
+    metrics = {
+        "total_volume": total_volume,
+        "deposits": deposits,
+        "withdrawals": withdrawals,
+        "active_users": active_users
+    }
+    return jsonify(metrics)
+
+# ===== Recent Transactions Route =====
+@admin_bp.route('/api/transactions', methods=['GET'])
+def get_transactions():
+    txns = Transaction.query.order_by(Transaction.date.desc()).limit(10).all()
+    tx_list = [
+        {
+            "tx_id": t.tx_id,
+            "from_user": t.sender_phone,
+            "to_user": t.receiver_phone,
+            "amount": t.amount,
+            "status": t.status,
+            "date": t.date.strftime("%Y-%m-%d")
+        }
+        for t in txns
+    ]
+    return jsonify(tx_list)
+
+# ===== Search Route =====
+@admin_bp.route('/api/search', methods=['GET'])
+def search():
+    query = request.args.get('q', '')
+    if not query:
+        return jsonify({"users": [], "transactions": []})
+    
+    users = User.query.filter(
+        (User.name.ilike(f"%{query}%")) | 
+        (User.phone.ilike(f"%{query}%"))
+    ).all()
+    
+    transactions = Transaction.query.filter(Transaction.tx_id.ilike(f"%{query}%")).all()
+    
+    results = {
+        "users": [{"id": u.id, "name": u.name, "phone": u.phone} for u in users],
+        "transactions": [
+            {
+                "tx_id": t.tx_id,
+                "from_user": t.sender_phone,
+                "to_user": t.receiver_phone,
+                "amount": t.amount,
+                "status": t.status,
+                "date": t.date.strftime("%Y-%m-%d")
+            }
+            for t in transactions
+        ]
+    }
+    return jsonify(results)
+
+# ===== Quick Actions Routes (Examples) =====
+@admin_bp.route('/api/freeze_account', methods=['POST'])
+def freeze_account():
+    user_id = request.json.get('user_id')
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    user.is_active = False
+    db.session.commit()
+    return jsonify({"message": f"User {user.name} frozen successfully"})
+
+@admin_bp.route('/api/handle_complaint', methods=['POST'])
+def handle_complaint():
+    # Implement your complaint handling logic here
+    complaint_id = request.json.get('complaint_id')
+    # update complaint in DB
+    return jsonify({"message": f"Complaint {complaint_id} handled successfully"})
+
+@admin_bp.route('/api/kyc_review', methods=['POST'])
+def kyc_review():
+    user_id = request.json.get('user_id')
+    status = request.json.get('status')  # approved or rejected
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    user.kyc_status = status
+    db.session.commit()
+    return jsonify({"message": f"KYC status for {user.name} set to {status}"})
