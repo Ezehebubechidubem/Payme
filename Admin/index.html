@@ -28,7 +28,7 @@
   .quick-actions{display:flex;flex-direction:column;gap:8px}
   table{width:100%;border-collapse:collapse}
   th,td{padding:10px;border-bottom:1px solid #eee;text-align:left}
-  .error-text{color:red;font-weight:700;font-size:13px;margin-top:6px}
+  .error{color:red;font-size:13px;margin-top:6px;}
   @media(max-width:900px){aside{display:none}.metrics{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
@@ -71,22 +71,22 @@
         <div class="card">
           <div style="font-size:12px;color:var(--muted)">Total Volume (24h)</div>
           <div style="font-size:20px;font-weight:900;margin-top:8px" id="vol">₦0.00</div>
-          <div class="error-text" id="volError"></div>
+          <div class="error" id="volError"></div>
         </div>
         <div class="card">
           <div style="font-size:12px;color:var(--muted)">Deposits</div>
           <div style="font-size:20px;font-weight:900;margin-top:8px" id="dep">₦0.00</div>
-          <div class="error-text" id="depError"></div>
+          <div class="error" id="depError"></div>
         </div>
         <div class="card">
           <div style="font-size:12px;color:var(--muted)">Withdrawals</div>
           <div style="font-size:20px;font-weight:900;margin-top:8px" id="wd">₦0.00</div>
-          <div class="error-text" id="wdError"></div>
+          <div class="error" id="wdError"></div>
         </div>
         <div class="card">
           <div style="font-size:12px;color:var(--muted)">Active Users</div>
           <div style="font-size:20px;font-weight:900;margin-top:8px" id="users">0</div>
-          <div class="error-text" id="usersError"></div>
+          <div class="error" id="usersError"></div>
         </div>
       </section>
 
@@ -108,7 +108,7 @@
               <tr><td colspan="6">Loading...</td></tr>
             </tbody>
           </table>
-          <div class="error-text" id="txError"></div>
+          <div class="error" id="txError"></div>
         </div>
       </section>
 
@@ -146,70 +146,54 @@
 </div>
 
 <script>
-const BACKEND = "https://payme-update.onrender.com"; // backend URL
+const BACKEND = "https://your-backend-url.com"; // replace with your actual backend
 
 async function loadMetrics() {
   try {
     const res = await fetch(`${BACKEND}/admin/metrics`);
     const data = await res.json();
-
-    if(data.status === "error"){
-      document.getElementById('volError').innerText = data.message || "Error loading metrics";
-      document.getElementById('depError').innerText = data.message || "";
-      document.getElementById('wdError').innerText = data.message || "";
-      document.getElementById('usersError').innerText = data.message || "";
-      return;
+    if(data.status === "success") {
+      document.getElementById('vol').innerText = `₦${data.total_volume}`;
+      document.getElementById('dep').innerText = `₦${data.deposits}`;
+      document.getElementById('wd').innerText = `₦${data.withdrawals}`;
+      document.getElementById('users').innerText = data.active_users;
+    } else {
+      document.getElementById('volError').innerText = data.message;
+      document.getElementById('depError').innerText = data.message;
+      document.getElementById('wdError').innerText = data.message;
+      document.getElementById('usersError').innerText = data.message;
     }
-
-    document.getElementById('vol').innerText = `₦${data.total_volume}`;
-    document.getElementById('dep').innerText = `₦${data.deposits}`;
-    document.getElementById('wd').innerText = `₦${data.withdrawals}`;
-    document.getElementById('users').innerText = data.active_users;
-
-  } catch(e){
-    const msg = e.message || e;
-    document.getElementById('volError').innerText = `Metrics error: ${msg}`;
-    document.getElementById('depError').innerText = `Metrics error: ${msg}`;
-    document.getElementById('wdError').innerText = `Metrics error: ${msg}`;
-    document.getElementById('usersError').innerText = `Metrics error: ${msg}`;
-    console.error("Metrics fetch error:", e);
+  } catch(e) {
+    console.error("Metrics load error:", e);
+    document.getElementById('volError').innerText = e;
+    document.getElementById('depError').innerText = e;
+    document.getElementById('wdError').innerText = e;
+    document.getElementById('usersError').innerText = e;
   }
 }
 
 async function loadRecentTransactions() {
   try {
     const res = await fetch(`${BACKEND}/admin/recent_tx`);
-    const data = await res.json();
-
-    if(data.status === "error"){
-      document.getElementById('txError').innerText = data.message || "Error loading transactions";
-      document.getElementById('txBody').innerHTML = "";
-      return;
+    const tx = await res.json();
+    if(Array.isArray(tx)) {
+      const txBody = document.getElementById('txBody');
+      txBody.innerHTML = tx.map(r => `
+        <tr>
+          <td>${r.id}</td>
+          <td>${r.type === "Transfer Out" ? "Self" : r.other_party}</td>
+          <td>${r.other_party}</td>
+          <td>₦${r.amount}</td>
+          <td>Success</td>
+          <td>${r.date}</td>
+        </tr>
+      `).join("");
+    } else {
+      document.getElementById('txError').innerText = tx.message || "Unexpected response";
     }
-
-    if(!Array.isArray(data)){
-      document.getElementById('txError').innerText = JSON.stringify(data);
-      document.getElementById('txBody').innerHTML = "";
-      return;
-    }
-
-    const txBody = document.getElementById('txBody');
-    txBody.innerHTML = data.map(r => `
-      <tr>
-        <td>${r.id}</td>
-        <td>${r.type === "Transfer Out" ? "Self" : r.other_party}</td>
-        <td>${r.other_party}</td>
-        <td>₦${r.amount}</td>
-        <td>Success</td>
-        <td>${r.date}</td>
-      </tr>
-    `).join("");
-    document.getElementById('txError').innerText = "";
-  } catch(e){
-    const msg = e.message || e;
-    document.getElementById('txError').innerText = `Transactions error: ${msg}`;
-    document.getElementById('txBody').innerHTML = "";
-    console.error("Transactions fetch error:", e);
+  } catch(e) {
+    console.error("Transactions load error:", e);
+    document.getElementById('txError').innerText = e;
   }
 }
 
