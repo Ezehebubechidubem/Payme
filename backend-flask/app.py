@@ -59,13 +59,7 @@ try:
 except Exception as e:
     print("Failed to register betting blueprint:", e)
 
-# Import admin blueprint
-# ------------------------
-from admin import admin_bp, init_admin
 
-init_admin(get_conn)          # pass your DB connector
-app.register_blueprint(admin_bp)
-print("admin blueprint registered")
 
 # -------------------------------------------------
 # DB helpers and compatibility for sqlite3 / psycopg2
