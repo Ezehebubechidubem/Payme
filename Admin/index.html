@@ -19,6 +19,7 @@
   nav{display:flex;flex-direction:column;gap:8px;}
   a.navlink{display:block;padding:10px;border-radius:10px;text-decoration:none;color:var(--text);font-weight:700;}
   a.navlink:hover{background:#f3f7f6;}
+  .closeSidebar{display:none;cursor:pointer;font-size:24px;font-weight:900;text-align:right;margin-bottom:12px;}
   header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #f0f2f3;}
   main{flex:1;padding:22px;}
   .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
@@ -37,6 +38,7 @@
   @media(max-width:900px){
     aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);z-index:800;}
     .hamburger{display:block;}
+    .closeSidebar{display:block;}
     .metrics{grid-template-columns:repeat(2,1fr);}
   }
 </style>
@@ -51,6 +53,7 @@
 
 <div class="layout">
   <aside id="sidebar">
+    <div class="closeSidebar" id="closeSidebar">&times;</div>
     <div class="logo">B</div>
     <div style="font-weight:900">BEWISE Admin</div>
     <div style="color:var(--muted);font-size:13px;margin-bottom:12px">Crypto Trading & Fintech</div>
@@ -103,11 +106,9 @@
       </section>
 
       <section class="card" style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <h3 style="margin:0">Recent Transactions</h3>
-            <div style="color:var(--muted);font-size:13px">Latest 5</div>
-          </div>
+        <div>
+          <h3 style="margin:0">Recent Transactions</h3>
+          <div style="color:var(--muted);font-size:13px">Latest 5</div>
         </div>
         <div class="tx-container">
           <table>
@@ -115,7 +116,7 @@
             <tbody id="txBody"><tr><td colspan="6">Loading...</td></tr></tbody>
           </table>
         </div>
-        <div style="display:flex;gap:8px;margin-top:6px;">
+        <div style="margin-top:6px;">
           <button class="btn" id="toggleTx">See More</button>
         </div>
         <div class="error" id="txError"></div>
@@ -125,13 +126,15 @@
 </div>
 
 <script>
-const BACKEND = "https://payme-update.onrender.com"; // replace with your backend
+const BACKEND = "https://your-backend-url.com"; // replace with your backend
 let allTx=[], showing=5;
 
 // Hamburger toggle
 const hamburger=document.getElementById('hamburger');
 const sidebar=document.getElementById('sidebar');
+const closeBtn=document.getElementById('closeSidebar');
 hamburger.addEventListener('click',()=>{sidebar.classList.toggle('hidden');});
+closeBtn.addEventListener('click',()=>{sidebar.classList.add('hidden');});
 
 // Popups
 const popup=document.getElementById('popup');
@@ -176,12 +179,11 @@ function renderTx(){
   </tr>`).join("");
 
   const toggleBtn=document.getElementById('toggleTx');
-  if(showing>=allTx.length){toggleBtn.innerText="See Less";}
-  else{toggleBtn.innerText="See More";}
+  toggleBtn.innerText = showing>=allTx.length?"See Less":"See More";
 }
 
 document.getElementById('toggleTx').addEventListener('click',()=>{
-  if(showing>=allTx.length){showing=5;}else{showing=allTx.length;}
+  showing = showing>=allTx.length?5:allTx.length;
   renderTx();
 });
 
