@@ -1,289 +1,172 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login</title>
-  <style>
-    :root{ --primary:#00c853; --primary-dark:#009624; --bg:#f4f6f8; --card:#fff; }
-    body { font-family: Arial, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .form-container { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 320px; }
-    h2 { text-align: center; margin-bottom: 20px; color: #333; }
-    label { font-size: 14px; font-weight: bold; color: #444; display: block; margin-bottom: 6px; }
-    input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-    input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(0,200,83,0.08); }
-    button { width: 100%; background: var(--primary); border: none; color: #fff; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
-    button[disabled] { opacity: 0.65; cursor: not-allowed; }
-    button:hover { background: var(--primary-dark); }
-    .switch { text-align: center; margin-top: 12px; font-size: 14px; }
-    .switch a { color: var(--primary); text-decoration: none; font-weight: bold; }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Login</title>
+<style>
+:root{ --primary:#00c853; --primary-dark:#009624; --bg:#f4f6f8; --card:#fff; }
+body { font-family: Arial, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+.form-container { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 320px; }
+h2 { text-align: center; margin-bottom: 20px; color: #333; }
+label { font-size: 14px; font-weight: bold; color: #444; display: block; margin-bottom: 6px; }
+input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(0,200,83,0.08); }
+button { width: 100%; background: var(--primary); border: none; color: #fff; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
+button[disabled] { opacity: 0.65; cursor: not-allowed; }
+button:hover { background: var(--primary-dark); }
+.switch { text-align: center; margin-top: 12px; font-size: 14px; }
+.switch a { color: var(--primary); text-decoration: none; font-weight: bold; }
 
-    .modal-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 9999; }
-    .modal-overlay.show { display: flex; }
-    .modal { width: calc(100% - 48px); max-width: 460px; background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 18px 40px rgba(10,20,30,0.15); text-align: center; }
-    .modal .badge { width: 68px; height: 68px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 12px; color: #fff; }
-    .modal .badge.success { background: linear-gradient(135deg,#00c853,#43a047); }
-    .modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
-    .modal h3 { margin: 6px 0 6px; font-size: 18px; }
-    .modal p { margin: 0 0 12px; color: #555; }
-    .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; flex-wrap:wrap; }
-    .modal .actions .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; min-width:120px; }
-    .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
-    .modal .btn-primary { background:var(--primary); color:#fff; border:0; }
+.modal-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 9999; }
+.modal-overlay.show { display: flex; }
+.modal { width: calc(100% - 48px); max-width: 460px; background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 18px 40px rgba(10,20,30,0.15); text-align: center; }
+.modal .badge { width: 68px; height: 68px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 12px; color: #fff; }
+.modal .badge.success { background: linear-gradient(135deg,#00c853,#43a047); }
+.modal .badge.error { background: linear-gradient(135deg,#f44336,#e53935); }
+.modal h3 { margin: 6px 0 6px; font-size: 18px; }
+.modal p { margin: 0 0 12px; color: #555; }
+.modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; flex-wrap:wrap; }
+.modal .actions .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; min-width:120px; }
+.modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
+.modal .btn-primary { background:var(--primary); color:#fff; border:0; }
 
-    .spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; margin-left:8px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; margin-left:8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body>
-  <div class="form-container" role="main">
-    <h2>Login</h2>
-    <form id="loginForm" autocomplete="on" novalidate>
-      <label for="login">Username or Phone</label>
-      <input type="text" id="login" name="login" placeholder="Enter username, email, or phone" required autocomplete="username">
+<div class="form-container" role="main">
+  <h2>Login</h2>
+  <form id="loginForm" autocomplete="on" novalidate>
+    <label for="login">Username or Phone</label>
+    <input type="text" id="login" name="login" placeholder="Enter username, email, or phone" required autocomplete="username">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" placeholder="Enter password" required autocomplete="current-password">
+    <button type="submit" id="submitBtn">Login</button>
+  </form>
+  <div class="switch">
+    Don’t have an account? <a href="paymeregister.html">Register</a>
+  </div>
+</div>
 
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password" placeholder="Enter password" required autocomplete="current-password">
-
-      <button type="submit" id="submitBtn">Login</button>
-    </form>
-    <div class="switch">
-      Don’t have an account? <a href="paymeregister.html">Register</a>
+<!-- SUCCESS MODAL -->
+<div id="successModal" class="modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal" role="document">
+    <div class="badge success">✓</div>
+    <h3 id="successHeading">Login successful</h3>
+    <p id="successText">You are now logged in.</p>
+    <div id="successActions" class="actions">
+      <button id="successOk" class="btn btn-primary">Continue</button>
     </div>
   </div>
+</div>
 
-  <!-- SUCCESS MODAL (reused for admin/user) -->
-  <div id="successModal" class="modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
-    <div class="modal" role="document">
-      <div class="badge success">✓</div>
-      <h3 id="successHeading">Login successful</h3>
-      <p id="successText">You are now logged in.</p>
-      <div id="successActions" class="actions">
-        <button id="successOk" class="btn btn-primary">Continue</button>
-      </div>
+<!-- ERROR MODAL -->
+<div id="errorModal" class="modal-overlay" aria-hidden="true" role="alertdialog" aria-modal="true">
+  <div class="modal" role="document">
+    <div class="badge error">✕</div>
+    <h3 id="errorHeading">Error</h3>
+    <p id="errorText">An error occurred</p>
+    <div class="actions">
+      <button id="errorOk" class="btn btn-primary">OK</button>
     </div>
   </div>
+</div>
 
-  <!-- ERROR MODAL -->
-  <div id="errorModal" class="modal-overlay" aria-hidden="true" role="alertdialog" aria-modal="true">
-    <div class="modal" role="document">
-      <div class="badge error">✕</div>
-      <h3 id="errorHeading">Error</h3>
-      <p id="errorText">An error occurred</p>
-      <div class="actions">
-        <button id="errorOk" class="btn btn-primary">OK</button>
-      </div>
-    </div>
-  </div>
+<script>
+(function(){
+  const API = "https://payme-update.onrender.com/login";
 
-  <script>
-  (function(){
-    // keep your API exactly as before (change only if your login endpoint differs)
-    const API = "https://payme-update.onrender.com/login";
+  const form = document.getElementById('loginForm');
+  const loginInput = document.getElementById('login');
+  const pwdInput = document.getElementById('password');
+  const submitBtn = document.getElementById('submitBtn');
 
-    const form = document.getElementById('loginForm');
-    const loginInput = document.getElementById('login');
-    const pwdInput = document.getElementById('password');
-    const submitBtn = document.getElementById('submitBtn');
+  const successModal = document.getElementById('successModal');
+  const successText = document.getElementById('successText');
+  const successActions = document.getElementById('successActions');
 
-    const successModal = document.getElementById('successModal');
-    const successOk = document.getElementById('successOk');
-    const successText = document.getElementById('successText');
-    const successHeading = document.getElementById('successHeading');
-    const successActions = document.getElementById('successActions');
+  const errorModal = document.getElementById('errorModal');
+  const errorText = document.getElementById('errorText');
+  const errorOk = document.getElementById('errorOk');
 
-    const errorModal = document.getElementById('errorModal');
-    const errorOk = document.getElementById('errorOk');
-    const errorText = document.getElementById('errorText');
+  function showModal(modal){ modal.classList.add('show'); modal.setAttribute('aria-hidden','false'); }
+  function hideModal(modal){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); }
 
-    function showSuccess(message, onOk) {
-      successHeading.textContent = "Login successful";
-      successText.textContent = message || "You are now logged in.";
-      // default single-continue button
-      successActions.innerHTML = '';
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-primary';
-      btn.id = 'successOk';
-      btn.textContent = 'Continue';
-      successActions.appendChild(btn);
-      successModal.classList.add('show');
-      successModal.setAttribute('aria-hidden', 'false');
-      btn.focus();
-      btn.onclick = () => {
-        hideModal(successModal);
-        btn.onclick = null;
-        if (typeof onOk === 'function') onOk();
-      };
+  function showSuccess(message,onOk){
+    successText.textContent = message||"You are now logged in.";
+    successActions.innerHTML = '';
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary';
+    btn.textContent = 'Continue';
+    btn.onclick = () => { hideModal(successModal); if(onOk) onOk(); };
+    successActions.appendChild(btn);
+    showModal(successModal);
+  }
+
+  function showError(message){
+    errorText.textContent = message||"An error occurred.";
+    showModal(errorModal);
+    errorOk.onclick = ()=>hideModal(errorModal);
+  }
+
+  function setLoading(isLoading){
+    if(isLoading){
+      submitBtn.disabled=true;
+      submitBtn.innerHTML='Logging in <span class="spinner"></span>';
+    } else {
+      submitBtn.disabled=false;
+      submitBtn.innerHTML='Login';
     }
+  }
 
-    // Special staff modal: we render multiple office buttons (notifications/control/kyc)
-    function showStaffOptions(staffName) {
-      successHeading.textContent = `Welcome ${staffName || ''}`;
-      successText.textContent = "Choose where to go:";
-      successActions.innerHTML = '';
+  form.addEventListener('submit',async function(e){
+    e.preventDefault();
+    const login = loginInput.value.trim();
+    const password = pwdInput.value;
+    if(!login||!password){ showError('Enter both login and password'); return; }
 
-      // create buttons for each office page
-      const pages = [
-        { label: 'Notifications', href: 'notifications.html' },
-        { label: 'Control', href: 'control.html' },
-        { label: 'KYC', href: 'kyc.html' }
-      ];
+    const payload={login,password};
+    if(login.includes('@')) payload.email = login;
 
-      pages.forEach(p => {
-        const b = document.createElement('button');
-        b.className = 'btn btn-outline';
-        b.textContent = p.label;
-        b.onclick = () => {
-          // direct navigation (adjust path if your files are in a folder)
-          window.location.href = p.href;
-        };
-        successActions.appendChild(b);
+    setLoading(true);
+    try{
+      const res = await fetch(API,{
+        method:"POST",
+        credentials:'include',
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
       });
+      const data = await res.json().catch(()=>null);
 
-      // also add a primary "Staff Dashboard" button (in case you have a single landing)
-      const dash = document.createElement('button');
-      dash.className = 'btn btn-primary';
-      dash.textContent = 'Staff Dashboard';
-      dash.onclick = () => {
-        // prefer an index/dashboard if you have one
-        window.location.href = 'staff-dashboard.html';
-      };
-      successActions.appendChild(dash);
-
-      // show modal
-      successModal.classList.add('show');
-      successModal.setAttribute('aria-hidden', 'false');
-    }
-
-    function showError(message, onOk) {
-      errorText.textContent = message || "An error occurred.";
-      errorModal.classList.add('show');
-      errorModal.setAttribute('aria-hidden', 'false');
-      errorOk.focus();
-      errorOk.onclick = () => {
-        hideModal(errorModal);
-        errorOk.onclick = null;
-        if (typeof onOk === 'function') onOk();
-      };
-    }
-    function hideModal(m) {
-      m.classList.remove('show');
-      m.setAttribute('aria-hidden', 'true');
-    }
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (successModal.classList.contains('show')) hideModal(successModal);
-        if (errorModal.classList.contains('show')) hideModal(errorModal);
-      }
-    });
-
-    function setLoading(isLoading) {
-      if (isLoading) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = 'Logging in <span class="spinner" aria-hidden="true"></span>';
-      } else {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = 'Login';
-      }
-    }
-
-    function looksLikeEmail(s) {
-      return typeof s === 'string' && s.includes('@') && s.indexOf(' ') === -1;
-    }
-
-    form.addEventListener('submit', async function (e) {
-      e.preventDefault();
-
-      const login = loginInput.value.trim();
-      const password = pwdInput.value;
-
-      if (!login || !password) {
-        showError('Please enter both login and password');
-        return;
-      }
-
-      const payload = { login, password };
-      // some backends expect "email" field — include it when looks like email
-      if (looksLikeEmail(login)) payload.email = login;
-
-      setLoading(true);
-      try {
-        const res = await fetch(API, {
-          method: "POST",
-          credentials: 'include',
-          headers: { "Content-Type": "application/json", "Accept": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        let data = null;
-        try { data = await res.json(); } catch (err) { data = null; }
-
-        if (res.ok && data && data.status === "success") {
-          const role = data.role || (data.user && data.user.role) || null;
-          // STAFF flow: show staff-specific office buttons
-          if (role === "staff") {
-            const staffName = (data.user && (data.user.name || data.user.username)) || data.name || '';
-            showStaffOptions(staffName);
-            setLoading(false);
-            return;
+      if(res.ok && data && data.status==="success"){
+        const role = data.role || (data.user && data.user.role) || null;
+        if(role==="staff"){
+          // automatic redirect based on staff role
+          const staffRole = (data.user && data.user.staffRole) || '';
+          switch(staffRole.toLowerCase()){
+            case 'kyc': window.location.href='kyc.html'; break;
+            case 'notification': window.location.href='notifications.html'; break;
+            default: window.location.href='staff.html';
           }
-
-          // ADMIN flow — unchanged
-          if (role === "admin") {
-            showSuccess("✅ Admin login successful", () => {
-              window.location.href = "Admin/index.html";
-            });
-            setLoading(false);
-            return;
-          }
-
-          // USER flow — unchanged
-          if (role === "user" || data.user) {
-            const backendUser = data.user || {};
-            const user = {
-              id: backendUser.id,
-              username: backendUser.username,
-              phone: backendUser.phone,
-              account_number: backendUser.account_number || backendUser.accountNumber || null,
-              accountNumber: backendUser.account_number || backendUser.accountNumber || null,
-              balance: (backendUser.balance !== undefined) ? backendUser.balance : null
-            };
-            localStorage.setItem("user", JSON.stringify(user));
-            localStorage.setItem("loggedInUser", JSON.stringify(user));
-
-            showSuccess("✅ Login successful!", () => {
-              window.location.href = "Loginauthentication.html";
-            });
-            setLoading(false);
-            return;
-          }
-
-          // fallback: generic success -> continue
-          showSuccess("✅ Login successful", () => {
-            window.location.href = "Loginauthentication.html";
-          });
-          setLoading(false);
-          return;
+          setLoading(false); return;
         }
-
-        // error handling
-        let msg = "Login failed";
-        if (data && data.message) msg = data.message;
-        else if (res.status === 401) msg = "Invalid credentials";
-        else if (res.status >= 500) msg = "Server error. Try again later.";
-        showError("❌ " + msg);
-
-      } catch (err) {
-        console.error("Login error:", err);
-        showError("⚠️ Server/network error. Please try again later.");
-      } finally {
-        setLoading(false);
+        if(role==="admin"){ showSuccess("Admin login successful", ()=>window.location.href="Admin/index.html"); setLoading(false); return; }
+        if(role==="user"||data.user){ localStorage.setItem("user",JSON.stringify(data.user)); showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html"); setLoading(false); return; }
+        showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html"); setLoading(false); return;
       }
-    });
 
-    window.addEventListener('load', () => loginInput.focus());
-  })();
-  </script>
+      let msg = data?.message || "Login failed";
+      showError(msg);
+    } catch(err){
+      console.error(err);
+      showError("Server/network error. Try again.");
+    } finally{ setLoading(false); }
+  });
+
+  window.addEventListener('load', ()=>loginInput.focus());
+})();
+</script>
 </body>
 </html>
