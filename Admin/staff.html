@@ -26,7 +26,7 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
 <body>
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
-  <h2 style="margin:6px 0">8 — Staff Roles</h2>
+  <h2 style="margin:6px 0">Staff Roles</h2>
   <div class="small-muted">Manage support, transaction-review, super-admin, API manager, developer roles.</div>
 </header>
 
@@ -45,7 +45,6 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
       <option>Fraud</option>
       <option>Log</option>
       <option>Notification</option>
-      
     </select>
 
     <div style="display:flex;gap:8px;margin-top:10px">
@@ -80,10 +79,9 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
 </div>
 
 <script>
-// ------ CONFIG ------
-const API_BASE = "https://payme-update.onrender.com/api"; // update if needed
+const API_BASE = "https://payme-update.onrender.com/admin";
 
-// ------ HELPERS ------
+// --- Helpers ---
 function showResult(msg, isError=false){
   const el = document.getElementById('staffResult');
   el.innerText = msg;
@@ -91,37 +89,27 @@ function showResult(msg, isError=false){
 }
 
 function clearForm(){
-  // This function is used by the CLEAR button — it should clear inputs AND hide password.
   document.getElementById('staffName').value = '';
   document.getElementById('staffEmail').value = '';
-  document.getElementById('staffResult').innerText = '';
   hidePassword();
+  document.getElementById('staffResult').innerText = '';
 }
 
 function clearInputsOnly(){
-  // Use this after successful create: clear only inputs but KEEP password visible.
   document.getElementById('staffName').value = '';
   document.getElementById('staffEmail').value = '';
-  // keep staffResult and passwordArea intact
 }
 
-// copy generated password to clipboard
 function copyPassword(){
   const pw = document.getElementById('generatedPassword').innerText;
   if(!pw) return;
-  navigator.clipboard?.writeText(pw).then(() => {
-    showResult('Password copied to clipboard');
-  }, () => {
-    showResult('Unable to copy — select and copy manually', true);
-  });
+  navigator.clipboard?.writeText(pw).then(() => showResult('Password copied to clipboard'), () => showResult('Unable to copy', true));
 }
 
 function showPassword(pw){
   document.getElementById('generatedPassword').innerText = pw;
   document.getElementById('passwordArea').style.display = 'block';
-  // auto-hide after 30s for safety
   setTimeout(() => {
-    // do not auto-hide if user cleared via Clear button — check if still visible
     const area = document.getElementById('passwordArea');
     if(area && area.style.display !== 'none') hidePassword();
   }, 30000);
@@ -130,21 +118,12 @@ function showPassword(pw){
 function hidePassword(){
   document.getElementById('passwordArea').style.display = 'none';
   document.getElementById('generatedPassword').innerText = '';
-  // preserve last server debug only in debug box
 }
 
-// basic email check
-function isValidEmail(email){
-  return /\S+@\S+\.\S+/.test(email);
-}
+function isValidEmail(email){ return /\S+@\S+\.\S+/.test(email); }
+function showDebug(msg){ const el=document.getElementById('debugBox'); el.style.display='block'; el.innerText=msg; }
 
-function showDebug(msg){
-  const el = document.getElementById('debugBox');
-  el.style.display = 'block';
-  el.innerText = msg;
-}
-
-// ------ API CALLS ------
+// --- API Calls ---
 async function fetchStaff(){
   try {
     document.getElementById('listMsg').innerText = 'Loading...';
@@ -165,12 +144,12 @@ async function fetchStaff(){
 
 function renderStaff(staffArray){
   const tbody = document.getElementById('staffList');
-  if(!Array.isArray(staffArray)){ tbody.innerHTML = ''; return; }
+  if(!Array.isArray(staffArray)){ tbody.innerHTML=''; return; }
   tbody.innerHTML = staffArray.map(s => {
-    const id = s.id || s['id'] || s[0] || '';
-    const name = s.name || s['name'] || s[1] || '';
-    const email = s.email || s['email'] || s[2] || '';
-    const role = s.role || s['role'] || s[3] || '';
+    const id = s.id || '';
+    const name = s.name || '';
+    const email = s.email || '';
+    const role = s.staffRole || s.role || '';
     return `<tr>
       <td>${escapeHtml(name)}</td>
       <td>${escapeHtml(email)}</td>
@@ -180,21 +159,17 @@ function renderStaff(staffArray){
   }).join('');
 }
 
-// simple escape to avoid injection in table cells
 function escapeHtml(unsafe){
   if(!unsafe) return '';
-  return String(unsafe).replace(/[&<>"'`=\/]/g, function(s){ return ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'
-  })[s]; });
+  return String(unsafe).replace(/[&<>"'`=\/]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'})[s]);
 }
 
-// create staff (backend generates password and returns generated_password)
 async function createStaff(){
   hidePassword();
-  document.getElementById('debugBox').style.display = 'none';
+  document.getElementById('debugBox').style.display='none';
   const name = document.getElementById('staffName').value.trim();
   const email = document.getElementById('staffEmail').value.trim();
-  const role = document.getElementById('staffRole').value;
+  const staffRole = document.getElementById('staffRole').value;
 
   if(!name || !email){ alert('Name & email required'); return; }
   if(!isValidEmail(email)){ alert('Enter a valid email'); return; }
@@ -202,79 +177,49 @@ async function createStaff(){
   try {
     showResult('Creating staff...');
     const res = await fetch(`${API_BASE}/staff/create`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name, email, role})
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,email,role:staffRole})
     });
 
-    // read raw text first so we can debug malformed responses
     const raw = await res.text();
-    let data = null;
-    try { data = JSON.parse(raw); } catch(e) { data = null; }
+    let data=null;
+    try{ data=JSON.parse(raw); } catch(e){ data=null; }
 
-    console.log('POST /staff/create => status:', res.status, 'raw:', raw, 'parsed:', data);
+    console.log('POST /staff/create =>', res.status, raw, data);
 
     if(!res.ok){
-      // show server returned message if available
       const msg = data && data.message ? data.message : `Server error (${res.status})`;
-      showResult(msg, true);
-      // show raw server response in debug box for easier diagnosing
+      showResult(msg,true);
       showDebug(`RAW RESPONSE: ${raw}`);
       return;
     }
 
-    // Accept many possible keys the backend might return
-    const pw = data && (data.generated_password || data.password || data.generatedPassword || data.generatedPass);
-    if(pw){
-      // IMPORTANT: do not call clearForm here because that hides password.
-      // clear only inputs and keep password visible
-      clearInputsOnly();
-      showPassword(pw);
-      showResult('Staff created — password shown below. Copy and share securely.');
-      fetchStaff();
-      return;
-    }
+    const pw = data && (data.generated_password || data.password);
+    if(pw){ clearInputsOnly(); showPassword(pw); showResult('Staff created — password shown below. Copy securely.'); fetchStaff(); return; }
 
-    // If the server returned success but no password, show debug info
-    if(data && data.status === 'success'){
-      showResult('Staff created but no password returned by backend (see debug).', true);
-      showDebug(`RAW RESPONSE: ${raw}`);
-      fetchStaff();
-      return;
-    }
+    if(data && data.status==='success'){ showResult('Staff created but no password returned (see debug)', true); showDebug(`RAW RESPONSE: ${raw}`); fetchStaff(); return; }
 
-    // fallback: show server message
     showResult(data && data.message ? data.message : 'Unexpected server response', true);
     showDebug(`RAW RESPONSE: ${raw}`);
   } catch(err){
-    console.error(err);
-    showResult('Error creating staff', true);
-    showDebug(String(err));
+    console.error(err); showResult('Error creating staff', true); showDebug(String(err));
   }
 }
 
 async function removeStaff(id){
   if(!confirm('Remove staff?')) return;
   try {
-    const res = await fetch(`${API_BASE}/staff/${id}`, {method:'DELETE'});
-    if(res.ok){
-      showResult('Staff removed');
-      fetchStaff();
-    } else {
-      const raw = await res.text();
-      let data = null;
-      try { data = JSON.parse(raw); } catch(e){ data = null; }
-      showResult(data && data.message ? data.message : 'Failed to remove', true);
-      showDebug(`RAW RESPONSE: ${raw}`);
-    }
-  } catch(err){
-    console.error(err);
-    showResult('Error removing staff', true);
-    showDebug(String(err));
-  }
+    const res = await fetch(`${API_BASE}/staff/${id}`,{method:'DELETE'});
+    if(res.ok){ showResult('Staff removed'); fetchStaff(); return; }
+    const raw = await res.text();
+    let data=null; try{ data=JSON.parse(raw); } catch(e){ data=null; }
+    showResult(data && data.message ? data.message : 'Failed to remove', true);
+    showDebug(`RAW RESPONSE: ${raw}`);
+  } catch(err){ console.error(err); showResult('Error removing staff', true); showDebug(String(err)); }
 }
 
-// initial load
+// --- Initial load ---
 fetchStaff();
 </script>
 </body>
