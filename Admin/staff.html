@@ -20,7 +20,8 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
 .copy-btn{background:#065f46;color:#fff;padding:6px 10px;border-radius:6px;border:0;cursor:pointer;margin-left:8px}
 .password-field{font-weight:700;letter-spacing:1px}
 .notice{margin-top:6px;font-size:13px;color:#374151}
-.debug{margin-top:8px;font-size:12px;color:#6b7280}
+.debug{margin-top:8px;font-size:12px;color:#6b7280;white-space:pre-wrap}
+.loading { opacity: 0.7; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -48,7 +49,7 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
     </select>
 
     <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn" onclick="createStaff()">Create</button>
+      <button id="createBtn" class="btn" onclick="createStaff()">Create</button>
       <button id="clearBtn" style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearForm()">Clear</button>
     </div>
 
@@ -79,9 +80,29 @@ th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
 </div>
 
 <script>
-const API_BASE = "https://payme-update.onrender.com/admin";
+/*
+  Robust frontend that:
+  - detects correct API base (tries several candidates)
+  - sends both role and staffRole to backend for compatibility
+  - lists staff and shows staffRole (fallback to role)
+*/
 
-// --- Helpers ---
+// candidate API bases to try (order matters)
+const CANDIDATES = [
+  "https://payme-update.onrender.com/admin",
+  "https://payme-update.onrender.com/api/admin",
+  "/admin",
+  "/api/admin"
+];
+
+let API_BASE = null; // chosen base
+
+// ---------- helpers ----------
+function setLoading(on){
+  const root = document.querySelector('.container');
+  if(on) root.classList.add('loading'); else root.classList.remove('loading');
+}
+
 function showResult(msg, isError=false){
   const el = document.getElementById('staffResult');
   el.innerText = msg;
@@ -123,33 +144,56 @@ function hidePassword(){
 function isValidEmail(email){ return /\S+@\S+\.\S+/.test(email); }
 function showDebug(msg){ const el=document.getElementById('debugBox'); el.style.display='block'; el.innerText=msg; }
 
-// --- API Calls ---
-async function fetchStaff(){
-  try {
-    document.getElementById('listMsg').innerText = 'Loading...';
-    const res = await fetch(`${API_BASE}/staff/list`);
-    const data = await res.json().catch(()=>null);
-    if(!res.ok){
-      document.getElementById('listMsg').innerText = (data && data.message) ? data.message : 'Failed to load staff';
-      return;
-    }
-    const staff = (data && data.staff) ? data.staff : [];
-    renderStaff(staff);
-    document.getElementById('listMsg').innerText = staff.length ? '' : 'No staff yet';
-  } catch(err){
-    console.error(err);
-    document.getElementById('listMsg').innerText = 'Unable to fetch staff';
-  }
+// escape HTML
+function escapeHtml(unsafe){
+  if(!unsafe) return '';
+  return String(unsafe).replace(/[&<>"'`=\/]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'})[s]);
 }
 
+// timeout helper using AbortController for fetch
+function fetchWithTimeout(url, opts = {}, timeout = 4000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  return fetch(url, {...opts, signal: controller.signal}).finally(() => clearTimeout(id));
+}
+
+// ---------- API base detection ----------
+async function detectApiBase(){
+  showResult('Detecting API base...');
+  for(const candidate of CANDIDATES){
+    try {
+      const url = candidate.replace(/\/$/, '') + '/staff/list';
+      // use GET (simple) to minimize preflight issues
+      const res = await fetchWithTimeout(url, {method:'GET', mode:'cors'}, 3500);
+      // treat 405/404 as "not this base" - accept most other statuses (200,401,500 etc) as valid endpoint present
+      if(res && res.status !== 404 && res.status !== 405){
+        API_BASE = candidate.replace(/\/$/, '');
+        console.log('API base chosen:', API_BASE, 'status:', res.status);
+        showResult('');
+        return API_BASE;
+      }
+    } catch(err){
+      console.warn('candidate failed', candidate, err && err.name ? err.name : err);
+      // continue trying other candidates
+    }
+  }
+  // fallback to first candidate if none detected
+  API_BASE = CANDIDATES[0];
+  showResult(`Could not auto-detect API base. Using fallback: ${API_BASE}`, true);
+  showDebug('Tried candidates:\n' + CANDIDATES.join('\n'));
+  return API_BASE;
+}
+
+// ---------- render staff ----------
 function renderStaff(staffArray){
   const tbody = document.getElementById('staffList');
   if(!Array.isArray(staffArray)){ tbody.innerHTML=''; return; }
   tbody.innerHTML = staffArray.map(s => {
-    const id = s.id || '';
-    const name = s.name || '';
-    const email = s.email || '';
-    const role = s.staffRole || s.role || '';
+    const id = s.id || s['id'] || '';
+    const name = s.name || s['name'] || '';
+    const email = s.email || s['email'] || '';
+    // prefer staffRole if available, fallback to role
+    const role = (s.staffRole || s['staffRole'] || s.role || s['role'] || '') ;
     return `<tr>
       <td>${escapeHtml(name)}</td>
       <td>${escapeHtml(email)}</td>
@@ -159,68 +203,133 @@ function renderStaff(staffArray){
   }).join('');
 }
 
-function escapeHtml(unsafe){
-  if(!unsafe) return '';
-  return String(unsafe).replace(/[&<>"'`=\/]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'})[s]);
+// ---------- API calls ----------
+async function fetchStaff(){
+  if(!API_BASE) await detectApiBase();
+  const listMsg = document.getElementById('listMsg');
+  listMsg.innerText = 'Loading...';
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/staff/list`, {method:'GET', mode:'cors'}, 5000);
+    const raw = await res.text().catch(()=>null);
+    let data = null;
+    try{ data = raw ? JSON.parse(raw) : null; } catch(e){ data = null; }
+    if(!res.ok){
+      // if 405 specifically, show helpful debug
+      if(res.status === 405){
+        showResult('405 from backend when fetching staff. Check route & method.', true);
+        showDebug(`GET ${API_BASE}/staff/list => 405\nRAW: ${raw}`);
+        listMsg.innerText = 'Failed to load staff';
+        return;
+      }
+      listMsg.innerText = (data && data.message) ? data.message : `Failed to load staff (${res.status})`;
+      showDebug(`GET ${API_BASE}/staff/list => ${res.status}\nRAW: ${raw}`);
+      return;
+    }
+    const staff = data && data.staff ? data.staff : [];
+    renderStaff(staff);
+    listMsg.innerText = staff.length ? '' : 'No staff yet';
+  } catch(err){
+    console.error(err);
+    listMsg.innerText = 'Unable to fetch staff';
+    showDebug(String(err));
+  }
 }
 
 async function createStaff(){
+  if(!API_BASE) await detectApiBase();
   hidePassword();
   document.getElementById('debugBox').style.display='none';
   const name = document.getElementById('staffName').value.trim();
   const email = document.getElementById('staffEmail').value.trim();
-  const staffRole = document.getElementById('staffRole').value;
+  const selected = document.getElementById('staffRole').value;
 
   if(!name || !email){ alert('Name & email required'); return; }
   if(!isValidEmail(email)){ alert('Enter a valid email'); return; }
 
   try {
+    setLoading(true);
     showResult('Creating staff...');
-    const res = await fetch(`${API_BASE}/staff/create`, {
+    // Send both role and staffRole for compatibility
+    const payload = { name, email, role: selected, staffRole: selected };
+
+    const res = await fetchWithTimeout(`${API_BASE}/staff/create`, {
       method:'POST',
+      mode:'cors',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,email,role:staffRole})
-    });
+      body: JSON.stringify(payload)
+    }, 7000);
 
-    const raw = await res.text();
-    let data=null;
-    try{ data=JSON.parse(raw); } catch(e){ data=null; }
+    const raw = await res.text().catch(()=>null);
+    let data = null;
+    try{ data = raw ? JSON.parse(raw) : null; } catch(e){ data = null; }
 
-    console.log('POST /staff/create =>', res.status, raw, data);
+    console.log('POST /staff/create =>', res && res.status, raw, data);
 
     if(!res.ok){
-      const msg = data && data.message ? data.message : `Server error (${res.status})`;
-      showResult(msg,true);
-      showDebug(`RAW RESPONSE: ${raw}`);
+      if(res.status === 405){
+        showResult('405 Method Not Allowed when creating staff. Wrong endpoint or method.', true);
+        showDebug(`POST ${API_BASE}/staff/create => 405\nRAW: ${raw}`);
+        return;
+      }
+      const msg = data && data.message ? data.message : `Server error (${res && res.status})`;
+      showResult(msg, true);
+      showDebug(`POST ${API_BASE}/staff/create => ${res && res.status}\nRAW: ${raw}`);
       return;
     }
 
-    const pw = data && (data.generated_password || data.password);
-    if(pw){ clearInputsOnly(); showPassword(pw); showResult('Staff created — password shown below. Copy securely.'); fetchStaff(); return; }
+    const pw = data && (data.generated_password || data.password || data.generatedPassword || data.generatedPass);
+    if(pw){
+      clearInputsOnly();
+      showPassword(pw);
+      showResult('Staff created — password shown below. Copy securely.');
+      fetchStaff();
+      return;
+    }
 
-    if(data && data.status==='success'){ showResult('Staff created but no password returned (see debug)', true); showDebug(`RAW RESPONSE: ${raw}`); fetchStaff(); return; }
+    if(data && data.status === 'success'){
+      // success but no password returned
+      clearInputsOnly();
+      showResult('Staff created (no password returned). Check debug or staff list.', false);
+      showDebug(`RAW RESPONSE: ${raw}`);
+      fetchStaff();
+      return;
+    }
 
     showResult(data && data.message ? data.message : 'Unexpected server response', true);
     showDebug(`RAW RESPONSE: ${raw}`);
   } catch(err){
-    console.error(err); showResult('Error creating staff', true); showDebug(String(err));
+    console.error(err);
+    showResult('Error creating staff', true);
+    showDebug(String(err));
+  } finally {
+    setLoading(false);
   }
 }
 
 async function removeStaff(id){
+  if(!id) return;
   if(!confirm('Remove staff?')) return;
+  if(!API_BASE) await detectApiBase();
   try {
-    const res = await fetch(`${API_BASE}/staff/${id}`,{method:'DELETE'});
+    setLoading(true);
+    const res = await fetchWithTimeout(`${API_BASE}/staff/${id}`, {method:'DELETE', mode:'cors'}, 5000);
     if(res.ok){ showResult('Staff removed'); fetchStaff(); return; }
-    const raw = await res.text();
-    let data=null; try{ data=JSON.parse(raw); } catch(e){ data=null; }
+    const raw = await res.text().catch(()=>null);
+    let data=null; try{ data = raw ? JSON.parse(raw) : null; } catch(e){ data=null; }
     showResult(data && data.message ? data.message : 'Failed to remove', true);
-    showDebug(`RAW RESPONSE: ${raw}`);
-  } catch(err){ console.error(err); showResult('Error removing staff', true); showDebug(String(err)); }
+    showDebug(`DELETE ${API_BASE}/staff/${id} => ${res && res.status}\nRAW: ${raw}`);
+  } catch(err){
+    console.error(err);
+    showResult('Error removing staff', true);
+    showDebug(String(err));
+  } finally { setLoading(false); }
 }
 
-// --- Initial load ---
-fetchStaff();
+// ---------- initial bootstrap ----------
+(async function bootstrap(){
+  await detectApiBase();
+  fetchStaff();
+})();
 </script>
 </body>
 </html>
