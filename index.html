@@ -141,20 +141,41 @@ button:hover { background: var(--primary-dark); }
       const data = await res.json().catch(()=>null);
 
       if(res.ok && data && data.status==="success"){
-        const role = data.role || (data.user && data.user.role) || null;
-        if(role==="staff"){
-          // automatic redirect based on staff role
-          const staffRole = (data.user && data.user.staffRole) || '';
-          switch(staffRole.toLowerCase()){
+        const user = data.user || {};
+        const role = (user.role || data.role || '').toLowerCase();
+        const staffRole = (user.staffRole || '').toLowerCase();
+
+        if(role === "staff"){
+          switch(staffRole){
             case 'kyc': window.location.href='Admin/kyc.html'; break;
-            case 'notification': window.location.href='notifications.html'; break;
-            default: window.location.href='Admin/staff.html';
+            case 'notification': window.location.href='Admin/notifications.html'; break;
+            case 'finance': window.location.href='Admin/finance.html'; break;
+            case 'support': window.location.href='Admin/support.html'; break;
+            default:
+              showError("Staff role not recognized. Contact admin.");
+              setLoading(false);
+              return;
           }
-          setLoading(false); return;
+          setLoading(false);
+          return;
         }
-        if(role==="admin"){ showSuccess("Admin login successful", ()=>window.location.href="Admin/index.html"); setLoading(false); return; }
-        if(role==="user"||data.user){ localStorage.setItem("user",JSON.stringify(data.user)); showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html"); setLoading(false); return; }
-        showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html"); setLoading(false); return;
+
+        if(role === "admin"){
+          showSuccess("Admin login successful", ()=>window.location.href="Admin/index.html");
+          setLoading(false);
+          return;
+        }
+
+        if(role === "user"){
+          localStorage.setItem("user", JSON.stringify(user));
+          showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html");
+          setLoading(false);
+          return;
+        }
+
+        showError("User role not recognized. Contact admin.");
+        setLoading(false);
+        return;
       }
 
       let msg = data?.message || "Login failed";
