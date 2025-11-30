@@ -11,24 +11,23 @@
     --shadow: 0 8px 20px rgba(15,23,42,0.06);
   }
   *{box-sizing:border-box;font-family:Inter, system-ui, Arial;}
-  body{margin:0;background:var(--bg);color:var(--text)}
-  .layout{display:flex;min-height:100vh}
-  aside{width:300px;padding:22px;border-right:1px solid #ececec;transition:transform 0.3s ease;}
-  aside.hidden{transform:translateX(-100%)}
-  .logo{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,var(--green),var(--green-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;margin-bottom:12px}
-  nav{display:flex;flex-direction:column;gap:8px}
-  a.navlink{display:block;padding:10px;border-radius:10px;text-decoration:none;color:var(--text);font-weight:700}
-  a.navlink:hover{background:#f3f7f6}
-  header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #f0f2f3}
-  main{flex:1;padding:22px}
-  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
-  .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow)}
-  .btn{padding:8px 12px;border-radius:8px;border:0;background:var(--green);color:#fff;font-weight:800;cursor:pointer}
-  .btn.ghost{background:transparent;border:2px solid var(--green);color:var(--green)}
-  .search{padding:8px 10px;border-radius:8px;border:1px solid #e6e6e6}
-  .quick-actions{display:flex;flex-direction:column;gap:8px}
-  table{width:100%;border-collapse:collapse}
-  th,td{padding:10px;border-bottom:1px solid #eee;text-align:left}
+  body{margin:0;background:var(--bg);color:var(--text);}
+  .layout{display:flex;min-height:100vh;}
+  aside{width:280px;padding:22px;border-right:1px solid #ececec;transition:transform 0.3s ease;}
+  aside.hidden{transform:translateX(-100%);}
+  .logo{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,var(--green),var(--green-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;margin-bottom:12px;}
+  nav{display:flex;flex-direction:column;gap:8px;}
+  a.navlink{display:block;padding:10px;border-radius:10px;text-decoration:none;color:var(--text);font-weight:700;}
+  a.navlink:hover{background:#f3f7f6;}
+  header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #f0f2f3;}
+  main{flex:1;padding:22px;}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+  .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow);}
+  .btn{padding:8px 12px;border-radius:8px;border:0;background:var(--green);color:#fff;font-weight:800;cursor:pointer;}
+  .btn.ghost{background:transparent;border:2px solid var(--green);color:var(--green);}
+  .search{padding:8px 10px;border-radius:8px;border:1px solid #e6e6e6;}
+  table{width:100%;border-collapse:collapse;}
+  th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;}
   .error{color:red;font-size:13px;margin-top:6px;}
   .popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:18px 22px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.2);display:none;z-index:1000;}
   .popup button{margin-top:12px;}
@@ -36,13 +35,14 @@
   .hamburger{display:none;cursor:pointer;font-size:24px;font-weight:900;user-select:none;}
   .tx-container{max-height:200px;overflow-y:auto;margin-top:12px;}
   @media(max-width:900px){
-    aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);z-index:800}
+    aside{position:absolute;top:0;left:0;height:100%;background:var(--bg);z-index:800;}
     .hamburger{display:block;}
-    .metrics{grid-template-columns:repeat(2,1fr)}
+    .metrics{grid-template-columns:repeat(2,1fr);}
   }
 </style>
 </head>
 <body>
+
 <div class="overlay" id="overlay"></div>
 <div class="popup" id="popup">
   <div id="popupMessage"></div>
@@ -56,16 +56,16 @@
     <div style="color:var(--muted);font-size:13px;margin-bottom:12px">Crypto Trading & Fintech</div>
     <nav id="navlinks">
       <a class="navlink" href="index.html">🏠 Dashboard</a>
-      <a class="navlink" href="fraud.html">🛡️ 1 — Fraud Detection</a>
-      <a class="navlink" href="complaints.html">📣 2 — Customer Complaints</a>
-      <a class="navlink" href="manual.html">💸 3 — Manual Credit/Debit</a>
-      <a class="navlink" href="kyc.html">🪪 4 — KYC Verification</a>
-      <a class="navlink" href="monitoring.html">📊 5 — Monitoring</a>
-      <a class="navlink" href="control.html">⚙️ 6 — Control Services</a>
-      <a class="navlink" href="notifications.html">🔔 7 — Notifications</a>
-      <a class="navlink" href="staff.html">👥 8 — Staff Roles</a>
-      <a class="navlink" href="logs.html">📜 9 — Logs & Audits</a>
-      <a class="navlink" href="scaling.html">🚀 10 — Business Scaling</a>
+      <a class="navlink" href="fraud.html">🛡️ Fraud Detection</a>
+      <a class="navlink" href="complaints.html">📣 Customer Complaints</a>
+      <a class="navlink" href="manual.html">💸 Manual Credit/Debit</a>
+      <a class="navlink" href="kyc.html">🪪 KYC Verification</a>
+      <a class="navlink" href="monitoring.html">📊 Monitoring</a>
+      <a class="navlink" href="control.html">⚙️ Control Services</a>
+      <a class="navlink" href="notifications.html">🔔 Notifications</a>
+      <a class="navlink" href="staff.html">👥 Staff Roles</a>
+      <a class="navlink" href="logs.html">📜 Logs & Audits</a>
+      <a class="navlink" href="scaling.html">🚀 Business Scaling</a>
     </nav>
     <div style="margin-top:18px;color:var(--muted)">Logged in as <strong>Dubem</strong></div>
   </aside>
@@ -75,10 +75,6 @@
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="hamburger" id="hamburger">&#9776;</div>
         <h1 style="margin:0">Admin Dashboard</h1>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="searchBox" class="search" placeholder="Search users, txns, logs..." />
-        <button class="btn ghost" onclick="location.href='notifications.html'">Broadcast</button>
       </div>
     </header>
 
@@ -112,10 +108,6 @@
             <h3 style="margin:0">Recent Transactions</h3>
             <div style="color:var(--muted);font-size:13px">Latest 5</div>
           </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn" onclick="location.href='manual.html'">Manual Credit/Debit</button>
-            <button class="btn ghost" onclick="location.href='./logs.html'">View Logs</button>
-          </div>
         </div>
         <div class="tx-container">
           <table>
@@ -124,50 +116,19 @@
           </table>
         </div>
         <div style="display:flex;gap:8px;margin-top:6px;">
-          <button class="btn" id="seeMore">See More</button>
-          <button class="btn ghost" id="seeLess">See Less</button>
+          <button class="btn" id="toggleTx">See More</button>
         </div>
         <div class="error" id="txError"></div>
-      </section>
-
-      <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-        <div class="card">
-          <h3 style="margin-top:0">Quick Actions</h3>
-          <div class="quick-actions">
-            <button class="btn" onclick="location.href='fraud.html'">Freeze Account / Fraud</button>
-            <button class="btn" onclick="location.href='complaints.html'">Handle Complaints</button>
-            <button class="btn" onclick="location.href='kyc.html'">Review KYC</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-top:0">Services</h3>
-          <p style="color:var(--muted);margin:0 0 10px 0">APIs & Fees control</p>
-          <div style="display:flex;gap:8px">
-            <button class="btn ghost" onclick="location.href='control.html'">Service Control</button>
-            <button class="btn ghost" onclick="location.href='notifications.html'">Send Announcement</button>
-            <button class="btn ghost" onclick="location.href='staff.html'">Manage Staff</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-top:0">Compliance</h3>
-          <p style="color:var(--muted);margin:0 0 10px 0">KYC, logs & audits</p>
-          <div style="display:flex;gap:8px">
-            <button class="btn ghost" onclick="location.href='./logs.html'">View Logs</button>
-            <button class="btn ghost" onclick="location.href='monitoring.html'">Monitoring</button>
-          </div>
-        </div>
       </section>
     </main>
   </div>
 </div>
 
 <script>
-const BACKEND = "https://your-backend-url.com"; // replace with your backend
+const BACKEND = "https://payme-update.onrender.com"; // replace with your backend
 let allTx=[], showing=5;
 
-// Hamburger
+// Hamburger toggle
 const hamburger=document.getElementById('hamburger');
 const sidebar=document.getElementById('sidebar');
 hamburger.addEventListener('click',()=>{sidebar.classList.toggle('hidden');});
@@ -178,7 +139,7 @@ const overlay=document.getElementById('overlay');
 function showPopup(msg){document.getElementById('popupMessage').innerText=msg;popup.style.display='block';overlay.style.display='block';}
 function closePopup(){popup.style.display='none';overlay.style.display='none';}
 
-// Metrics
+// Load metrics
 async function loadMetrics(){
   try{
     const res=await fetch(`${BACKEND}/admin/metrics`);
@@ -192,7 +153,7 @@ async function loadMetrics(){
   }catch(e){showPopup(e);}
 }
 
-// Recent Transactions
+// Load transactions
 async function loadTx(){
   try{
     const res=await fetch(`${BACKEND}/admin/recent_tx`);
@@ -201,6 +162,7 @@ async function loadTx(){
     else showPopup(tx.message||"Unexpected response");
   }catch(e){showPopup(e);}
 }
+
 function renderTx(){
   const body=document.getElementById('txBody');
   const visible=allTx.slice(0,showing);
@@ -212,12 +174,16 @@ function renderTx(){
     <td>Success</td>
     <td>${r.date}</td>
   </tr>`).join("");
-}
-document.getElementById('seeMore').addEventListener('click',()=>{showing=Math.min(allTx.length,showing+5);renderTx();});
-document.getElementById('seeLess').addEventListener('click',()=>{showing=Math.max(5,showing-5);renderTx();});
 
-// Search box popup
-document.getElementById('searchBox').addEventListener('keypress',(e)=>{if(e.key==='Enter')showPopup('Search not yet integrated with backend.')});
+  const toggleBtn=document.getElementById('toggleTx');
+  if(showing>=allTx.length){toggleBtn.innerText="See Less";}
+  else{toggleBtn.innerText="See More";}
+}
+
+document.getElementById('toggleTx').addEventListener('click',()=>{
+  if(showing>=allTx.length){showing=5;}else{showing=allTx.length;}
+  renderTx();
+});
 
 loadMetrics();
 loadTx();
