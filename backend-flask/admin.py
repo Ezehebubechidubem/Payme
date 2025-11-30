@@ -64,7 +64,7 @@ def create_staff():
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     role = (data.get("role") or "").strip()
-    staff_role = (data.get("staffRole") or "").strip().lower()  # NEW
+    staff_role = (data.get("staffRole") or "").strip()  # added staffRole support
 
     if not name or not email or not role:
         return jsonify({"status":"error","message":"All fields are required"}), 400
@@ -107,6 +107,7 @@ def list_staff():
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
+            # Keep original logic exactly, only select staffRole too
             cur.execute("SELECT id, name, email, role, staffRole, created_at FROM staff ORDER BY created_at DESC")
             rows = cur.fetchall()
             staff_list = []
