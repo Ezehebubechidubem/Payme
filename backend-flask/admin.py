@@ -30,7 +30,7 @@ def init_admin(get_conn_func):
                 name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 role TEXT NOT NULL,
-                staffRole TEXT,             -- added staffRole column
+                staffRole TEXT,        -- added staffRole column
                 password TEXT NOT NULL,
                 created_at TEXT
             )
@@ -64,7 +64,7 @@ def create_staff():
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     role = (data.get("role") or "").strip()
-    staff_role = (data.get("staffRole") or "").strip()  # added staffRole support
+    staff_role = (data.get("staffRole") or "").strip()  # <-- added
 
     if not name or not email or not role:
         return jsonify({"status":"error","message":"All fields are required"}), 400
@@ -107,7 +107,7 @@ def list_staff():
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
-            # Keep original logic exactly, only select staffRole too
+            # Keep original logic exactly; just include staffRole in SELECT
             cur.execute("SELECT id, name, email, role, staffRole, created_at FROM staff ORDER BY created_at DESC")
             rows = cur.fetchall()
             staff_list = []
