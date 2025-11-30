@@ -146,9 +146,9 @@ button:hover { background: var(--primary-dark); }
           // automatic redirect based on staff role
           const staffRole = (data.user && data.user.staffRole) || '';
           switch(staffRole.toLowerCase()){
-            case 'kyc': window.location.href='kyc.html'; break;
+            case 'kyc': window.location.href='Admin/kyc.html'; break;
             case 'notification': window.location.href='notifications.html'; break;
-            default: window.location.href='staff.html';
+            default: window.location.href='Admin/staff.html';
           }
           setLoading(false); return;
         }
