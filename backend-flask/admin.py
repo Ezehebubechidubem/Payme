@@ -7,6 +7,10 @@ from datetime import datetime
 from flask import Flask, Blueprint, jsonify, request, current_app
 from werkzeug.security import generate_password_hash
 
+# --- Flask app instance (only if standalone) ---
+# If using from main app.py, comment this out
+# app = Flask(__name__)
+
 # --- Admin Blueprint ---
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 
@@ -30,7 +34,7 @@ def init_admin(get_conn_func):
                 name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 role TEXT NOT NULL,
-                staffRole TEXT,  -- added staffRole column
+                staffRole TEXT,
                 password TEXT NOT NULL,
                 created_at TEXT
             )
@@ -99,8 +103,12 @@ def create_staff():
         "generated_password": plain_pw
     }), 201
 
-@admin_bp.route("/staff/list", methods=["GET"])
+@admin_bp.route("/staff/list", methods=["GET","OPTIONS"])
 def list_staff():
+    # Allow preflight OPTIONS for CORS clients (prevents 405 on browsers)
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
