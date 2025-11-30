@@ -34,7 +34,6 @@ def init_admin(get_conn_func):
                 name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 role TEXT NOT NULL,
-                staffRole TEXT,
                 password TEXT NOT NULL,
                 created_at TEXT
             )
@@ -68,7 +67,6 @@ def create_staff():
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     role = (data.get("role") or "").strip()
-    staff_role = (data.get("staffRole") or "").strip()  # store staff role
 
     if not name or not email or not role:
         return jsonify({"status":"error","message":"All fields are required"}), 400
@@ -89,8 +87,8 @@ def create_staff():
                 return jsonify({"status":"error","message":"Email already exists"}), 400
 
             cur.execute(
-                "INSERT INTO staff (id, name, email, role, staffRole, password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (staff_id, name, email, role, staff_role, hashed, created_at)
+                "INSERT INTO staff (id, name, email, role, password, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (staff_id, name, email, role, hashed, created_at)
             )
             conn.commit()
     except Exception as e:
@@ -99,23 +97,19 @@ def create_staff():
 
     return jsonify({
         "status": "success",
-        "staff": {"id": staff_id, "name": name, "email": email, "role": role, "staffRole": staff_role},
+        "staff": {"id": staff_id, "name": name, "email": email, "role": role},
         "generated_password": plain_pw
     }), 201
 
-@admin_bp.route("/staff/list", methods=["GET","OPTIONS"])
+@admin_bp.route("/staff/list", methods=["GET"])
 def list_staff():
-    # Allow preflight OPTIONS for CORS clients (prevents 405 on browsers)
-    if request.method == "OPTIONS":
-        return "", 204
-
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT id, name, email, role, staffRole, created_at FROM staff ORDER BY created_at DESC")
+            cur.execute("SELECT id, name, email, role, created_at FROM staff ORDER BY created_at DESC")
             rows = cur.fetchall()
             staff_list = []
             for r in rows:
@@ -126,8 +120,7 @@ def list_staff():
                 else:
                     staff_list.append({
                         "id": r[0], "name": r[1], "email": r[2], "role": r[3],
-                        "staffRole": r[4],
-                        "created_at": r[5] if len(r) > 5 else None
+                        "created_at": r[4] if len(r) > 4 else None
                     })
     except Exception as e:
         current_app.logger.exception("list_staff failed: %s", e)
