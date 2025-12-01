@@ -219,6 +219,24 @@ def admin_recent_tx():
 
     return jsonify(result), 200
 
+@admin_bp.route("/daily_summary", methods=["GET"])
+def daily_summary():
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DATE(date) as day,
+                   COALESCE(SUM(CASE WHEN type='Deposit' THEN amount END),0) as deposits,
+                   COALESCE(SUM(CASE WHEN type='Transfer Out' THEN amount END),0) as withdrawals,
+                   COALESCE(SUM(amount),0) as total
+            FROM transactions
+            WHERE date >= DATE('now','-6 days')
+            GROUP BY DATE(date)
+            ORDER BY day DESC
+        """)
+        rows = cur.fetchall()
+        summary = [{"day": r["day"], "deposits": r["deposits"], "withdrawals": r["withdrawals"], "total": r["total"]} for r in rows]
+    return jsonify({"status":"success","summary":summary})
+
 # --- To use blueprint in main app.py ---
 # from admin import admin_bp, init_admin
 # app.register_blueprint(admin_bp)
