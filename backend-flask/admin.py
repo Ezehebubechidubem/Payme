@@ -25,6 +25,31 @@ admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 # --- Logger ---
 logger = logging.getLogger("admin_bp")
 
+# --- Configure Cloudinary at import time if credentials exist (best-effort) ---
+if _CLOUDINARY_IMPORTED:
+    try:
+        cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
+        api_key = os.environ.get("CLOUDINARY_API_KEY")
+        api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+        if cloud_name and api_key and api_secret:
+            try:
+                cloudinary.config(
+                    cloud_name=cloud_name,
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    secure=True
+                )
+                logger.info("admin_bp: cloudinary configured at import time")
+            except Exception as e:
+                logger.exception("admin_bp: cloudinary.config failed: %s", e)
+                _CLOUDINARY_IMPORTED = False
+        else:
+            logger.debug("admin_bp: cloudinary env not fully configured - skipping")
+            _CLOUDINARY_IMPORTED = False
+    except Exception as e:
+        logger.exception("admin_bp: cloudinary init failed: %s", e)
+        _CLOUDINARY_IMPORTED = False
+
 # --- CORS: minimal after_request to echo Origin for credentials support ---
 @admin_bp.after_request
 def add_cors_headers(response):
@@ -45,24 +70,27 @@ def init_admin(get_conn_func):
     global _get_conn
     _get_conn = get_conn_func
 
-    # Configure cloudinary if available and env vars exist
+    # Configure cloudinary again here if needed (safe no-op if already configured)
     try:
         if _CLOUDINARY_IMPORTED:
             cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
             api_key = os.environ.get("CLOUDINARY_API_KEY")
             api_secret = os.environ.get("CLOUDINARY_API_SECRET")
             if cloud_name and api_key and api_secret:
-                cloudinary.config(
-                    cloud_name=cloud_name,
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    secure=True
-                )
-                logger.info("init_admin: cloudinary configured")
+                try:
+                    cloudinary.config(
+                        cloud_name=cloud_name,
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        secure=True
+                    )
+                    logger.info("init_admin: cloudinary configured")
+                except Exception as e:
+                    logger.exception("init_admin: cloudinary config failed: %s", e)
             else:
                 logger.debug("init_admin: cloudinary env not fully configured")
     except Exception as e:
-        logger.exception("init_admin: cloudinary config failed: %s", e)
+        logger.exception("init_admin: cloudinary check failed: %s", e)
 
     try:
         with _get_conn() as conn:
@@ -79,7 +107,7 @@ def init_admin(get_conn_func):
             """)
             conn.commit()
 
-            # Add image_url column to announcements table schema so we can store remote URLs (Cloudinary)
+            # Ensure announcements table has columns we expect (image_path, image_url, status, created_by)
             cur.execute("""
             CREATE TABLE IF NOT EXISTS announcements (
                 id TEXT PRIMARY KEY,
@@ -327,10 +355,26 @@ def daily_summary():
 # Announcements backend
 # -----------------------------------------
 
-# Upload configuration: ensure absolute path so send_from_directory works reliably
-UPLOAD_BASE = os.environ.get("UPLOAD_BASE", "uploads")
+# Upload configuration: choose a writable default (Render/hosted containers may not allow writing project dir).
+# Allow override via UPLOAD_BASE environment variable if you prefer a specific path.
+_UPLOAD_BASE_ENV = os.environ.get("UPLOAD_BASE")
+if _UPLOAD_BASE_ENV:
+    UPLOAD_BASE = _UPLOAD_BASE_ENV
+else:
+    # default to /tmp/uploads which is typically writable on container platforms
+    UPLOAD_BASE = "/tmp/uploads"
+
 ANN_UPLOAD_DIR = os.path.abspath(os.path.join(UPLOAD_BASE, "announcements"))
-os.makedirs(ANN_UPLOAD_DIR, exist_ok=True)
+try:
+    os.makedirs(ANN_UPLOAD_DIR, exist_ok=True)
+except Exception as e:
+    logger.exception("Could not create ANN_UPLOAD_DIR=%s : %s", ANN_UPLOAD_DIR, e)
+    # fallback to system temp
+    ANN_UPLOAD_DIR = os.path.abspath(os.path.join("/tmp", "uploads", "announcements"))
+    try:
+        os.makedirs(ANN_UPLOAD_DIR, exist_ok=True)
+    except Exception as e2:
+        logger.exception("Fallback mkdir failed: %s", e2)
 
 ALLOWED_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
 
@@ -357,6 +401,13 @@ def create_announcement():
         logger.warning("create_announcement: unauthorized access attempt")
         return jsonify({"status":"error","message":"unauthorized"}), 401
 
+    # DEBUG: show what arrived
+    try:
+        logger.debug("create_announcement: request.files keys = %s", list(request.files.keys()))
+        logger.debug("create_announcement: request.form keys = %s", list(request.form.keys()))
+    except Exception:
+        pass
+
     title = (request.form.get("title") or "").strip()
     body = (request.form.get("body") or "").strip()
     target = (request.form.get("target") or "all").strip()
@@ -367,6 +418,7 @@ def create_announcement():
     image_url = None
     uploaded_to_cloudinary = False
 
+    # handle uploaded file (if any)
     if "image" in request.files:
         f = request.files["image"]
         if f and f.filename:
@@ -381,7 +433,8 @@ def create_announcement():
                 api_secret = os.environ.get("CLOUDINARY_API_SECRET")
                 if _CLOUDINARY_IMPORTED and cloud_name and api_key and api_secret:
                     try:
-                        # pass the FileStorage directly; cloudinary handles file-like objects
+                        # If f is a FileStorage, cloudinary can accept file-like object
+                        # Use secure options: folder and unique filename
                         upload_result = cloudinary.uploader.upload(
                             f,
                             folder="payme/announcements",
@@ -390,15 +443,17 @@ def create_announcement():
                             overwrite=False
                         )
                         image_url = upload_result.get("secure_url")
-                        uploaded_to_cloudinary = True
+                        uploaded_to_cloudinary = bool(image_url)
                         logger.info("create_announcement: uploaded image to cloudinary url=%s", image_url)
                     except Exception as e:
+                        # Log and fall back to local saving
                         logger.exception("create_announcement: cloudinary upload failed: %s", e)
-                        # fall back to local save below
+                        uploaded_to_cloudinary = False
                 else:
                     logger.debug("create_announcement: cloudinary not configured or not available, falling back to local save")
             except Exception as e:
                 logger.exception("create_announcement: cloudinary check failed: %s", e)
+                uploaded_to_cloudinary = False
 
             # If Cloudinary not used or failed, save to local disk
             if not uploaded_to_cloudinary:
@@ -407,7 +462,22 @@ def create_announcement():
                     uid_name = uuid.uuid4().hex
                     ext = filename.rsplit(".", 1)[-1].lower()
                     saved_name = f"{uid_name}.{ext}"
-                    saved_path = os.path.join(ANN_UPLOAD_DIR, saved_name)
+                    # ensure ANN_UPLOAD_DIR is writable - if not, try /tmp fallback
+                    if not os.access(ANN_UPLOAD_DIR, os.W_OK):
+                        try:
+                            tmp_fallback = os.path.abspath(os.path.join("/tmp", "uploads", "announcements"))
+                            os.makedirs(tmp_fallback, exist_ok=True)
+                            if os.access(tmp_fallback, os.W_OK):
+                                logger.debug("ANN_UPLOAD_DIR not writable, switching to %s", tmp_fallback)
+                                save_dir = tmp_fallback
+                            else:
+                                save_dir = ANN_UPLOAD_DIR
+                        except Exception:
+                            save_dir = ANN_UPLOAD_DIR
+                    else:
+                        save_dir = ANN_UPLOAD_DIR
+
+                    saved_path = os.path.join(save_dir, saved_name)
                     # Ensure the file pointer is at start (in case cloudinary consumed some)
                     try:
                         f.stream.seek(0)
@@ -419,7 +489,7 @@ def create_announcement():
                     f.save(saved_path)
                     image_path = saved_name
                     logger.debug("create_announcement: saved image to %s", saved_path)
-                    # build image_url from host for local files (will be persisted in DB)
+                                   # build image_url from host for local files (will be persisted in DB)
                     try:
                         base = request.host_url.rstrip("/") if request.host_url else ""
                     except Exception:
@@ -427,7 +497,7 @@ def create_announcement():
                     image_url = f"{base}/admin/uploads/announcements/{image_path}" if base else f"/admin/uploads/announcements/{image_path}"
                 except Exception as e:
                     logger.exception("Failed to save announcement image: %s", e)
-                    return jsonify({"status":"error","message":"failed to save image"}), 500
+                    return jsonify({"status":"error","message":"failed to save image", "error": str(e)}), 500
 
     ann_id = uuid.uuid4().hex
     created_by = session.get("staff_id") or session.get("user_id") or None
@@ -443,10 +513,10 @@ def create_announcement():
             logger.info("create_announcement: created ann_id=%s by=%s image_url=%s image_path=%s", ann_id, created_by, image_url, image_path)
     except Exception as e:
         logger.exception("create_announcement failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to create announcement"}), 500
+        # Return the error message to help debugging — remove or sanitize in production if needed
+        return jsonify({"status":"error","message":"Failed to create announcement", "error": str(e)}), 500
 
     return jsonify({"status":"success", "id": ann_id, "image_url": image_url}), 200
-
 
 @admin_bp.route("/announcements/active", methods=["GET","OPTIONS"])
 def get_active_announcements():
@@ -567,7 +637,6 @@ def list_announcements():
 
     return jsonify({"status":"success","announcements": out}), 200
 
-
 @admin_bp.route("/announcements/<ann_id>", methods=["DELETE","OPTIONS"])
 def delete_announcement(ann_id):
     if request.method == "OPTIONS":
@@ -668,6 +737,7 @@ def serve_ann_image(filename):
         return "", 204
     try:
         logger.debug("serve_ann_image: serving %s from %s", filename, ANN_UPLOAD_DIR)
+        # secure filename is already handled when saving
         return send_from_directory(ANN_UPLOAD_DIR, filename, conditional=True)
     except Exception as e:
         logger.exception("serve_ann_image failed: %s", e)
@@ -708,6 +778,7 @@ def fix_announcement_columns():
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
+            # IF NOT EXISTS is supported by sqlite/postgres; if your DB doesn't support it adapt accordingly
             cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_path TEXT;")
             cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_url TEXT;")
             cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';")
@@ -715,4 +786,5 @@ def fix_announcement_columns():
             conn.commit()
         return jsonify({"status": "success", "message": "Columns updated"}), 200
     except Exception as e:
+        logger.exception("fix_announcement_columns failed: %s", e)
         return jsonify({"status": "error", "message": str(e)}), 500
