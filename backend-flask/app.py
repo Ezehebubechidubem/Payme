@@ -432,7 +432,7 @@ def login():
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
     # -------------------------
-    # STAFF: database-driven (UPDATED)
+    # STAFF: database-driven (UPDATED — returns full GitHub Pages URLs)
     # -------------------------
     with get_conn() as conn:
         cur = conn.cursor()
@@ -463,27 +463,28 @@ def login():
             session["is_staff"] = True
             session["staff_id"] = staff_id
             session["staff_name"] = staff_name
-            # store normalized role (lowercase) for guard comparisons
+            # normalized role for guard checks
             session["staff_role"] = (staff_role or "").strip().lower()
 
-            # ROLE -> exact Admin page mapping (server decides final path)
+            # ROLE -> full GitHub Pages URL (your domain)
+            BASE = "https://ezehebubechidubem.github.io/Payme"
             ROLE_ROUTES = {
-                "customer-support": "/Admin/scaling.html",
-                "customer support": "/Admin/scaling.html",
-                "transaction-review": "/Admin/review.html",
-                "transaction review": "/Admin/review.html",
-                "scaling": "/Admin/scaling.html",
-                "api manager": "/Admin/api_manager.html",
-                "api-manager": "/Admin/api_manager.html",
-                "developer": "/Admin/developer.html",
-                "kyc": "/Admin/kyc.html",
-                "fraud": "/Admin/fraud.html",
-                "log": "/Admin/log.html",
-                "notification": "/Admin/notifications.html"
+                "customer-support": f"{BASE}/Admin/scaling.html",
+                "customer support": f"{BASE}/Admin/scaling.html",
+                "transaction-review": f"{BASE}/Admin/review.html",
+                "transaction review": f"{BASE}/Admin/review.html",
+                "scaling": f"{BASE}/Admin/scaling.html",
+                "api manager": f"{BASE}/Admin/api_manager.html",
+                "api-manager": f"{BASE}/Admin/api_manager.html",
+                "developer": f"{BASE}/Admin/developer.html",
+                "kyc": f"{BASE}/Admin/kyc.html",
+                "fraud": f"{BASE}/Admin/fraud.html",
+                "log": f"{BASE}/Admin/log.html",
+                "notification": f"{BASE}/Admin/notifications.html"
             }
 
             role_key = (staff_role or "").strip().lower()
-            redirect_to = ROLE_ROUTES.get(role_key, "/Admin/staff.html")
+            redirect_to = ROLE_ROUTES.get(role_key, f"{BASE}/Admin/staff.html")
 
             return jsonify({
                 "status": "success",
