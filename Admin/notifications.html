@@ -33,13 +33,7 @@
  .actions-col button{margin-bottom:6px;width:120px}
  .spinner {display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.1);border-top-color:#000;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-left:8px}
  @keyframes spin{ to { transform: rotate(360deg);} }
-
-/* debug panel */
-#annDebug { display:none; position:fixed; right:12px; bottom:12px; width:420px; max-height:60vh; overflow:auto; background:#111827;color:#fff;padding:12px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.3); font-family:monospace; font-size:12px; z-index:9999;}
-#annDebug h4 { margin:0 0 8px 0; font-size:13px; }
-#annDebug pre { white-space:pre-wrap; word-break:break-word; background:rgba(255,255,255,0.03); padding:8px; border-radius:6px; margin:6px 0; max-height:28vh; overflow:auto;}
-#annDebug .close-btn{ background:#ef4444;color:#fff;border:0;padding:6px 8px;border-radius:6px; cursor:pointer; float:right;}
-.toggle-debug { position:absolute; right:12px; top:12px; background:#f3f4f6;color:#111;padding:6px 8px;border-radius:6px;border:0; cursor:pointer;}
+ .debug-panel { margin:12px 0;padding:10px;border-radius:8px;background:#fff;border:1px dashed #e5e7eb;color:#374151;font-size:13px }
 </style>
 </head>
 <body>
@@ -47,7 +41,8 @@
 <!-- AUTH CHECK (same as monitoring), now uses API_BASE below -->
 <script>
 (async function(){
-  const API_BASE = "https://payme-update.onrender.com";
+  // NOTE: use same pattern as staff page — API_BASE includes the /api prefix so calls become e.g. `${API_BASE}/auth/check`
+  const API_BASE = "https://payme-update.onrender.com/api";
   const EXPECTED_ROLE = "notification";
   try {
     const res = await fetch(`${API_BASE}/auth/check`, {
@@ -77,7 +72,6 @@
   <a href="https://ezehebubechidubem.github.io/Payme/index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>
   <div class="muted">Create announcements with images — they will appear on the main PayMe dashboard promo area.</div>
-  <button class="toggle-debug" onclick="toggleDebug()">Debug</button>
 </header>
 
 <div class="container">
@@ -119,6 +113,17 @@
     </div>
 
     <div id="limitWarning" class="limit-warning" style="display:none">Max 10 active announcements reached. Delete or republish in history to create more.</div>
+
+    <!-- keep a small debug panel (user asked to keep debug) -->
+    <div id="annDebug" class="debug-panel" style="display:none">
+      <strong>Debug</strong>
+      <div id="lastReq" style="margin-top:8px"></div>
+      <div id="lastRes" style="margin-top:6px;color:#6b7280"></div>
+      <div style="margin-top:8px">
+        <button onclick="toggleDebug(false)" style="padding:6px;border-radius:6px;border:0;background:#efefef;cursor:pointer">Hide</button>
+      </div>
+    </div>
+
   </div>
 
   <div class="card" style="margin-top:12px">
@@ -141,24 +146,11 @@
   </div>
 </div>
 
-<!-- debug panel -->
-<div id="annDebug" role="dialog" aria-label="Announcements debug panel">
-  <button class="close-btn" onclick="toggleDebug(true)">Close</button>
-  <h4>Debug — Last Request & Response</h4>
-  <div><strong>Last Request</strong></div>
-  <pre id="lastReq"></pre>
-  <div><strong>Last Response</strong></div>
-  <pre id="lastRes"></pre>
-</div>
-
 <script>
-// ------ CONFIG ------
-// Make this match staff pattern: API_BASE includes /api prefix (same pattern as staff page)
+// Single place for API host — change here if your backend is served under a different base path
+// Make this match the pattern used in your staff page: API_BASE includes the /api prefix
 const API_BASE = "https://payme-update.onrender.com/api";
-const CREATE_URL = `${API_BASE}/announcements`;                // primary (matches staff pattern)
-const CREATE_URL_ALT1 = `${API_BASE}/admin/announcements`;    // alt (if admin blueprint kept prefix)
-const CREATE_URL_ALT2 = CREATE_URL.replace(/\/api$/,'') + '/announcements'; // no /api prefix
-const CREATE_URL_ALT3 = CREATE_URL_ALT1.replace(/\/api$/,'') + '/admin/announcements'; // no /api + admin
+const CREATE_URL = `${API_BASE}/announcements`;
 const ACTIVE_URL = `${API_BASE}/announcements/active`;
 const HISTORY_URL = `${API_BASE}/announcements`;
 const DELETE_URL_BASE = `${API_BASE}/announcements`; // DELETE /<id>
@@ -324,7 +316,7 @@ async function countActiveServer(){
   } catch(e){ return 0; }
 }
 
-// send announcement to backend with fallback attempts
+// send announcement to backend
 async function sendNotification(){
   const title = el('notifTitle').value.trim();
   const body = el('notifBody').value.trim();
@@ -354,6 +346,7 @@ async function sendNotification(){
   // if user provided expiry, send that ISO; otherwise set default to 24h ahead
   let expiresAt = null;
   if(expiryRaw){
+    // convert local datetime to ISO (server will interpret)
     const dt = new Date(expiryRaw);
     if(!isNaN(dt.getTime())) expiresAt = dt.toISOString();
   }
@@ -372,82 +365,47 @@ async function sendNotification(){
   showMsg('');
 
   // record debug request
-  const debugReqText = `POST ${CREATE_URL} (primary)\nFormData keys: ${Array.from(form.keys()).join(', ')}`;
+  const debugReqText = `POST ${CREATE_URL}\nFormData keys: ${Array.from(form.keys()).join(', ')}`;
   showDebugPanel(debugReqText, '');
 
-  // Try list: primary then fallbacks
-  const tryUrls = [CREATE_URL, CREATE_URL_ALT1, CREATE_URL_ALT2, CREATE_URL_ALT3];
-
-  let finalResponse = null;
-  let finalRaw = null;
-  let finalUrl = null;
-
-  for(const url of tryUrls){
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
-        body: form
-      });
-
-      const rawText = await res.text().catch(()=>null);
-      // update debug panel with each attempt
-      showDebugPanel(`POST ${url}\nFormData keys: ${Array.from(form.keys()).join(', ')}`, `HTTP ${res.status}\n${rawText || ''}`);
-
-      // attempt parse json
-      let json = null;
-      try { json = rawText ? JSON.parse(rawText) : null; } catch(e){ json = null; }
-
-      // if ok or created -> success
-      if(res.ok && (json && (json.status === 'success' || res.status === 200 || res.status === 201))){
-        finalResponse = { res, json, rawText };
-        finalRaw = rawText;
-        finalUrl = url;
-        break;
-      }
-
-      // if 404 or 405 try next url
-      if(res.status === 404 || res.status === 405){
-        // continue to next trial
-        finalResponse = { res, json, rawText };
-        finalRaw = rawText;
-        finalUrl = url;
-        // continue loop to try next URL
-      } else {
-        // other error (4xx/5xx) — we stop and show message (but still allow trying next URL to help debug)
-        finalResponse = { res, json, rawText };
-        finalRaw = rawText;
-        finalUrl = url;
-      }
-
-      // if this attempt returned ok-like we would have broken earlier.
-    } catch(err){
-      // network error in this attempt — show and continue
-      showDebugPanel(`POST ${url}\nFormData keys: ${Array.from(form.keys()).join(', ')}`, `NETWORK ERROR: ${String(err)}`);
-      finalResponse = { res: null, json: null, rawText: String(err) };
-      finalRaw = String(err);
-      finalUrl = url;
-      // continue to next URL
-    }
-  } // end for attempts
-
-  // Evaluate finalResponse
   try {
-    if(finalResponse && finalResponse.res && finalResponse.res.ok){
+    const res = await fetch(CREATE_URL, {
+      method: 'POST',
+      credentials: 'include',
+      body: form
+    });
+
+    // capture response text for debug panel
+    const rawText = await res.text().catch(()=>null);
+    showDebugPanel(debugReqText, `HTTP ${res.status}\n${rawText}`);
+
+    // try parse json
+    let json = null;
+    try { json = rawText ? JSON.parse(rawText) : null; } catch(e){ json = null; }
+
+    if(res.status === 404){
+      showMsg(`Endpoint not found (404). Check backend URL: ${CREATE_URL}`, true);
+      return;
+    }
+    if(res.status === 405){
+      showMsg(`Method not allowed (405). Backend expects POST at ${CREATE_URL}`, true);
+      return;
+    }
+
+    if(res.ok && json && (json.status === 'success' || res.status === 200 || res.status === 201)){
       showMsg('Announcement created and stored on server.');
+      // refresh active and history views
       await refreshAllViews();
+      // clear form
       clearNotif();
     } else {
-      // show most useful debug info
-      const status = finalResponse && finalResponse.res ? finalResponse.res.status : 'Network/No response';
-      const raw = finalRaw || 'no-response';
-      showMsg(`Server error (${status}). See debug for details.`, true);
-      showDebugPanel(`POST TRIED: ${finalUrl || 'none'}`, `HTTP ${status}\n${raw}`);
+      const message = (json && (json.message || json.error)) || `Server error (${res.status})`;
+      showMsg(message, true);
     }
-  } catch(e){
-    console.error('Final eval error', e);
-    showMsg('Unexpected client error', true);
-    showDebugPanel('final-eval',''+e);
+  } catch(err){
+    console.error('sendNotification error', err);
+    showMsg('Network or server error. Announcement not saved.', true);
+    showDebugPanel(debugReqText, String(err));
   } finally {
     sendBtn.disabled = false;
     sendBtn.innerText = 'Send';
