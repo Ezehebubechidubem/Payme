@@ -32,68 +32,6 @@ def _now_iso():
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 # ---------- staff access guard ----------
-from flask import session, redirect, request, jsonify, abort
-
-# Role -> route mapping (exact Admin paths)
-ROLE_ROUTES = {
-    "customer-support": "/Payme/Admin/scaling.html",
-    "customer support": "/Payme/Admin/scaling.html",
-    "transaction-review": "/Payme/Admin/review.html",
-    "transaction review": "/Admin/review.html",
-    "scaling": "/Admin/scaling.html",
-    "api manager": "/Admin/api_manager.html",
-    "api-manager": "/Admin/api_manager.html",
-    "developer": "/Admin/developer.html",
-    "kyc": "/Admin/kyc.html",
-    "fraud": "/Admin/fraud.html",
-    "log": "/Admin/log.html",
-    "notification": "/Admin/notifications.html",
-}
-
-# Build reverse lookup: protected path -> normalized role key
-PROTECTED_PATH_TO_ROLE = {v.lower().rstrip('/'): k for k, v in ROLE_ROUTES.items()}
-
-def _is_api_request():
-    if request.is_json:
-        return True
-    if request.headers.get("X-Requested-With", "").lower() == "xmlhttprequest":
-        return True
-    accept = request.headers.get("Accept", "")
-    return "application/json" in accept
-
-@app.before_request
-def staff_page_guard():
-    try:
-        path = request.path.lower().split('?', 1)[0].rstrip('/')
-    except Exception:
-        path = request.path.lower().rstrip('/')
-
-    # Skip: static assets, api, public pages, login endpoints, and API endpoints
-    # IMPORTANT: do NOT include '/admin' here — admin static pages must be protected
-    SKIP_PREFIXES = ('/static', '/api', '/_dash', '/favicon.ico', '/login', '/logout')
-    for pfx in SKIP_PREFIXES:
-        if path.startswith(pfx):
-            return  # do not guard these
-
-    # If path isn't one of the protected staff pages, do nothing
-    required_role = PROTECTED_PATH_TO_ROLE.get(path)
-    if not required_role:
-        return
-
-    # Now it's a protected staff page — ensure session says staff
-    if not session.get("is_staff"):
-        if _is_api_request():
-            return jsonify({"status":"error","message":"Authentication required"}), 401
-        return redirect("/login.html")
-
-    # Check staff role
-    staff_role = (session.get("staff_role") or "").strip().lower()
-    req_role_key = required_role.strip().lower()
-
-    if staff_role != req_role_key:
-        if _is_api_request():
-            return jsonify({"status":"error","message":"Forbidden"}), 403
-        return abort(403)
 
 # ✅ Proper CORS setup for session cookies
 frontend_origin = os.environ.get("CORS_ORIGINS", "https://ezehebubechidubem.github.io")
