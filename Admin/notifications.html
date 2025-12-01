@@ -76,7 +76,7 @@
 <header>
   <a href="https://ezehebubechidubem.github.io/Payme/index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>
-  <div class="muted">Create announcements with images — they will appear on the main PayMe dashboard promo area.</div>
+  <div class="muted"></div>
   <button class="toggle-debug" onclick="toggleDebug()">Debug</button>
 </header>
 
@@ -101,13 +101,13 @@
         </select>
       </div>
       <div style="flex:1">
-        <label for="notifExpiry">Expiry (when announcement should stop showing)</label>
+        <label for="notifExpiry">Expiry</label>
         <input id="notifExpiry" type="datetime-local" />
       </div>
     </div>
 
     <div style="margin-top:10px">
-      <label style="display:block;font-weight:600;margin-bottom:6px">Attach image (optional)</label>
+      <label style="display:block;font-weight:600;margin-bottom:6px">Attach image</label>
       <input id="notifyFile" type="file" accept="image/*"/>
       <div class="img-preview" id="imgPreview" style="display:none"><img id="imgPreviewImg" src="" alt="preview"/></div>
     </div>
