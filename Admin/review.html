@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payme — Review</title>
+<title>Payme — Monitoring</title>
 <style>
  :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
@@ -21,7 +21,7 @@
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">5 — Monitoring</h2>
-  <div class="muted">View daily volume, deposits, withdrawals, branches, active users, fraud attempts and failed transaction counts.</div>
+  <div class="muted">View daily volume, deposits, withdrawals, active users, fraud attempts, and failed transactions.</div>
 </header>
 
 <div class="grid">
@@ -65,22 +65,21 @@
 </div>
 
 <script>
-(async function(){
-
-  // ------------- AUTH CHECK -------------
-  const EXPECTED_ROLE = "monitor"; // adjust role as needed
+async function initMonitoringPage(){
+  // ---------------- AUTH CHECK ----------------
+  const EXPECTED_ROLE = "monitor"; // staff role required for this page
   try {
-    const authRes = await fetch("https://payme-update.onrender.com/auth/check", {
+    const res = await fetch("https://payme-update.onrender.com/auth/check", {
       method:"GET",
       credentials:"include",
       headers: {"Accept":"application/json"}
     });
-    if(!authRes.ok){
+    if(!res.ok){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
       return;
     }
-    const authData = await authRes.json();
-    const serverRole = (authData.role||"").toLowerCase();
+    const data = await res.json();
+    const serverRole = (data.role||"").toLowerCase();
     if(serverRole !== EXPECTED_ROLE.toLowerCase()){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
       return;
@@ -91,7 +90,7 @@
     return;
   }
 
-  // ------------- FETCH METRICS -------------
+  // ---------------- FETCH METRICS ----------------
   try {
     const metricsRes = await fetch("https://payme-update.onrender.com/admin/metrics", { credentials:"include" });
     const metrics = await metricsRes.json();
@@ -101,11 +100,9 @@
       document.getElementById('wd').innerText = `₦${Number(metrics.withdrawals).toLocaleString()}`;
       document.getElementById('actUsers').innerText = Number(metrics.active_users).toLocaleString();
     }
-  } catch(err){
-    console.error("Metrics fetch failed", err);
-  }
+  } catch(err){ console.error("Metrics fetch failed:", err); }
 
-  // ------------- FETCH 7-DAY SUMMARY -------------
+  // ---------------- FETCH 7-DAY TRANSACTION SUMMARY ----------------
   try {
     const summaryRes = await fetch("https://payme-update.onrender.com/admin/daily_summary", { credentials:"include" });
     const summaryData = await summaryRes.json();
@@ -118,18 +115,15 @@
       </tr>`);
       document.getElementById('summary').innerHTML = rows.join('');
     }
-  } catch(err){
-    console.error("Daily summary fetch failed", err);
-  }
+  } catch(err){ console.error("Daily summary fetch failed:", err); }
 
-  // ------------- Placeholder for Fraud & Failed TX -------------
-  try {
-    // Replace with real DB calls
-    document.getElementById('fraudCount').innerText = '3';
-    document.getElementById('failedCount').innerText = '12';
-  } catch(err){ console.error(err); }
+  // ---------------- PLACEHOLDERS ----------------
+  document.getElementById('fraudCount').innerText = '3';   // replace with real DB query
+  document.getElementById('failedCount').innerText = '12'; // replace with real DB query
+}
 
-})();
+// Initialize page
+initMonitoringPage();
 </script>
 </body>
 </html>
