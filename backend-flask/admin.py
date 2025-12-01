@@ -5,32 +5,24 @@ import string
 import random
 import os
 from datetime import datetime
-from flask import Blueprint, jsonify, request, current_app, send_from_directory, session
+from flask import Flask, Blueprint, jsonify, request, current_app, send_from_directory, session
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
+
+# --- Flask app instance (only if standalone) ---
+# If using from main app.py, comment this out
+# app = Flask(__name__)
 
 # --- Admin Blueprint ---
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 
-# --- CORS: after_request hook (minimal, echoes Origin for credentials support) ---
-@admin_bp.after_request
-def add_cors_headers(response):
-    # Echo the Origin header so credentials can be used by the browser.
-    origin = request.headers.get("Origin", "*")
-    response.headers["Access-Control-Allow-Origin"] = origin
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    # Include common headers your frontend might send
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    return response
-
-# --- Global connection holder (injected by main app) ---
+# --- Global connection holder ---
 _get_conn = None
 
+# --- Initialize admin module ---
 def init_admin(get_conn_func):
     """
     Inject the get_conn function from app.py
-    Ensures required tables exist (runs inside app context from app.py)
     """
     global _get_conn
     _get_conn = get_conn_func
@@ -50,6 +42,7 @@ def init_admin(get_conn_func):
             """)
             conn.commit()
 
+            # create announcements table (additive)
             cur.execute("""
             CREATE TABLE IF NOT EXISTS announcements (
                 id TEXT PRIMARY KEY,
@@ -65,7 +58,6 @@ def init_admin(get_conn_func):
             """)
             conn.commit()
 
-            current_app.logger.info("init_admin: DB tables ensured")
     except Exception as e:
         current_app.logger.exception("init_admin failed: %s", e)
         raise
@@ -79,13 +71,12 @@ def _validate_email(email):
     return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
 
 # --- Staff Routes ---
-@admin_bp.route("/staff/create", methods=["POST", "OPTIONS"])
+@admin_bp.route("/staff/create", methods=["POST","OPTIONS"])
 def create_staff():
     if request.method == "OPTIONS":
         return "", 204
 
     if _get_conn is None:
-        current_app.logger.error("create_staff: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     if not request.is_json:
@@ -119,7 +110,6 @@ def create_staff():
                 (staff_id, name, email, role, hashed, created_at)
             )
             conn.commit()
-            current_app.logger.info("create_staff: created staff %s", email)
     except Exception as e:
         current_app.logger.exception("create_staff failed: %s", e)
         return jsonify({"status":"error","message":"Failed to create staff"}), 500
@@ -130,13 +120,9 @@ def create_staff():
         "generated_password": plain_pw
     }), 201
 
-@admin_bp.route("/staff/list", methods=["GET", "OPTIONS"])
+@admin_bp.route("/staff/list", methods=["GET"])
 def list_staff():
-    if request.method == "OPTIONS":
-        return "", 204
-
     if _get_conn is None:
-        current_app.logger.error("list_staff: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     try:
@@ -160,13 +146,9 @@ def list_staff():
         return jsonify({"status":"error","message":"Unable to list staff"}), 500
     return jsonify({"status":"success","staff": staff_list}), 200
 
-@admin_bp.route("/staff/<staff_id>", methods=["DELETE", "OPTIONS"])
+@admin_bp.route("/staff/<staff_id>", methods=["DELETE"])
 def delete_staff(staff_id):
-    if request.method == "OPTIONS":
-        return "", 204
-
     if _get_conn is None:
-        current_app.logger.error("delete_staff: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     try:
@@ -186,34 +168,35 @@ def staff_debug_echo():
         return "", 204
     return jsonify({
         "received": request.get_json(silent=True),
-        "headers": {k: request.headers.get(k) for k in ("Origin","Content-Type","Accept","X-Requested-With")},
-        "method": request.method,
-        "path": request.path
+        "headers": dict(request.headers),
+        "method": request.method
     })
 
-# --- Admin Metrics & utility routes ---
-@admin_bp.route("/metrics", methods=["GET", "OPTIONS"])
+# --- Admin Metrics ---
+@admin_bp.route("/metrics", methods=["GET","OPTIONS"])
 def admin_metrics():
     if request.method == "OPTIONS":
         return "", 204
 
     if _get_conn is None:
-        current_app.logger.error("admin_metrics: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
+            # Total deposits
             cur.execute("SELECT COALESCE(SUM(amount),0) as deposits FROM transactions WHERE type='Deposit'")
             row = cur.fetchone()
             deposits = row["deposits"] if hasattr(row, "keys") else (row[0] if row and len(row) > 0 else 0)
 
+            # Total withdrawals
             cur.execute("SELECT COALESCE(SUM(amount),0) as withdrawals FROM transactions WHERE type='Transfer Out'")
             row = cur.fetchone()
             withdrawals = row["withdrawals"] if hasattr(row, "keys") else (row[0] if row and len(row) > 0 else 0)
 
             total_volume = (deposits or 0) + (withdrawals or 0)
 
+            # Active users
             cur.execute("SELECT COUNT(DISTINCT user_id) as active_users FROM transactions")
             row = cur.fetchone()
             active_users = row["active_users"] if hasattr(row, "keys") else (row[0] if row and len(row) > 0 else 0)
@@ -230,13 +213,13 @@ def admin_metrics():
         "active_users": active_users
     }), 200
 
-@admin_bp.route("/recent_tx", methods=["GET", "OPTIONS"])
+# --- Admin Recent Transactions ---
+@admin_bp.route("/recent_tx", methods=["GET","OPTIONS"])
 def admin_recent_tx():
     if request.method == "OPTIONS":
         return "", 204
 
     if _get_conn is None:
-        current_app.logger.error("admin_recent_tx: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     try:
@@ -264,15 +247,8 @@ def admin_recent_tx():
 
     return jsonify(result), 200
 
-@admin_bp.route("/daily_summary", methods=["GET", "OPTIONS"])
+@admin_bp.route("/daily_summary", methods=["GET"])
 def daily_summary():
-    if request.method == "OPTIONS":
-        return "", 204
-
-    if _get_conn is None:
-        current_app.logger.error("daily_summary: DB not initialized")
-        return jsonify({"status":"error","message":"DB not initialized"}), 500
-
     with _get_conn() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -289,8 +265,13 @@ def daily_summary():
         summary = [{"day": r["day"], "deposits": r["deposits"], "withdrawals": r["withdrawals"], "total": r["total"]} for r in rows]
     return jsonify({"status":"success","summary":summary})
 
+# --- To use blueprint in main app.py ---
+# from admin import admin_bp, init_admin
+# app.register_blueprint(admin_bp)
+# init_admin(get_conn)
+
 # -----------------------------------------
-# Announcements backend
+# Announcements backend (added below)
 # -----------------------------------------
 
 # Upload configuration
@@ -316,11 +297,10 @@ def create_announcement():
         return "", 204
 
     if _get_conn is None:
-        current_app.logger.error("create_announcement: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
+    # require staff or admin
     if not _require_staff_or_admin():
-        current_app.logger.warning("create_announcement: unauthorized access attempt")
         return jsonify({"status":"error","message":"unauthorized"}), 401
 
     title = (request.form.get("title") or "").strip()
@@ -358,7 +338,6 @@ def create_announcement():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (ann_id, title, body, target, image_path, created_at, expires_at, "active", created_by))
             conn.commit()
-            current_app.logger.info("create_announcement: created ann_id=%s by=%s", ann_id, created_by)
     except Exception as e:
         current_app.logger.exception("create_announcement failed: %s", e)
         return jsonify({"status":"error","message":"Failed to create announcement"}), 500
@@ -376,7 +355,6 @@ def get_active_announcements():
         return "", 204
 
     if _get_conn is None:
-        current_app.logger.error("get_active_announcements: DB not initialized")
         return jsonify([]), 200
 
     now_iso = datetime.now().isoformat()
@@ -400,6 +378,7 @@ def get_active_announcements():
         if hasattr(r, "keys"):
             rp = {k: r[k] for k in r.keys()}
         else:
+            # tuple fallback
             rp = {
                 "id": r[0], "title": r[1], "body": r[2], "target": r[3],
                 "image_path": r[4], "created_at": r[5], "expires_at": r[6]
@@ -425,12 +404,11 @@ def list_announcements():
     if request.method == "OPTIONS":
         return "", 204
 
+    # history — requires staff/admin
     if _get_conn is None:
-        current_app.logger.error("list_announcements: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     if not _require_staff_or_admin():
-        current_app.logger.warning("list_announcements: unauthorized access attempt")
         return jsonify({"status":"error","message":"unauthorized"}), 401
 
     active_only = request.args.get("active") == "1"
@@ -488,11 +466,9 @@ def delete_announcement(ann_id):
         return "", 204
 
     if _get_conn is None:
-        current_app.logger.error("delete_announcement: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     if not _require_staff_or_admin():
-        current_app.logger.warning("delete_announcement: unauthorized attempt id=%s", ann_id)
         return jsonify({"status":"error","message":"unauthorized"}), 401
 
     try:
@@ -514,11 +490,9 @@ def republish_announcement(ann_id):
         return "", 204
 
     if _get_conn is None:
-        current_app.logger.error("republish_announcement: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     if not _require_staff_or_admin():
-        current_app.logger.warning("republish_announcement: unauthorized attempt id=%s", ann_id)
         return jsonify({"status":"error","message":"unauthorized"}), 401
 
     payload = request.get_json(silent=True) or {}
@@ -543,39 +517,12 @@ def republish_announcement(ann_id):
     return jsonify({"status":"success","id":ann_id}), 200
 
 # Serve uploaded images
-@admin_bp.route("/uploads/announcements/<filename>", methods=["GET"])
+@admin_bp.route("/uploads/announcements/<filename>", methods=["GET", "OPTIONS"])
 def serve_ann_image(filename):
+    if request.method == "OPTIONS":
+        return "", 204
     try:
         return send_from_directory(ANN_UPLOAD_DIR, filename, conditional=True)
     except Exception as e:
         current_app.logger.exception("serve_ann_image failed: %s", e)
         return jsonify({"status":"error","message":"File not found"}), 404
-
-# Endpoint to inspect registered admin routes & request sample
-@admin_bp.route("/debug", methods=["GET", "OPTIONS"])
-def admin_debug():
-    if request.method == "OPTIONS":
-        return "", 204
-    try:
-        url_rules = []
-        for r in sorted(current_app.url_map.iter_rules(), key=lambda x: str(x.rule)):
-            rule = str(r.rule)
-            if "/admin" in rule:
-                url_rules.append({
-                    "rule": rule,
-                    "methods": sorted([m for m in r.methods if m not in ("HEAD","OPTIONS")])
-                })
-        return jsonify({
-            "status": "success",
-            "request_sample": {
-                "method": request.method,
-                "path": request.path,
-                "origin": request.headers.get("Origin"),
-                "content_type": request.headers.get("Content-Type"),
-                "query_debug": request.args.get("debug")
-            },
-            "admin_routes": url_rules
-        }), 200
-    except Exception as e:
-        current_app.logger.exception("admin_debug failed: %s", e)
-        return jsonify({"status":"error","message":"debug failed"}), 500
