@@ -1,469 +1,124 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payme — Notifications</title>
-<style>
- :root{
-  --bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb;
-  --danger:#ef4444;
- }
- body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
- header{padding:18px;border-bottom:1px solid #f0f2f3}
- .container{padding:18px}
- .card{background:var(--card);padding:14px;border-radius:12px}
- input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px}
- .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;cursor:pointer}
- .muted{color:var(--muted)}
- .role-banner{margin:0 18px 12px;padding:8px;background:#f0fdf4;color:#065f46;border-radius:8px;font-weight:600}
- .img-preview{margin-top:8px}
- .img-preview img{max-width:260px;max-height:140px;border-radius:8px;display:block}
- .limit-warning{color:var(--danger);margin-top:8px}
- .carousel { margin-top:12px; position:relative; overflow:hidden; border-radius:12px; background:#fff; border:1px solid #eee; }
- .carousel-track { display:flex; transition:transform .45s ease; }
- .slide { min-width:100%; box-sizing:border-box; padding:12px; display:flex; gap:12px; align-items:center; }
- .slide img{width:160px;height:90px;object-fit:cover;border-radius:8px;flex:0 0 160px}
- .slide .text { flex:1 }
- .carousel-controls { position:absolute; left:8px; right:8px; top:50%; transform:translateY(-50%); display:flex; justify-content:space-between; pointer-events:none; }
- .carousel-controls button{pointer-events:auto; background:rgba(255,255,255,0.95); border:1px solid #eee; padding:6px 8px; border-radius:8px; cursor:pointer}
- .small-muted{color:var(--muted);font-size:13px}
- .history-item{padding:8px;border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:8px}
- .history-meta{color:#6b7280;font-size:13px}
- .actions-col button{margin-bottom:6px;width:120px}
- .spinner {display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.1);border-top-color:#000;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-left:8px}
- @keyframes spin{ to { transform: rotate(360deg);} }
- .notice { margin-top:8px; color:#1f2937; font-size:13px }
- .error { color:var(--danger); font-weight:700 }
-</style>
-</head>
-<body>
 
-<!-- AUTH CHECK (same as monitoring) -->
-<script>
-(async function(){
-  const EXPECTED_ROLE = "notification";
-  try {
-    const res = await fetch("/admin/auth/check".replace('/admin','/admin'), {
-      method: "GET",
-      credentials: "include",
-      headers: {"Accept":"application/json"}
-    });
-    // We'll call the absolute path later; here we keep same-origin for dev
-    // If hosted remotely, front-end will still call full domain in requests below.
-    if(!res.ok){ window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html"; return; }
-    const data = await res.json();
-    const serverRole = (data.role || data.user?.role || "").toString().toLowerCase();
-    if(serverRole !== EXPECTED_ROLE){ window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html"; return; }
+<html lang="en">    
+<head>    
+<meta charset="utf-8"/>    
+<meta name="viewport" content="width=device-width,initial-scale=1"/>    
+<title>Payme — Notifications</title>    
+<style>    
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}    
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}    
+ header{padding:18px;border-bottom:1px solid #f0f2f3}    
+ .container{padding:18px}    
+ .card{background:var(--card);padding:14px;border-radius:12px}    
+ input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px}    
+ .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;cursor:pointer}    
+ .muted{color:var(--muted)}    
+ .role-banner{margin:0 18px 12px;padding:8px;background:#f0fdf4;color:#065f46;border-radius:8px;font-weight:600}    
+</style>    
+</head>    
+<body>    <!-- ---------------- AUTH CHECK ---------------- -->    <script>    
+(async function(){    
+  const EXPECTED_ROLE = "notification"; // staff role required for this page    
+  try {    
+    const res = await fetch("https://payme-update.onrender.com/auth/check", {    
+      method: "GET",    
+      credentials: "include",    
+      headers: { "Accept": "application/json" }    
+    });    
+    if (!res.ok) {    
+      // MATCHED TO monitoring.html: redirect to index (not login)
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";    
+      return;    
+    }    
+    const data = await res.json();    
+    const serverRole = (data.role || data.user?.role || "").toString().toLowerCase();    
+    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {    
+      // MATCHED TO monitoring.html: redirect to index (not login)
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";    
+      return;    
+    }    
 
-    // show role banner
-    const banner = document.createElement('div');
-    banner.className = 'role-banner';
-    banner.innerText = `Logged in as: ${serverRole.toUpperCase()}`;
-    document.body.insertBefore(banner, document.querySelector('header').nextSibling);
+    // show role-specific banner  
+    const banner = document.createElement('div');  
+    banner.className = 'role-banner';  
+    banner.innerText = `Logged in as: ${serverRole.toUpperCase()}`;  
+    document.body.insertBefore(banner, document.querySelector('header').nextSibling);  
 
-    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
-  } catch(err){
-    // If auth check fails, redirect to dashboard/login
-    window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
-  }
-})();
-</script>
+    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}    
+  } catch(err){    
+    // MATCHED TO monitoring.html: redirect to index (not login)
+    window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";    
+  }    
+})();    
+</script>    <!-- ---------------- PAGE CONTENT ---------------- -->    <header>    
+  <a href=". https://ezehebubechidubem.github.io/Payme/index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>    
+  <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>    
+  <div class="muted">Send maintenance messages, promotions, warnings, or account bans.</div>    
+</header>    <div class="container">    
+  <div class="card">    
+    <h3 style="margin-top:0">Create Announcement</h3>    
+    <input id="notifTitle" placeholder="Title"/>    
+    <textarea id="notifBody" rows="4" placeholder="Message body"></textarea>    <div style="display:flex;gap:8px;margin-top:8px">    
+  <select id="notifTarget">    
+    <option value="all">All users</option>    
+    <option value="active">Active users</option>    
+    <option value="suspended">Suspended users</option>    
+    <option value="custom">Custom segment</option>    
+  </select>    
+  <input id="notifSchedule" type="datetime-local" style="padding:8px;border-radius:8px;border:1px solid #e6e6e6"/>    
+</div>    
 
-<header>
-  <a href="https://ezehebubechidubem.github.io/Payme/index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
-  <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>
-  <div class="muted">Create announcements with images — they will appear on the main PayMe dashboard promo area.</div>
-</header>
+<div style="display:flex;gap:8px;margin-top:10px">    
+  <button class="btn" onclick="sendNotification()">Send</button>    
+  <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearNotif()">Clear</button>    
+</div>    
 
-<div class="container">
-  <div class="card">
-    <h3 style="margin-top:0">Create Announcement</h3>
+<div id="notifResult" style="margin-top:10px;color:var(--muted)"></div>
 
-    <label for="notifTitle">Title</label>
-    <input id="notifTitle" placeholder="Short headline" maxlength="120"/>
+  </div>      <div class="card" style="margin-top:12px">    
+    <h3 style="margin-top:0">Previous Announcements</h3>    
+    <div id="history"></div>    
+  </div>    
+</div>    <script>    
+const history = [    
+  {id:'N1001',title:'Maintenance',body:'Scheduled maintenance at 02:00 UTC',target:'All',date:'2025-12-01'},    
+];    
 
-    <label for="notifBody">Message body</label>
-    <textarea id="notifBody" rows="4" placeholder="Write the announcement message" maxlength="1000"></textarea>
+function renderHistory(){    
+  document.getElementById('history').innerHTML =    
+    history.map(h=>`<div style="padding:8px;border-bottom:1px solid #eee">    
+      <strong>${h.title}</strong> — ${h.body}    
+      <div style="color:#6b7280">${h.target} • ${h.date}</div>    
+    </div>`).join('');    
+}    
 
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <div style="flex:1">
-        <label for="notifTarget">Target</label>
-        <select id="notifTarget">
-          <option value="all">All users</option>
-          <option value="active">Active users</option>
-          <option value="suspended">Suspended users</option>
-          <option value="custom">Custom segment</option>
-        </select>
-      </div>
-      <div style="flex:1">
-        <label for="notifExpiry">Expiry (when announcement should stop showing)</label>
-        <input id="notifExpiry" type="datetime-local" />
-      </div>
-    </div>
+function sendNotification(){    
+  const t = document.getElementById('notifTitle').value.trim();    
+  const b = document.getElementById('notifBody').value.trim();    
+  const target = document.getElementById('notifTarget').value;    
+  const sched = document.getElementById('notifSchedule').value;    
+  if(!t||!b){ alert('Title & body required'); return; }    
 
-    <div style="margin-top:10px">
-      <label style="display:block;font-weight:600;margin-bottom:6px">Attach image (optional)</label>
-      <input id="notifyFile" type="file" accept="image/*"/>
-      <div class="img-preview" id="imgPreview" style="display:none"><img id="imgPreviewImg" src="" alt="preview"/></div>
-    </div>
+  history.unshift({    
+    id:'N'+(Math.floor(Math.random()*9000)+1000),    
+    title:t,    
+    body:b,    
+    target:target,    
+    date:sched||new Date().toLocaleString()    
+  });    
+  renderHistory();    
+  document.getElementById('notifResult').innerText = `Announcement queued for ${target}.`;    
+}    
 
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button id="sendBtn" class="btn" onclick="sendNotification()">Send</button>
-      <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearNotif()">Clear</button>
-      <div id="sendStatus" style="margin-left:8px;color:var(--muted);align-self:center"></div>
-    </div>
+function clearNotif(){    
+  document.getElementById('notifTitle').value='';    
+  document.getElementById('notifBody').value='';    
+  document.getElementById('notifSchedule').value='';    
+  document.getElementById('notifResult').innerText='';    
+}    
 
-    <div id="limitWarning" class="limit-warning" style="display:none">Max 10 active announcements reached. Delete or republish in history to create more.</div>
-    <div id="serverHint" class="notice">Backend URL used: <code>https://payme-update.onrender.com/admin/announcements</code></div>
-  </div>
-
-  <div class="card" style="margin-top:12px">
-    <h3 style="margin-top:0">Active Announcements (Preview)</h3>
-    <div id="carouselWrap">
-      <div id="carousel" class="carousel" style="display:none">
-        <div id="carouselTrack" class="carousel-track"></div>
-        <div class="carousel-controls">
-          <button id="prevBtn" aria-label="Previous">◀</button>
-          <button id="nextBtn" aria-label="Next">▶</button>
-        </div>
-      </div>
-      <div id="noActive" class="small-muted">No active announcements</div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:12px">
-    <h3 style="margin-top:0">Previous Announcements (History)</h3>
-    <div id="history"></div>
-  </div>
-</div>
-
-<script>
-/*
-  notifications.html frontend
-  - matches your backend routes under /admin/announcements
-  - sends multipart/form-data (image + fields)
-  - uses credentials: 'include' so session cookie is sent
-  - preserved all features, added better error handling for 404/405
-*/
-
-const API_HOST = "https://payme-update.onrender.com";
-const CREATE_URL = `${API_HOST}/admin/announcements`;
-const ACTIVE_URL = `${API_HOST}/admin/announcements/active`;
-const HISTORY_URL = `${API_HOST}/admin/announcements`;
-const DELETE_URL_BASE = `${API_HOST}/admin/announcements`; // DELETE /<id>
-const REPUBLISH_URL_BASE = `${API_HOST}/admin/announcements`; // POST /<id>/republish
-const MAX_ACTIVE = 10;
-
-function el(id){ return document.getElementById(id); }
-function showMsg(text, isError=false){
-  const s = el('sendStatus');
-  s.textContent = text || '';
-  s.className = isError ? 'error' : '';
-}
-function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
-
-// image preview handling
-const fileInput = el('notifyFile');
-const imgPreview = el('imgPreview');
-const imgPreviewImg = el('imgPreviewImg');
-fileInput?.addEventListener('change', (e)=>{
-  const f = e.target.files && e.target.files[0];
-  if(!f){ imgPreview.style.display='none'; imgPreviewImg.src=''; return; }
-  const r = new FileReader();
-  r.onload = ()=>{ imgPreviewImg.src = r.result; imgPreview.style.display='block'; };
-  r.readAsDataURL(f);
-});
-
-// fetch active announcements
-async function fetchActive(){
-  try {
-    const res = await fetch(ACTIVE_URL, { credentials: 'include', cache: 'no-store' });
-    if(!res.ok){
-      // helpful message for 404/405
-      if(res.status === 404) throw new Error(`Active endpoint not found (404). Check backend path: ${ACTIVE_URL}`);
-      if(res.status === 405) throw new Error(`Method not allowed (405) when calling active endpoint.`);
-      throw new Error(`Failed to fetch active announcements: HTTP ${res.status}`);
-    }
-    const data = await res.json();
-    // data expected to be array
-    return Array.isArray(data) ? data : (data.announcements || data.data || []);
-  } catch(err){
-    console.warn('fetchActive error', err);
-    // try fallback path (non-admin)
-    try {
-      const r2 = await fetch(`${API_HOST}/announcements/active`, { credentials:'include' });
-      if(r2.ok){
-        const d2 = await r2.json();
-        return Array.isArray(d2) ? d2 : (d2.announcements || d2.data || []);
-      }
-    } catch(e){}
-    return [];
-  }
-}
-
-// fetch history (only for staff/admin)
-async function fetchHistory(){
-  try {
-    const res = await fetch(HISTORY_URL, { credentials:'include', cache: 'no-store' });
-    if(!res.ok){
-      if(res.status === 401) throw new Error('Unauthorized: ensure you are logged in as staff/admin.');
-      throw new Error(`Failed to fetch history: HTTP ${res.status}`);
-    }
-    const json = await res.json();
-    return json.announcements || json.data || [];
-  } catch(err){
-    console.warn('fetchHistory error', err);
-    return [];
-  }
-}
-
-// render active carousel
-let carouselIndex = 0;
-let carouselTimer = null;
-function renderActive(list){
-  const carousel = el('carousel');
-  const track = el('carouselTrack');
-  const noActive = el('noActive');
-  const limitWarning = el('limitWarning');
-
-  if(!list || list.length === 0){
-    carousel.style.display = 'none';
-    noActive.style.display = 'block';
-    limitWarning.style.display = 'none';
-    return;
-  }
-
-  if(list.length >= MAX_ACTIVE) limitWarning.style.display = 'block'; else limitWarning.style.display = 'none';
-
-  track.innerHTML = list.map(a => {
-    const imgHTML = a.image_url ? `<img src="${escapeHtml(a.image_url)}" alt="">` : `<div style="width:160px;height:90px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
-    const created = a.createdAt ? (new Date(a.createdAt)).toLocaleString() : '';
-    return `<div class="slide" data-id="${escapeHtml(a.id || '')}">
-      ${imgHTML}
-      <div class="text">
-        <div style="font-weight:800">${escapeHtml(a.title || '')}</div>
-        <div class="small-muted" style="margin-top:6px">${escapeHtml(a.target || '')} • ${created}</div>
-        <div style="margin-top:8px">${escapeHtml(a.body || '')}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  carousel.style.display = 'block';
-  noActive.style.display = 'none';
-  carouselIndex = 0;
-  updateCarousel();
-
-  if(carouselTimer) clearInterval(carouselTimer);
-  if(list.length > 1){
-    carouselTimer = setInterval(()=> {
-      carouselIndex = (carouselIndex + 1) % list.length;
-      updateCarousel();
-    }, 4000);
-  }
-}
-function updateCarousel(){ el('carouselTrack').style.transform = `translateX(-${carouselIndex * 100}%)`; }
-el('prevBtn')?.addEventListener('click', ()=>{ carouselIndex = Math.max(0, carouselIndex-1); updateCarousel(); clearInterval(carouselTimer); });
-el('nextBtn')?.addEventListener('click', ()=>{ carouselIndex = carouselIndex+1; updateCarousel(); clearInterval(carouselTimer); });
-
-// render history
-function renderHistory(list){
-  const container = el('history');
-  if(!list || list.length === 0){ container.innerHTML = '<div class="small-muted">No announcements yet</div>'; return; }
-  container.innerHTML = list.map(a => {
-    const img = a.image_url ? `<img src="${escapeHtml(a.image_url)}" style="width:120px;height:70px;object-fit:cover;border-radius:6px;margin-right:8px">` : '';
-    const created = a.createdAt ? new Date(a.createdAt).toLocaleString() : '';
-    const expires = a.expiresAt ? new Date(a.expiresAt).toLocaleString() : '—';
-    return `<div class="history-item" data-id="${escapeHtml(a.id)}">
-      <div style="display:flex;align-items:center;gap:12px;flex:1">
-        ${img}
-        <div>
-          <strong>${escapeHtml(a.title || '(no title)')}</strong>
-          <div class="history-meta">${escapeHtml(a.target || 'All')} • ${created} • Expires: ${expires}</div>
-          <div style="margin-top:6px">${escapeHtml(a.body || '')}</div>
-        </div>
-      </div>
-      <div class="actions-col" style="display:flex;flex-direction:column;align-items:flex-end">
-        <button onclick="republishAnnouncement('${encodeURIComponent(a.id)}')" style="padding:6px;border-radius:6px;border:1px solid #ddd;background:#fff">Republish</button>
-        <button onclick="deleteAnnouncement('${encodeURIComponent(a.id)}')" style="padding:6px;border-radius:6px;background:var(--danger);color:#fff;border:0">Permanent Delete</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-// count server-side active announcements (server authoritative)
-async function countActiveServer(){
-  try {
-    const res = await fetch(`${HISTORY_URL}?active=1`, { credentials:'include', cache:'no-store' });
-    if(!res.ok) return 0;
-    const json = await res.json();
-    const arr = json.announcements || [];
-    return Array.isArray(arr) ? arr.length : 0;
-  } catch(e){ return 0; }
-}
-
-// send announcement to backend via FormData
-async function sendNotification(){
-  const title = el('notifTitle').value.trim();
-  const body = el('notifBody').value.trim();
-  const target = el('notifTarget').value;
-  const expiryRaw = el('notifExpiry').value; // datetime-local string or empty
-  const file = el('notifyFile').files[0];
-  const sendBtn = el('sendBtn');
-
-  if(!title || !body){ alert('Title and body are required'); return; }
-
-  // check active count
-  const activeCount = await countActiveServer();
-  if(activeCount >= MAX_ACTIVE){
-    el('limitWarning').style.display = 'block';
-    showMsg('Cannot create: 10 active announcements already.', true);
-    return;
-  } else {
-    el('limitWarning').style.display = 'none';
-  }
-
-  const form = new FormData();
-  form.append('title', title);
-  form.append('body', body);
-  form.append('target', target);
-  // expiresAt: if provided convert to ISO; else set default +24h
-  let expiresAt = null;
-  if(expiryRaw){
-    const dt = new Date(expiryRaw);
-    if(!isNaN(dt.getTime())) expiresAt = dt.toISOString();
-  }
-  if(!expiresAt) expiresAt = new Date(Date.now()+24*60*60*1000).toISOString();
-  form.append('expiresAt', expiresAt);
-  form.append('createdAt', new Date().toISOString());
-  if(file) form.append('image', file);
-
-  // UI
-  sendBtn.disabled = true;
-  sendBtn.textContent = 'Sending';
-  const spin = document.createElement('span'); spin.className = 'spinner';
-  sendBtn.appendChild(spin);
-  showMsg('');
-
-  try {
-    const res = await fetch(CREATE_URL, {
-      method: 'POST',
-      credentials: 'include',
-      body: form
-    });
-
-    // helpful dev messages for common backend mistakes
-    if(res.status === 404){
-      showMsg(`Endpoint not found (404). Check backend URL: ${CREATE_URL}`, true);
-      return;
-    }
-    if(res.status === 405){
-      showMsg(`Method not allowed (405). Backend expects POST at ${CREATE_URL}`, true);
-      return;
-    }
-
-    const json = await res.json().catch(()=>null);
-
-    if(res.ok && json && (json.status === 'success' || res.status === 200 || res.status === 201)){
-      showMsg('Announcement saved on server.');
-      // refresh UI views
-      await refreshAllViews();
-      clearNotif();
-    } else {
-      const errMsg = (json && (json.message || json.error)) || `Server returned ${res.status}`;
-      showMsg(errMsg, true);
-    }
-  } catch(err){
-    console.error('sendNotification error', err);
-    showMsg('Network error while sending announcement (check backend).', true);
-  } finally {
-    sendBtn.disabled = false;
-    sendBtn.textContent = 'Send';
-  }
-}
-
-// delete announcement
-async function deleteAnnouncement(idEncoded){
-  const id = decodeURIComponent(idEncoded);
-  if(!confirm('Permanent delete this announcement? This cannot be undone.')) return;
-  showMsg('Deleting...');
-  try {
-    const res = await fetch(`${DELETE_URL_BASE}/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      credentials: 'include'
-    });
-    if(res.ok){ showMsg('Deleted.'); await refreshAllViews(); }
-    else {
-      const json = await res.json().catch(()=>null);
-      showMsg((json && json.message) || 'Delete failed', true);
-    }
-  } catch(err){
-    console.error('deleteAnnouncement', err);
-    showMsg('Network error while deleting', true);
-  }
-}
-
-// republish announcement
-async function republishAnnouncement(idEncoded){
-  const id = decodeURIComponent(idEncoded);
-  const custom = prompt('Enter new expiry datetime (ISO or leave blank for +24h):','');
-  let newExpiry = null;
-  if(custom){
-    const d = new Date(custom);
-    if(isNaN(d.getTime())){
-      alert('Invalid date format. Use ISO format or a valid date/time string.');
-      return;
-    }
-    newExpiry = d.toISOString();
-  } else {
-    newExpiry = new Date(Date.now() + 24*60*60*1000).toISOString();
-  }
-
-  showMsg('Republishing...');
-  try {
-    const res = await fetch(`${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ expiresAt: newExpiry, createdAt: new Date().toISOString() })
-    });
-    if(res.ok){ showMsg('Republished.'); await refreshAllViews(); }
-    else {
-      const json = await res.json().catch(()=>null);
-      showMsg((json && json.message) || 'Republish failed', true);
-    }
-  } catch(err){
-    console.error('republishAnnouncement', err);
-    showMsg('Network error while republishing', true);
-  }
-}
-
-// clear form
-function clearNotif(){
-  el('notifTitle').value = '';
-  el('notifBody').value = '';
-  el('notifTarget').value = 'all';
-  el('notifExpiry').value = '';
-  el('notifyFile').value = '';
-  imgPreview.style.display = 'none';
-  showMsg('');
-}
-
-// refresh both active & history
-async function refreshAllViews(){
-  const active = await fetchActive();
-  renderActive(active);
-  const hist = await fetchHistory();
-  renderHistory(hist);
-}
-
-// initial load
-(async function init(){
-  await refreshAllViews();
-  setInterval(async ()=>{ const active = await fetchActive(); renderActive(active); }, 30000);
-})();
-
-</script>
-
-</body>
+renderHistory();    
+</script> 
+ </body>    
 </html>
