@@ -418,6 +418,7 @@ def register():
         elif "phone" in str(ie).lower():
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
+
 @app.route("/login", methods=["POST"])
 def login():
     data, err, code = json_required(["login", "password"])
@@ -441,7 +442,7 @@ def login():
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
     # -------------------------
-    # STAFF: database-driven (UPDATED ONLY THIS BLOCK)
+    # STAFF: database-driven (UPDATED)
     # -------------------------
     with get_conn() as conn:
         cur = conn.cursor()
@@ -472,31 +473,28 @@ def login():
             session["is_staff"] = True
             session["staff_id"] = staff_id
             session["staff_name"] = staff_name
-            session["staff_role"] = staff_role
+            # store normalized role (lowercase) for guard comparisons
+            session["staff_role"] = (staff_role or "").strip().lower()
 
-            # Normalize role for lookup (keep original role in response)
-            role_key = (staff_role or "").strip().lower()
-
-            # Role -> route mapping (edit these paths to match your frontend pages)
+            # ROLE -> exact Admin page mapping (server decides final path)
             ROLE_ROUTES = {
-                "customer-support": "/support.html",
-                "customer support": "/support.html",
-                "transaction-review": "/review.html",
-                "transaction review": "/review.html",
-                "scaling": "/scaling.html",
-                "api manager": "/api_manager.html",
-                "api-manager": "/api_manager.html",
-                "developer": "/developer.html",
+                "customer-support": "/Admin/scaling.html",
+                "customer support": "/Admin/scaling.html",
+                "transaction-review": "/Admin/review.html",
+                "transaction review": "/Admin/review.html",
+                "scaling": "/Admin/scaling.html",
+                "api manager": "/Admin/api_manager.html",
+                "api-manager": "/Admin/api_manager.html",
+                "developer": "/Admin/developer.html",
                 "kyc": "/Admin/kyc.html",
-                "fraud": "/fraud.html",
-                "log": "/log.html",
-                "notification": "/notifications.html",
-                # add more mappings as needed
+                "fraud": "/Admin/fraud.html",
+                "log": "/Admin/log.html",
+                "notification": "/Admin/notifications.html"
             }
 
+            role_key = (staff_role or "").strip().lower()
             redirect_to = ROLE_ROUTES.get(role_key, "/Admin/staff.html")
 
-            # Return staff info + redirect so frontend can send them to their office
             return jsonify({
                 "status": "success",
                 "role": "staff",
@@ -508,8 +506,8 @@ def login():
                 },
                 "redirect": redirect_to
             }), 200
-        else:
-            return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+        return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
     # -------------------------
     # REGULAR USER: database
@@ -557,6 +555,7 @@ def login():
     }
 
     return jsonify({"status":"success","role":"user","user":user}), 200
+
 # -------------------------------------------------
 # Money: balance, add, send, transactions, users
 # -------------------------------------------------
