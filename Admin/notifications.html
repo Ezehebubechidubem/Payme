@@ -1,126 +1,134 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payme — Notifications</title>
-<style>
- :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
- body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
- header{padding:18px;border-bottom:1px solid #f0f2f3}
- .container{padding:18px}
- .card{background:var(--card);padding:14px;border-radius:12px}
- input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px}
- .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;cursor:pointer}
- .muted{color:var(--muted)}
-</style>
-</head>
-<body>
+<!doctype html>  
+<html lang="en">  
+<head>  
+<meta charset="utf-8"/>  
+<meta name="viewport" content="width=device-width,initial-scale=1"/>  
+<title>Payme — Notifications</title>  
+<style>  
+ :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}  
+ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}  
+ header{padding:18px;border-bottom:1px solid #f0f2f3}  
+ .container{padding:18px}  
+ .card{background:var(--card);padding:14px;border-radius:12px}  
+ input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px}  
+ .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;cursor:pointer}  
+ .muted{color:var(--muted)}  
+ .role-banner{margin:0 18px 12px;padding:8px;background:#f0fdf4;color:#065f46;border-radius:8px;font-weight:600}  
+</style>  
+</head>  
+<body>  
 
-<!-- ---------------- AUTH CHECK ---------------- -->
-<script>
-(async function(){
-  const EXPECTED_ROLE = "notification"; // staff role required for this page
-  try {
-    const res = await fetch("https://payme-update.onrender.com/auth/check", {
-      method: "GET",
-      credentials: "include",
-      headers: { "Accept": "application/json" }
-    });
-    if (!res.ok) {
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-      return;
-    }
-    const data = await res.json();
-    const serverRole = (data.role || "").toString().toLowerCase();
-    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-      return;
-    }
-    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
-  } catch(err){
-    window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-  }
-})();
-</script>
+<!-- ---------------- AUTH CHECK ---------------- -->  
+<script>  
+(async function(){  
+  const EXPECTED_ROLE = "notification"; // staff role required for this page  
+  try {  
+    const res = await fetch("https://payme-update.onrender.com/auth/check", {  
+      method: "GET",  
+      credentials: "include",  
+      headers: { "Accept": "application/json" }  
+    });  
+    if (!res.ok) {  
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";  
+      return;  
+    }  
+    const data = await res.json();  
+    const serverRole = (data.role || data.user?.role || "").toString().toLowerCase();  
+    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {  
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";  
+      return;  
+    }  
 
-<!-- ---------------- PAGE CONTENT ---------------- -->
-<header>
-  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
-  <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>
-  <div class="muted">Send maintenance messages, promotions, warnings, or account bans.</div>
-</header>
+    // show role-specific banner
+    const banner = document.createElement('div');
+    banner.className = 'role-banner';
+    banner.innerText = `Logged in as: ${serverRole.toUpperCase()}`;
+    document.body.insertBefore(banner, document.querySelector('header').nextSibling);
 
-<div class="container">
-  <div class="card">
-    <h3 style="margin-top:0">Create Announcement</h3>
-    <input id="notifTitle" placeholder="Title"/>
-    <textarea id="notifBody" rows="4" placeholder="Message body"></textarea>
+    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}  
+  } catch(err){  
+    window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";  
+  }  
+})();  
+</script>  
 
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <select id="notifTarget">
-        <option value="all">All users</option>
-        <option value="active">Active users</option>
-        <option value="suspended">Suspended users</option>
-        <option value="custom">Custom segment</option>
-      </select>
-      <input id="notifSchedule" type="datetime-local" style="padding:8px;border-radius:8px;border:1px solid #e6e6e6"/>
-    </div>
+<!-- ---------------- PAGE CONTENT ---------------- -->  
+<header>  
+  <a href=". https://ezehebubechidubem.github.io/Payme/login.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>  
+  <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>  
+  <div class="muted">Send maintenance messages, promotions, warnings, or account bans.</div>  
+</header>  
 
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn" onclick="sendNotification()">Send</button>
-      <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearNotif()">Clear</button>
-    </div>
+<div class="container">  
+  <div class="card">  
+    <h3 style="margin-top:0">Create Announcement</h3>  
+    <input id="notifTitle" placeholder="Title"/>  
+    <textarea id="notifBody" rows="4" placeholder="Message body"></textarea>  
 
-    <div id="notifResult" style="margin-top:10px;color:var(--muted)"></div>
-  </div>
+    <div style="display:flex;gap:8px;margin-top:8px">  
+      <select id="notifTarget">  
+        <option value="all">All users</option>  
+        <option value="active">Active users</option>  
+        <option value="suspended">Suspended users</option>  
+        <option value="custom">Custom segment</option>  
+      </select>  
+      <input id="notifSchedule" type="datetime-local" style="padding:8px;border-radius:8px;border:1px solid #e6e6e6"/>  
+    </div>  
 
-  <div class="card" style="margin-top:12px">
-    <h3 style="margin-top:0">Previous Announcements</h3>
-    <div id="history"></div>
-  </div>
-</div>
+    <div style="display:flex;gap:8px;margin-top:10px">  
+      <button class="btn" onclick="sendNotification()">Send</button>  
+      <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearNotif()">Clear</button>  
+    </div>  
 
-<script>
-const history = [
-  {id:'N1001',title:'Maintenance',body:'Scheduled maintenance at 02:00 UTC',target:'All',date:'2025-12-01'},
-];
+    <div id="notifResult" style="margin-top:10px;color:var(--muted)"></div>  
+  </div>  
 
-function renderHistory(){
-  document.getElementById('history').innerHTML =
-    history.map(h=>`<div style="padding:8px;border-bottom:1px solid #eee">
-      <strong>${h.title}</strong> — ${h.body}
-      <div style="color:#6b7280">${h.target} • ${h.date}</div>
-    </div>`).join('');
-}
+  <div class="card" style="margin-top:12px">  
+    <h3 style="margin-top:0">Previous Announcements</h3>  
+    <div id="history"></div>  
+  </div>  
+</div>  
 
-function sendNotification(){
-  const t = document.getElementById('notifTitle').value.trim();
-  const b = document.getElementById('notifBody').value.trim();
-  const target = document.getElementById('notifTarget').value;
-  const sched = document.getElementById('notifSchedule').value;
-  if(!t||!b){ alert('Title & body required'); return; }
+<script>  
+const history = [  
+  {id:'N1001',title:'Maintenance',body:'Scheduled maintenance at 02:00 UTC',target:'All',date:'2025-12-01'},  
+];  
 
-  history.unshift({
-    id:'N'+(Math.floor(Math.random()*9000)+1000),
-    title:t,
-    body:b,
-    target:target,
-    date:sched||new Date().toLocaleString()
-  });
-  renderHistory();
-  document.getElementById('notifResult').innerText = `Announcement queued for ${target}.`;
-}
+function renderHistory(){  
+  document.getElementById('history').innerHTML =  
+    history.map(h=>`<div style="padding:8px;border-bottom:1px solid #eee">  
+      <strong>${h.title}</strong> — ${h.body}  
+      <div style="color:#6b7280">${h.target} • ${h.date}</div>  
+    </div>`).join('');  
+}  
 
-function clearNotif(){
-  document.getElementById('notifTitle').value='';
-  document.getElementById('notifBody').value='';
-  document.getElementById('notifSchedule').value='';
-  document.getElementById('notifResult').innerText='';
-}
+function sendNotification(){  
+  const t = document.getElementById('notifTitle').value.trim();  
+  const b = document.getElementById('notifBody').value.trim();  
+  const target = document.getElementById('notifTarget').value;  
+  const sched = document.getElementById('notifSchedule').value;  
+  if(!t||!b){ alert('Title & body required'); return; }  
 
-renderHistory();
-</script>
+  history.unshift({  
+    id:'N'+(Math.floor(Math.random()*9000)+1000),  
+    title:t,  
+    body:b,  
+    target:target,  
+    date:sched||new Date().toLocaleString()  
+  });  
+  renderHistory();  
+  document.getElementById('notifResult').innerText = `Announcement queued for ${target}.`;  
+}  
 
-</body>
+function clearNotif(){  
+  document.getElementById('notifTitle').value='';  
+  document.getElementById('notifBody').value='';  
+  document.getElementById('notifSchedule').value='';  
+  document.getElementById('notifResult').innerText='';  
+}  
+
+renderHistory();  
+</script>  
+
+</body>  
 </html>
