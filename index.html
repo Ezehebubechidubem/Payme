@@ -17,7 +17,6 @@ button[disabled] { opacity: 0.65; cursor: not-allowed; }
 button:hover { background: var(--primary-dark); }
 .switch { text-align: center; margin-top: 12px; font-size: 14px; }
 .switch a { color: var(--primary); text-decoration: none; font-weight: bold; }
-
 .modal-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 9999; }
 .modal-overlay.show { display: flex; }
 .modal { width: calc(100% - 48px); max-width: 460px; background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 18px 40px rgba(10,20,30,0.15); text-align: center; }
@@ -30,7 +29,6 @@ button:hover { background: var(--primary-dark); }
 .modal .actions .btn { padding: 10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; min-width:120px; }
 .modal .btn-outline { background:#fff; border:1px solid #ddd; color:#333; }
 .modal .btn-primary { background:var(--primary); color:#fff; border:0; }
-
 .spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; margin-left:8px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -50,184 +48,116 @@ button:hover { background: var(--primary-dark); }
   </div>
 </div>
 
-<!-- SUCCESS MODAL -->
+<!-- Modals omitted (same as yours) -->
 <div id="successModal" class="modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
-  <div class="modal" role="document">
-    <div class="badge success">✓</div>
-    <h3 id="successHeading">Login successful</h3>
-    <p id="successText">You are now logged in.</p>
-    <div id="successActions" class="actions">
-      <button id="successOk" class="btn btn-primary">Continue</button>
-    </div>
-  </div>
+  <div class="modal" role="document"><div class="badge success">✓</div><h3 id="successHeading">Login successful</h3><p id="successText">You are now logged in.</p><div id="successActions" class="actions"></div></div>
 </div>
-
-<!-- ERROR MODAL -->
 <div id="errorModal" class="modal-overlay" aria-hidden="true" role="alertdialog" aria-modal="true">
-  <div class="modal" role="document">
-    <div class="badge error">✕</div>
-    <h3 id="errorHeading">Error</h3>
-    <p id="errorText">An error occurred</p>
-    <div class="actions">
-      <button id="errorOk" class="btn btn-primary">OK</button>
-    </div>
-  </div>
+  <div class="modal" role="document"><div class="badge error">✕</div><h3 id="errorHeading">Error</h3><p id="errorText">An error occurred</p><div class="actions"><button id="errorOk" class="btn btn-primary">OK</button></div></div>
 </div>
 
 <script>
 (function(){
-  const API = "https://payme-update.onrender.com/login";
-
+  const API = "https://payme-update.onrender.com/login"; // backend login
   const form = document.getElementById('loginForm');
   const loginInput = document.getElementById('login');
   const pwdInput = document.getElementById('password');
   const submitBtn = document.getElementById('submitBtn');
-
   const successModal = document.getElementById('successModal');
-  const successText = document.getElementById('successText');
   const successActions = document.getElementById('successActions');
-
   const errorModal = document.getElementById('errorModal');
   const errorText = document.getElementById('errorText');
-  const errorOk = document.getElementById('errorOk');
 
   function showModal(modal){ modal.classList.add('show'); modal.setAttribute('aria-hidden','false'); }
   function hideModal(modal){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); }
-
   function showSuccess(message,onOk){
-    successText.textContent = message||"You are now logged in.";
+    document.getElementById('successText').textContent = message || 'Login successful';
     successActions.innerHTML = '';
     const btn = document.createElement('button');
     btn.className = 'btn btn-primary';
     btn.textContent = 'Continue';
-    btn.onclick = () => { hideModal(successModal); if(onOk) onOk(); };
+    btn.onclick = ()=>{ hideModal(successModal); if(onOk) onOk(); };
     successActions.appendChild(btn);
     showModal(successModal);
   }
+  function showError(msg){ errorText.textContent = msg||'An error occurred'; showModal(errorModal); document.getElementById('errorOk').onclick = ()=>hideModal(errorModal); }
+  function setLoading(is){ if(is){ submitBtn.disabled=true; submitBtn.innerHTML='Logging in <span class="spinner"></span>'; } else { submitBtn.disabled=false; submitBtn.innerHTML='Login'; } }
 
-  function showError(message){
-    errorText.textContent = message||"An error occurred.";
-    showModal(errorModal);
-    errorOk.onclick = ()=>hideModal(errorModal);
-  }
-
-  function setLoading(isLoading){
-    if(isLoading){
-      submitBtn.disabled=true;
-      submitBtn.innerHTML='Logging in <span class="spinner"></span>';
-    } else {
-      submitBtn.disabled=false;
-      submitBtn.innerHTML='Login';
-    }
-  }
-
-  form.addEventListener('submit',async function(e){
+  form.addEventListener('submit', async function(e){
     e.preventDefault();
     const login = loginInput.value.trim();
     const password = pwdInput.value;
-    if(!login||!password){ showError('Enter both login and password'); return; }
-
-    const payload={login,password};
+    if(!login||!password){ showError('Enter login and password'); return; }
+    const payload = { login, password };
     if(login.includes('@')) payload.email = login;
 
     setLoading(true);
-    try{
-      const res = await fetch(API,{
-        method:"POST",
-        credentials:'include',
-        headers:{"Content-Type":"application/json"},
+    try {
+      const res = await fetch(API, {
+        method: "POST",
+        credentials: "include", // important to set session cookie
+        headers: {"Content-Type":"application/json"},
         body: JSON.stringify(payload)
       });
       const data = await res.json().catch(()=>null);
 
-      if(res.ok && data && data.status==="success"){
-        // Pull role info from backend response:
-        // backend returns top-level role === "staff" for staff logins,
-        // and also returns data.user.role containing the staff's assigned role.
-        const user = data.user || {};
-        const topRole = (data.role || '').toString().toLowerCase();
-        const userRoleField = (user.role || user.staffRole || '').toString().toLowerCase();
-        const redirectPath = data.redirect || null;
-
-        // STAFF handling — only changed logic here
-        if(topRole === "staff" || userRoleField === "staff"){
-          // prefer server-provided redirect if available (recommended)
-          if(redirectPath){
-            // store staff info locally for later use
-            try { localStorage.setItem("user", JSON.stringify(user)); } catch(e){/* ignore */ }
-            window.location.href = redirectPath;
-            setLoading(false);
-            return;
-          }
-
-          // otherwise map the staff role field to pages (fallback)
-          const staffRole = userRoleField || topRole || '';
-          switch(staffRole){
-            case 'kyc': 
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/kyc.html'; break;
-            case 'notification':
-            case 'notifications':
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/notifications.html'; break;
-            case 'finance':
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/finance.html'; break;
-            case 'support':
-            case 'customer-support':
-            case 'customer support':
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/scaling.html'; break;
-            case 'transaction-review':
-            case 'transaction review':
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/review.html'; break;
-            case 'developer':
-            case 'api manager':
-            case 'api-manager':
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/developer.html'; break;
-            case 'fraud':
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/fraud.html'; break;
-            case 'log':
-              localStorage.setItem("user", JSON.stringify(user));
-              window.location.href='Admin/log.html'; break;
-            default:
-              showError("Staff role not recognized. Contact admin.");
-              setLoading(false);
-              return;
-          }
-          setLoading(false);
+      if(res.ok && data && data.status === "success"){
+        // store user data
+        try { localStorage.setItem("user", JSON.stringify(data.user || {})); } catch(e){}
+        // if backend provided a redirect URL (full GitHub URL) follow it
+        if(data.redirect){
+          // ALSO store normalized role in sessionStorage for per-page checks
+          const userRole = (data.user && data.user.role) ? (data.user.role || '').toString().toLowerCase() : null;
+          if(userRole) try { sessionStorage.setItem("staff_role", userRole); } catch(e){}
+          window.location.href = data.redirect;
           return;
         }
 
-        // ADMIN unchanged
-        if((data.role || user.role || '').toString().toLowerCase() === "admin"){
+        // fallback: old behavior (map role to Admin pages)
+        const topRole = (data.role || (data.user && data.user.role) || '').toString().toLowerCase();
+        const userRole = (data.user && data.user.role) ? data.user.role.toString().toLowerCase() : topRole;
+        if(topRole === "staff" || userRole){
+          // save staff role
+          try { sessionStorage.setItem("staff_role", userRole); } catch(e){}
+          // Map to GH URLs (fallback)
+          const BASE = "https://ezehebubechidubem.github.io/Payme";
+          const map = {
+            "notification": `${BASE}/Admin/notifications.html`,
+            "kyc": `${BASE}/Admin/kyc.html`,
+            "fraud": `${BASE}/Admin/fraud.html`,
+            "developer": `${BASE}/Admin/developer.html`,
+            "scaling": `${BASE}/Admin/scaling.html`,
+            "transaction-review": `${BASE}/Admin/review.html`,
+            "log": `${BASE}/Admin/log.html`
+          };
+          const goto = map[userRole] || map[topRole] || `${BASE}/Admin/staff.html`;
+          window.location.href = goto;
+          return;
+        }
+
+        if((data.role || '').toString().toLowerCase() === "admin"){
           showSuccess("Admin login successful", ()=>window.location.href="Admin/index.html");
-          setLoading(false);
           return;
         }
 
-               // USER unchanged
-        if((data.role || user.role || '').toString().toLowerCase() === "user"){
-          localStorage.setItem("user", JSON.stringify(user));
+        if((data.role || '').toString().toLowerCase() === "user"){
           showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html");
-          setLoading(false);
           return;
         }
 
-        showError("User role not recognized. Contact admin.");
-        setLoading(false);
+        showError("Role not recognized. Contact admin.");
         return;
       }
 
-      let msg = data?.message || "Login failed";
+      // error path
+      const msg = (await res.json().catch(()=>null))?.message || "Login failed";
       showError(msg);
     } catch(err){
       console.error(err);
-      showError("Server/network error. Try again.");
-    } finally{ setLoading(false); }
+      showError("Network or server error. Try again.");
+    } finally {
+      setLoading(false);
+    }
   });
 
   window.addEventListener('load', ()=>loginInput.focus());
