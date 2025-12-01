@@ -17,39 +17,10 @@
 </style>
 </head>
 <body>
-
-<!-- ---------------- AUTH CHECK ---------------- -->
-<script>
-(async function(){
-  const EXPECTED_ROLE = "monitoring"; // staff role required for this page
-  try {
-    const res = await fetch("https://payme-update.onrender.com/auth/check", {
-      method: "GET",
-      credentials: "include",
-      headers: { "Accept": "application/json" }
-    });
-    if (!res.ok) {
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-      return;
-    }
-    const data = await res.json();
-    const serverRole = (data.role || "").toString().toLowerCase();
-    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-      return;
-    }
-    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
-  } catch(err){
-    window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-  }
-})();
-</script>
-
-<!-- ---------------- PAGE CONTENT ---------------- -->
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">5 — Monitoring</h2>
-  <div class="muted">View daily volume, deposits, withdrawals, active users, and failed transactions.</div>
+  <div class="muted">View daily volume, deposits, withdrawals, branches, active users, fraud attempts and failed transaction counts.</div>
 </header>
 
 <div class="grid">
@@ -67,7 +38,7 @@
   </div>
 
   <div class="card" style="grid-column:span 3">
-    <h4>Transaction summary (last 30 days)</h4>
+    <h4>Transaction summary (last 7 days)</h4>
     <table>
       <thead><tr><th>Date</th><th>Volume</th><th>Deposits</th><th>Withdrawals</th></tr></thead>
       <tbody id="summary"></tbody>
@@ -93,43 +64,63 @@
 </div>
 
 <script>
-async function loadMonitoringData() {
+(async function() {
+  // ---------- Authentication ----------
+  const EXPECTED_ROLE = "notification"; // change per page if needed
   try {
-    const res = await fetch("https://payme-update.onrender.com/admin/metrics", {
+    const authRes = await fetch("https://payme-update.onrender.com/auth/check", {
       method: "GET",
       credentials: "include",
       headers: { "Accept": "application/json" }
     });
-    if (!res.ok) throw new Error("Failed to fetch metrics");
-    const data = await res.json();
-    if(data.status === "success"){
-      document.getElementById('vol').innerText = `₦${Number(data.total_volume).toLocaleString()}`;
-      document.getElementById('dep').innerText = `₦${Number(data.deposits).toLocaleString()}`;
-      document.getElementById('wd').innerText = `₦${Number(data.withdrawals).toLocaleString()}`;
-      document.getElementById('actUsers').innerText = Number(data.active_users).toLocaleString();
+    if (!authRes.ok) throw new Error("Unauthorized");
+    const authData = await authRes.json();
+    const serverRole = (authData.role || "").toLowerCase();
+    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+      return;
     }
-
-    // Populate 7-day transaction summary (mock for now)
-    const rows = [];
-    for(let i=0;i<7;i++){
-      const d = new Date(); d.setDate(d.getDate()-i);
-      rows.push(`<tr><td>${d.toISOString().slice(0,10)}</td>
-        <td>₦${(Math.floor(Math.random()*200000)+50000).toLocaleString()}</td>
-        <td>₦${(Math.floor(Math.random()*120000)+20000).toLocaleString()}</td>
-        <td>₦${(Math.floor(Math.random()*80000)+5000).toLocaleString()}</td></tr>`);
-    }
-    document.getElementById('summary').innerHTML = rows.join('');
-  } catch(err){
-    console.error(err);
+    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
+  } catch(err) {
+    window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+    return;
   }
-}
 
-// Demo counts for failed/fraud
-document.getElementById('fraudCount').innerText = '3';
-document.getElementById('failedCount').innerText = '12';
+  // ---------- Fetch Metrics ----------
+  try {
+    const metricsRes = await fetch("https://payme-update.onrender.com/admin/metrics", { credentials:"include" });
+    const metrics = await metricsRes.json();
+    if(metrics.status==="success"){
+      document.getElementById('vol').innerText = `₦${Number(metrics.total_volume).toLocaleString()}`;
+      document.getElementById('dep').innerText = `₦${Number(metrics.deposits).toLocaleString()}`;
+      document.getElementById('wd').innerText = `₦${Number(metrics.withdrawals).toLocaleString()}`;
+      document.getElementById('actUsers').innerText = Number(metrics.active_users).toLocaleString();
+    }
+  } catch(err){
+    console.error("Metrics fetch failed", err);
+  }
 
-loadMonitoringData();
+  // ---------- Fetch 7-day Transaction Summary ----------
+  try {
+    const summaryRes = await fetch("https://payme-update.onrender.com/admin/daily_summary", { credentials:"include" });
+    const data = await summaryRes.json();
+    if(data.status==="success" && data.summary){
+      const rows = data.summary.map(r=>`<tr>
+        <td>${r.day}</td>
+        <td>₦${Number(r.total).toLocaleString()}</td>
+        <td>₦${Number(r.deposits).toLocaleString()}</td>
+        <td>₦${Number(r.withdrawals).toLocaleString()}</td>
+      </tr>`);
+      document.getElementById('summary').innerHTML = rows.join('');
+    }
+  } catch(err){
+    console.error("Daily summary fetch failed", err);
+  }
+
+  // ---------- Demo placeholders for Fraud & Failed Tx (optional) ----------
+  document.getElementById('fraudCount').innerText = '3';       // replace with real DB query if available
+  document.getElementById('failedCount').innerText = '12';     // replace with real DB query if available
+})();
 </script>
-
 </body>
 </html>
