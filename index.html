@@ -141,16 +141,58 @@ button:hover { background: var(--primary-dark); }
       const data = await res.json().catch(()=>null);
 
       if(res.ok && data && data.status==="success"){
+        // Pull role info from backend response:
+        // backend returns top-level role === "staff" for staff logins,
+        // and also returns data.user.role containing the staff's assigned role.
         const user = data.user || {};
-        const role = (user.role || data.role || '').toLowerCase();
-        const staffRole = (user.staffRole || '').toLowerCase();
+        const topRole = (data.role || '').toString().toLowerCase();
+        const userRoleField = (user.role || user.staffRole || '').toString().toLowerCase();
+        const redirectPath = data.redirect || null;
 
-        if(role === "staff"){
+        // STAFF handling — only changed logic here
+        if(topRole === "staff" || userRoleField === "staff"){
+          // prefer server-provided redirect if available (recommended)
+          if(redirectPath){
+            // store staff info locally for later use
+            try { localStorage.setItem("user", JSON.stringify(user)); } catch(e){/* ignore */ }
+            window.location.href = redirectPath;
+            setLoading(false);
+            return;
+          }
+
+          // otherwise map the staff role field to pages (fallback)
+          const staffRole = userRoleField || topRole || '';
           switch(staffRole){
-            case 'kyc': window.location.href='Admin/kyc.html'; break;
-            case 'notification': window.location.href='Admin/notifications.html'; break;
-            case 'finance': window.location.href='Admin/finance.html'; break;
-            case 'support': window.location.href='Admin/scaling.html'; break;
+            case 'kyc': 
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/kyc.html'; break;
+            case 'notification':
+            case 'notifications':
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/notifications.html'; break;
+            case 'finance':
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/finance.html'; break;
+            case 'support':
+            case 'customer-support':
+            case 'customer support':
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/scaling.html'; break;
+            case 'transaction-review':
+            case 'transaction review':
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/review.html'; break;
+            case 'developer':
+            case 'api manager':
+            case 'api-manager':
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/developer.html'; break;
+            case 'fraud':
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/fraud.html'; break;
+            case 'log':
+              localStorage.setItem("user", JSON.stringify(user));
+              window.location.href='Admin/log.html'; break;
             default:
               showError("Staff role not recognized. Contact admin.");
               setLoading(false);
@@ -160,13 +202,15 @@ button:hover { background: var(--primary-dark); }
           return;
         }
 
-        if(role === "admin"){
+        // ADMIN unchanged
+        if((data.role || user.role || '').toString().toLowerCase() === "admin"){
           showSuccess("Admin login successful", ()=>window.location.href="Admin/index.html");
           setLoading(false);
           return;
         }
 
-        if(role === "user"){
+               // USER unchanged
+        if((data.role || user.role || '').toString().toLowerCase() === "user"){
           localStorage.setItem("user", JSON.stringify(user));
           showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html");
           setLoading(false);
