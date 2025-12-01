@@ -21,20 +21,20 @@
 <!-- ---------------- AUTH CHECK ---------------- -->
 <script>
 (async function(){
-  const EXPECTED_ROLE = "monitor"; // staff role required for this page
+  const EXPECTED_ROLE = "transaction-review"; // must match backend role
   try {
     const res = await fetch("https://payme-update.onrender.com/auth/check", {
       method: "GET",
       credentials: "include",
       headers: { "Accept": "application/json" }
     });
-    if (!res.ok) {
+    if (!res.ok){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
     const data = await res.json();
-    const serverRole = (data.role || "").toString().toLowerCase();
-    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {
+    const serverRole = (data.role || "").toLowerCase();
+    if (serverRole !== EXPECTED_ROLE.toLowerCase()){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
