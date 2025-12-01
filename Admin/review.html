@@ -21,30 +21,24 @@
 <!-- ---------------- AUTH CHECK ---------------- -->
 <script>
 (async function(){
-  const EXPECTED_ROLE = "transaction-review"; // backend normalized role
+  const EXPECTED_ROLE = "transaction review"; // role name exactly as in backend session
   try {
     const res = await fetch("https://payme-update.onrender.com/auth/check", {
-      method: "GET",
-      credentials: "include",
-      headers: { "Accept": "application/json" }
+      method:"GET",
+      credentials:"include",
+      headers:{"Accept":"application/json"}
     });
-    if (!res.ok){
+    if(!res.ok){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
-
     const data = await res.json();
-
-    // Use staff role from data.user.role
-    const serverRole = (data.user?.role || "").toLowerCase();
-
-    if (serverRole !== EXPECTED_ROLE.toLowerCase()){
+    const serverRole = (data.role || data.user?.role || "").toLowerCase();
+    if(serverRole !== EXPECTED_ROLE.toLowerCase()){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
-
     try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
-
   } catch(err){
     window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
   }
@@ -61,15 +55,15 @@
 <div class="grid">
   <div class="card">
     <h4>Total Volume (24h)</h4>
-    <div style="font-size:22px;font-weight:800;margin-top:8px" id="vol">₦0</div>
+    <div id="vol" style="font-size:22px;font-weight:800;margin-top:8px">₦0</div>
   </div>
   <div class="card">
     <h4>Total Deposits</h4>
-    <div style="font-size:22px;font-weight:800;margin-top:8px" id="dep">₦0</div>
+    <div id="dep" style="font-size:22px;font-weight:800;margin-top:8px">₦0</div>
   </div>
   <div class="card">
     <h4>Total Withdrawals</h4>
-    <div style="font-size:22px;font-weight:800;margin-top:8px" id="wd">₦0</div>
+    <div id="wd" style="font-size:22px;font-weight:800;margin-top:8px">₦0</div>
   </div>
 
   <div class="card" style="grid-column:span 3">
@@ -83,13 +77,13 @@
   <div class="card">
     <h4>Fraud Attempts</h4>
     <div id="fraudCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
-    <button class="btn" style="margin-top:10px" onclick="location.href='fraud.html'">Investigate</button>
+    <button class="btn" onclick="location.href='fraud.html'">Investigate</button>
   </div>
 
   <div class="card">
     <h4>Failed Transactions</h4>
     <div id="failedCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
-    <button class="btn" style="margin-top:10px" onclick="alert('Open transactions page in real app')">View</button>
+    <button class="btn" onclick="alert('Open transactions page in real app')">View</button>
   </div>
 
   <div class="card">
@@ -109,7 +103,7 @@
       document.getElementById('wd').innerText = `₦${Number(metrics.withdrawals).toLocaleString()}`;
       document.getElementById('actUsers').innerText = Number(metrics.active_users).toLocaleString();
     }
-  } catch(err){ console.error("Metrics fetch failed:", err); }
+  } catch(err){ console.error(err); }
 
   try {
     const summaryRes = await fetch("https://payme-update.onrender.com/admin/daily_summary", { credentials:"include" });
@@ -123,7 +117,7 @@
       </tr>`);
       document.getElementById('summary').innerHTML = rows.join('');
     }
-  } catch(err){ console.error("Daily summary fetch failed:", err); }
+  } catch(err){ console.error(err); }
 
   // placeholders
   document.getElementById('fraudCount').innerText = '3';
