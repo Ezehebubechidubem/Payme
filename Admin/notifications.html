@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Payme — Notifications</title>
 <style>
  :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
@@ -15,6 +16,35 @@
 </style>
 </head>
 <body>
+
+<!-- ---------------- AUTH CHECK ---------------- -->
+<script>
+(async function(){
+  const EXPECTED_ROLE = "notification"; // staff role required for this page
+  try {
+    const res = await fetch("https://payme-update.onrender.com/auth/check", {
+      method: "GET",
+      credentials: "include",
+      headers: { "Accept": "application/json" }
+    });
+    if (!res.ok) {
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+      return;
+    }
+    const data = await res.json();
+    const serverRole = (data.role || "").toString().toLowerCase();
+    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+      return;
+    }
+    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
+  } catch(err){
+    window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+  }
+})();
+</script>
+
+<!-- ---------------- PAGE CONTENT ---------------- -->
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>
@@ -52,23 +82,45 @@
 </div>
 
 <script>
- const history = [
-   {id:'N1001',title:'Maintenance',body:'Scheduled maintenance at 02:00 UTC',target:'All',date:'2025-12-01'},
- ];
- function renderHistory(){ document.getElementById('history').innerHTML = history.map(h=>`<div style="padding:8px;border-bottom:1px solid #eee"><strong>${h.title}</strong> — ${h.body}<div style="color:#6b7280">${h.target} • ${h.date}</div></div>`).join(''); }
- function sendNotification(){
-   const t = document.getElementById('notifTitle').value.trim();
-   const b = document.getElementById('notifBody').value.trim();
-   const target = document.getElementById('notifTarget').value;
-   const sched = document.getElementById('notifSchedule').value;
-   if(!t||!b){ alert('Title & body required'); return; }
-   // UI-only simulate
-   history.unshift({id:'N'+(Math.floor(Math.random()*9000)+1000),title:t,body:b,target:target,date:sched||new Date().toLocaleString()});
-   renderHistory();
-   document.getElementById('notifResult').innerText = `Announcement queued for ${target}.`;
- }
- function clearNotif(){ document.getElementById('notifTitle').value=''; document.getElementById('notifBody').value=''; document.getElementById('notifSchedule').value=''; document.getElementById('notifResult').innerText=''; }
- renderHistory();
+const history = [
+  {id:'N1001',title:'Maintenance',body:'Scheduled maintenance at 02:00 UTC',target:'All',date:'2025-12-01'},
+];
+
+function renderHistory(){
+  document.getElementById('history').innerHTML =
+    history.map(h=>`<div style="padding:8px;border-bottom:1px solid #eee">
+      <strong>${h.title}</strong> — ${h.body}
+      <div style="color:#6b7280">${h.target} • ${h.date}</div>
+    </div>`).join('');
+}
+
+function sendNotification(){
+  const t = document.getElementById('notifTitle').value.trim();
+  const b = document.getElementById('notifBody').value.trim();
+  const target = document.getElementById('notifTarget').value;
+  const sched = document.getElementById('notifSchedule').value;
+  if(!t||!b){ alert('Title & body required'); return; }
+
+  history.unshift({
+    id:'N'+(Math.floor(Math.random()*9000)+1000),
+    title:t,
+    body:b,
+    target:target,
+    date:sched||new Date().toLocaleString()
+  });
+  renderHistory();
+  document.getElementById('notifResult').innerText = `Announcement queued for ${target}.`;
+}
+
+function clearNotif(){
+  document.getElementById('notifTitle').value='';
+  document.getElementById('notifBody').value='';
+  document.getElementById('notifSchedule').value='';
+  document.getElementById('notifResult').innerText='';
+}
+
+renderHistory();
 </script>
+
 </body>
 </html>
