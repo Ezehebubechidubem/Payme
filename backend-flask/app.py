@@ -36,9 +36,9 @@ from flask import session, redirect, request, jsonify, abort
 
 # Role -> route mapping (exact Admin paths)
 ROLE_ROUTES = {
-    "customer-support": "/Admin/scaling.html",
-    "customer support": "/Admin/scaling.html",
-    "transaction-review": "/Admin/review.html",
+    "customer-support": "/Payme/Admin/scaling.html",
+    "customer support": "/Payme/Admin/scaling.html",
+    "transaction-review": "/Payme/Admin/review.html",
     "transaction review": "/Admin/review.html",
     "scaling": "/Admin/scaling.html",
     "api manager": "/Admin/api_manager.html",
