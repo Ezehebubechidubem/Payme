@@ -31,30 +31,29 @@ def _now_iso():
 # -------------------------------------------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
-# ---------- staff access guard (add to your app.py) ----------
-from flask import session, redirect, request, jsonify, abort, url_for
+# ---------- staff access guard ----------
+from flask import session, redirect, request, jsonify, abort
 
-# Role -> route mapping (lowercase keys expected)
-# Keep these paths exactly as your frontend files are named.
+# Role -> route mapping (exact Admin paths)
 ROLE_ROUTES = {
-    "customer-support": "/support.html",
-    "transaction-review": "/review.html",
-    "scaling": "/scaling.html",
-    "api manager": "/api_manager.html",
-    "api-manager": "/api_manager.html",
-    "developer": "/developer.html",
+    "customer-support": "/Admin/scaling.html",
+    "customer support": "/Admin/scaling.html",
+    "transaction-review": "/Admin/review.html",
+    "transaction review": "/Admin/review.html",
+    "scaling": "/Admin/scaling.html",
+    "api manager": "/Admin/api_manager.html",
+    "api-manager": "/Admin/api_manager.html",
+    "developer": "/Admin/developer.html",
     "kyc": "/Admin/kyc.html",
-    "fraud": "/fraud.html",
-    "log": "/log.html",
-    "notification": "/notifications.html",
-    # you can add more here if needed
+    "fraud": "/Admin/fraud.html",
+    "log": "/Admin/log.html",
+    "notification": "/Admin/notifications.html",
 }
 
 # Build reverse lookup: protected path -> normalized role key
 PROTECTED_PATH_TO_ROLE = {v.lower().rstrip('/'): k for k, v in ROLE_ROUTES.items()}
 
 def _is_api_request():
-    # Heuristic to detect AJAX/API requests
     if request.is_json:
         return True
     if request.headers.get("X-Requested-With", "").lower() == "xmlhttprequest":
@@ -64,18 +63,14 @@ def _is_api_request():
 
 @app.before_request
 def staff_page_guard():
-    """
-    Block access to staff pages unless session indicates the user is that staff role.
-    - Non-protected pages are left untouched.
-    - Skips static files and admin API endpoints (so your admin routes still work).
-    """
     try:
         path = request.path.lower().split('?', 1)[0].rstrip('/')
     except Exception:
         path = request.path.lower().rstrip('/')
 
-    # Skip: static assets, admin APIs, public pages, login endpoints, and API endpoints
-    SKIP_PREFIXES = ('/static', '/admin', '/api', '/_dash', '/favicon.ico', '/login', '/logout')
+    # Skip: static assets, api, public pages, login endpoints, and API endpoints
+    # IMPORTANT: do NOT include '/admin' here — admin static pages must be protected
+    SKIP_PREFIXES = ('/static', '/api', '/_dash', '/favicon.ico', '/login', '/logout')
     for pfx in SKIP_PREFIXES:
         if path.startswith(pfx):
             return  # do not guard these
@@ -87,22 +82,17 @@ def staff_page_guard():
 
     # Now it's a protected staff page — ensure session says staff
     if not session.get("is_staff"):
-        # Not logged-in as staff
         if _is_api_request():
             return jsonify({"status":"error","message":"Authentication required"}), 401
-        # redirect browser users to the login page (adjust to your login path)
         return redirect("/login.html")
 
     # Check staff role
     staff_role = (session.get("staff_role") or "").strip().lower()
-    # Normalize mapping key
     req_role_key = required_role.strip().lower()
 
     if staff_role != req_role_key:
-        # Staff logged in but role mismatch -> forbidden
         if _is_api_request():
             return jsonify({"status":"error","message":"Forbidden"}), 403
-        # For browsers show 403 (you can replace with a friendly page)
         return abort(403)
 
 # ✅ Proper CORS setup for session cookies
