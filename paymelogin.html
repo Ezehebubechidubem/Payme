@@ -71,7 +71,7 @@
     .fee{font-size:10px;background:#fff3cd;color:#8a6d3b;border:1px solid #ffe49d;padding:1px 5px;border-radius:7px;margin-left:4px}
     .qr{font-size:11px;background:#c8e6c9;color:#2e7d32;padding:2px 6px;border-radius:7px;margin-left:6px}
     .promo-card{margin:12px;background:var(--card);border-radius:14px;padding:14px;
-      display:flex;align-items:center;justify-content:space-between;gap:10px}
+      display:flex;align-items:center;justify-content:space-between;gap:10px; position:relative; overflow:hidden}
     .promo-card .title{font-weight:800;color:#2e7d32}
     .promo-card .sub{font-size:12px;color:#666;margin-top:2px}
     .outline{border:1px solid var(--primary);background:#fff;color:var(--primary);padding:8px 14px;border-radius:18px;font-weight:700;cursor:pointer}
@@ -98,6 +98,18 @@
     .nav-item.active, .nav-item.active i{color:#000}
     a{text-decoration:none;color:inherit}
     button{font:inherit}
+
+    /* Announcement carousel styles (only for promo area) */
+    .ann-carousel { width:100%; display:flex; align-items:center; gap:12px; }
+    .ann-track { display:flex; transition:transform .45s ease; width:100%; }
+    .ann-slide { min-width:100%; box-sizing:border-box; padding:8px; display:flex; gap:10px; align-items:center; }
+    .ann-slide img{width:120px; height:72px; object-fit:cover; border-radius:8px; flex:0 0 120px}
+    .ann-text { flex:1; }
+    .ann-controls { position:absolute; right:12px; top:12px; display:flex; gap:8px; }
+    .ann-controls button{background:rgba(255,255,255,0.95); border:1px solid #eee; padding:6px 8px; border-radius:8px; cursor:pointer}
+    .ann-dots { position:absolute; bottom:8px; left:50%; transform:translateX(-50%); display:flex; gap:6px; }
+    .ann-dot { width:8px; height:8px; border-radius:50%; background:#eee; cursor:pointer; }
+    .ann-dot.active { background:var(--primary-dark); }
   </style>
 </head>
 <body>
@@ -142,7 +154,7 @@
 
     <!-- Quick actions -->
     <section class="quick">
-   
+
   <a href="toWallet.html" style="text-decoration: none; color: inherit;">
     <div class="qa">
         <i class="fa-solid fa-building-columns"></i>
@@ -160,16 +172,31 @@
   <i class="fa-brands fa-btc"></i>
   <div>To Crypto Wallet</div></a>
 </div>
-      
+
     </section>
 
-    <!-- Promo -->
-    <section class="promo-card">
-      <div>
-        <div class="title">Verve Virtual Card 50% Off today</div>
-        <div class="sub">One-Click Instant Access and Use it at Google Play, Netflix &hellip;</div>
+    <!-- Promo (REPLACED: announcement carousel inserted here; everything else left unchanged) -->
+    <section class="promo-card" id="promoCard">
+      <!-- fallback / default content (shown when no announcements available) -->
+      <div id="promoDefault" style="display:flex; align-items:center; gap:10px; width:100%;">
+        <div>
+          <div class="title">Verve Virtual Card 50% Off today</div>
+          <div class="sub">One-Click Instant Access and Use it at Google Play, Netflix &hellip;</div>
+        </div>
+        <button class="outline" id="promoDefaultBtn">View</button>
       </div>
-      <button class="outline">View</button>
+
+      <!-- announcement carousel container (hidden until announcements loaded) -->
+      <div id="promoAnnouncements" style="display:none; width:100%;">
+        <div class="ann-carousel" id="annCarouselWrap" aria-live="polite">
+          <div class="ann-track" id="annTrack"></div>
+        </div>
+        <div class="ann-controls" id="annControls" style="display:none">
+          <button id="annPrev" aria-label="Previous">◀</button>
+          <button id="annNext" aria-label="Next">▶</button>
+        </div>
+        <div class="ann-dots" id="annDots" style="display:none"></div>
+      </div>
     </section>
 
     <!-- Services -->
@@ -314,6 +341,8 @@
     // show stored values immediately, then fetch latest
     updateUIWithUser(user);
     fetchAndUpdateBalance();
+    // also initialize announcements display
+    initAnnouncementsInPromo();
   });
 
   // Refresh when tab gets focus (user likely returned from add-money)
@@ -343,5 +372,213 @@
     if (user && user.phone) fetchAndUpdateBalance();
   }, 15000);
 </script>
+
+<!-- ANNOUNCEMENTS SCRIPT: only affects promo-card area -->
+<script>
+  // Endpoint candidates (update if your API uses a different path)
+  const ANNOUNCEMENTS_ENDPOINTS = [
+    `${API_BASE}/announcements/active`,
+    `${API_BASE}/admin/announcements/active`,
+    `${API_BASE}/admin/announcements` // fallback (server may return list)
+  ];
+
+  // localStorage fallback key (keeps compatibility with notifications.html)
+  const LOCAL_ANN_KEY = 'announcements_v1';
+
+  // autoplay timer
+  let annIndex = 0;
+  let annTimer = null;
+  let currentAnn = [];
+
+  function readLocalAnnouncements(){
+    try {
+      const raw = localStorage.getItem(LOCAL_ANN_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch(e){ return []; }
+  }
+
+  // sanitize small text
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+
+  async function fetchAnnouncementsFromServer(){
+    for(const url of ANNOUNCEMENTS_ENDPOINTS){
+      try {
+        const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
+        if(!r.ok) continue;
+        const json = await r.json().catch(()=>null);
+        if(!json) continue;
+
+        // server might respond with {status:"success", data:[...]} or a raw array
+        let list = [];
+        if(Array.isArray(json)) list = json;
+        else if(Array.isArray(json.data)) list = json.data;
+        else if(Array.isArray(json.announcements)) list = json.announcements;
+        else if(json.status === 'success' && (Array.isArray(json.data) || Array.isArray(json.announcements))) {
+          list = json.data || json.announcements || [];
+        } else if(json.status === 'success' && json.announcements && Array.isArray(json.announcements)) {
+          list = json.announcements;
+        } else if(json.status === 'success' && Array.isArray(json.results)) {
+          list = json.results;
+        } else if(json.status === 'success' && json.payload && Array.isArray(json.payload)) {
+          list = json.payload;
+        } else {
+          // if none matched, try to use top-level fields; fallback to empty
+          // servers often return items with keys: id,title,body,image_url,createdAt,expiresAt
+        }
+
+        // Normalize items (pull expected fields)
+        const normalized = list.map(it=>{
+          return {
+            id: it.id || it._id || it.announcement_id || (it.title? (Math.random().toString(36).slice(2,9)) : null),
+            title: it.title || it.title_text || it.heading || '',
+            body: it.body || it.message || it.text || '',
+            target: it.target || 'all',
+            createdAt: it.createdAt || it.created_at || it.date || it.created || null,
+            expiresAt: it.expiresAt || it.expires_at || it.expiry || null,
+            imageUrl: it.image_url || it.imageUrl || it.image || null,
+            raw: it
+          };
+        }).filter(x=>x.id);
+
+        // filter active items (not expired)
+        const now = new Date();
+        const active = normalized.filter(a => !a.expiresAt || new Date(a.expiresAt) > now);
+
+        // limit to 10
+        return active.slice(0, 10);
+      } catch(e){
+        // try next endpoint
+        continue;
+      }
+    }
+    // none succeeded
+    return null;
+  }
+
+  function renderPromoFallback(){
+    // show existing default promo if no announcements
+    document.getElementById('promoDefault').style.display = 'flex';
+    document.getElementById('promoAnnouncements').style.display = 'none';
+  }
+
+  function renderAnnouncements(anns){
+    currentAnn = anns || [];
+    const track = document.getElementById('annTrack');
+    const controls = document.getElementById('annControls');
+    const dots = document.getElementById('annDots');
+
+    if(!anns || anns.length === 0){
+      renderPromoFallback();
+      return;
+    }
+
+    // Build slides
+    track.innerHTML = anns.map(a => {
+      const img = a.imageUrl ? `<img src="${esc(a.imageUrl)}" alt="${esc(a.title)}">` : `<div style="width:120px;height:72px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
+      return `<div class="ann-slide" data-id="${esc(a.id)}">
+        ${img}
+        <div class="ann-text">
+          <div style="font-weight:800">${esc(a.title)}</div>
+          <div style="font-size:12px;color:#666;margin-top:4px">${esc(a.body)}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // dots
+    dots.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
+
+       // show carousel UI
+    document.getElementById('promoDefault').style.display = 'none';
+    document.getElementById('promoAnnouncements').style.display = 'block';
+    controls.style.display = 'block';
+    dots.style.display = 'flex';
+
+    annIndex = 0;
+    updateAnnTransform();
+    startAnnAutoPlay();
+
+    // attach dot click handlers
+    Array.from(dots.children).forEach(dot=>{
+      dot.addEventListener('click', ()=> {
+        annIndex = Number(dot.getAttribute('data-index') || 0);
+        updateAnnTransform();
+        restartAnnAutoPlay();
+      });
+    });
+  }
+
+  function updateAnnTransform(){
+    const track = document.getElementById('annTrack');
+    if(!track) return;
+    const len = currentAnn.length || 1;
+    // clamp index
+    if(annIndex < 0) annIndex = 0;
+    if(annIndex >= len) annIndex = len - 1;
+    track.style.transform = `translateX(-${annIndex * 100}%)`;
+    // update dots
+    const dots = document.querySelectorAll('#annDots .ann-dot');
+    dots.forEach((d,i)=> d.classList.toggle('active', i===annIndex));
+  }
+
+  function startAnnAutoPlay(){
+    if(annTimer) clearInterval(annTimer);
+    if((currentAnn||[]).length <= 1) return;
+    annTimer = setInterval(()=> {
+      annIndex = (annIndex + 1) % currentAnn.length;
+      updateAnnTransform();
+    }, 4000);
+  }
+  function stopAnnAutoPlay(){ if(annTimer) clearInterval(annTimer); annTimer = null; }
+  function restartAnnAutoPlay(){ stopAnnAutoPlay(); startAnnAutoPlay(); }
+
+  async function initAnnouncementsInPromo(){
+    try {
+      // try fetch
+      const serverList = await fetchAnnouncementsFromServer();
+      let announcements = null;
+      if(Array.isArray(serverList)){
+        announcements = serverList;
+        // also store to local fallback for offline
+        try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
+      } else {
+        // fallback to local cache
+        announcements = readLocalAnnouncements().slice(0,10);
+      }
+      if(announcements && announcements.length > 0){
+        renderAnnouncements(announcements);
+      } else {
+        renderPromoFallback();
+      }
+    } catch(e){
+      // fallback to local only
+      const fallback = readLocalAnnouncements().slice(0,10);
+      if(fallback.length) renderAnnouncements(fallback);
+      else renderPromoFallback();
+    }
+
+    // attach manual prev/next
+    document.getElementById('annPrev').addEventListener('click', ()=>{
+      annIndex = Math.max(0, annIndex - 1);
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    });
+    document.getElementById('annNext').addEventListener('click', ()=>{
+      annIndex = (annIndex + 1) % (currentAnn.length || 1);
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    });
+
+    // refresh announcements every 30s (or adjust as needed)
+    setInterval(async ()=>{
+      const serverList = await fetchAnnouncementsFromServer();
+      if(Array.isArray(serverList) && JSON.stringify(serverList) !== JSON.stringify(currentAnn)){
+        // update local store & UI
+        try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
+        renderAnnouncements(serverList);
+      }
+    }, 30000);
+  }
+</script>
+
 </body>
 </html>
