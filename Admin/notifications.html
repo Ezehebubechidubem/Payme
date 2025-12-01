@@ -161,6 +161,12 @@ const DELETE_URL_BASE = `${API_BASE}/announcements`; // DELETE /<id>
 const REPUBLISH_URL_BASE = `${API_BASE}/announcements`; // POST /<id>/republish
 const MAX_ACTIVE = 10;
 
+// We'll use this to construct image URLs when backend returns just a filename or relative path
+const ASSET_BASE = API_BASE.replace(/\/api$/, '');
+const ASSET_ORIGIN = (function(){
+  try { return new URL(ASSET_BASE).origin; } catch(e){ return window.location.origin; }
+})();
+
 // Debug helpers
 function showDebugPanel(reqText, resText){
   document.getElementById('lastReq').innerText = reqText || '';
@@ -194,6 +200,26 @@ fileInput?.addEventListener('change', (e)=>{
   r.readAsDataURL(f);
 });
 
+// Normalize image reference returned from backend into a usable absolute URL.
+// Accepts: full absolute URL, path starting with '/', path like 'admin/uploads/announcements/xxx', or just filename.
+function normalizeImageUrl(imgRef){
+  if(!imgRef) return null;
+  imgRef = String(imgRef).trim();
+  if(!imgRef) return null;
+  // Already absolute
+  if(/^https?:\/\//i.test(imgRef)) return imgRef;
+  // Starts with slash -> origin + path
+  if(imgRef.startsWith('/')) return ASSET_ORIGIN + imgRef;
+  // If it contains 'admin/uploads' or 'uploads', assume it's relative path under origin
+  if(imgRef.includes('admin/uploads') || imgRef.includes('uploads')) {
+    // ensure leading slash
+    const path = imgRef.startsWith('/') ? imgRef : '/' + imgRef;
+    return ASSET_ORIGIN + path;
+  }
+  // Otherwise treat as filename stored under /admin/uploads/announcements/<filename>
+  return `${ASSET_ORIGIN}/admin/uploads/announcements/${encodeURIComponent(imgRef)}`;
+}
+
 // Fetch active announcements (for preview)
 async function fetchActive(){
   try {
@@ -201,14 +227,21 @@ async function fetchActive(){
     if(!res.ok) throw new Error('no active endpoint');
     const list = await res.json();
     // server may return array directly
-    return Array.isArray(list) ? list : (list.announcements || list.data || list);
+    // also normalize per-item image fields into image_url if backend returned only image_path/image
+    const arr = Array.isArray(list) ? list : (list.announcements || list.data || list);
+    if(Array.isArray(arr)){
+      return arr.map(normalizeAnnImageFields);
+    }
+    return arr;
   } catch(e){
     // try alternate endpoint (non-admin) for dashboard compatibility
     try {
       const res2 = await fetch(`${API_BASE}/announcements/active`, { credentials: 'include', cache: 'no-store' });
       if(!res2.ok) throw new Error('no alt endpoint');
       const list2 = await res2.json();
-      return Array.isArray(list2) ? list2 : (list2.announcements || list2.data || list2);
+      const arr2 = Array.isArray(list2) ? list2 : (list2.announcements || list2.data || list2);
+      if(Array.isArray(arr2)) return arr2.map(normalizeAnnImageFields);
+      return arr2;
     } catch(err){ console.warn('fetchActive failed', err); return []; }
   }
 }
@@ -219,12 +252,29 @@ async function fetchHistory(){
     const res = await fetch(HISTORY_URL, { credentials:'include', cache:'no-store' });
     if(!res.ok) throw new Error('history unauthorized');
     const json = await res.json();
-    // our admin route returns {status: "success", announcements: [...]}
-    return json.announcements || json.data || [];
+    const arr = json.announcements || json.data || [];
+    if(Array.isArray(arr)) return arr.map(normalizeAnnImageFields);
+    return arr;
   } catch(e){
     console.warn('fetchHistory failed', e);
     return [];
   }
+}
+
+// Ensure each announcement object has image_url resolved when possible
+function normalizeAnnImageFields(a){
+  if(!a || typeof a !== 'object') return a;
+  const out = Object.assign({}, a);
+  // backend might return image_url OR imagePath OR image_path OR image
+  const candidates = [out.image_url, out.imagePath, out.image_path, out.image, out.imagefile, out.filename];
+  for(const c of candidates){
+    if(c){
+      out.image_url = normalizeImageUrl(c);
+      break;
+    }
+  }
+  // If image_url missing but created_by or createdAt exists we leave as-is
+  return out;
 }
 
 // render active preview carousel
@@ -248,7 +298,9 @@ function renderActive(list){
   else limitWarning.style.display = 'none';
 
   track.innerHTML = list.map(a => {
-    const img = a.image_url ? `<img src="${escapeHtml(a.image_url)}" alt="">` : `<div style="width:160px;height:90px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
+    // use normalized image_url
+    const imgSrc = a.image_url ? a.image_url : null;
+    const img = imgSrc ? `<img src="${escapeHtml(imgSrc)}" alt="">` : `<div style="width:160px;height:90px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
     const created = a.createdAt ? (new Date(a.createdAt)).toLocaleString() : '';
     return `<div class="slide" data-id="${escapeHtml(a.id || '')}">
       ${img}
@@ -285,7 +337,8 @@ function renderHistory(list){
   const container = el('history');
   if(!list || list.length === 0){ container.innerHTML = '<div class="small-muted">No announcements yet</div>'; return; }
   container.innerHTML = list.map(a => {
-    const img = a.image_url ? `<img src="${escapeHtml(a.image_url)}" style="width:120px;height:70px;object-fit:cover;border-radius:6px;margin-right:8px">` : '';
+    const imgSrc = a.image_url ? a.image_url : null;
+    const img = imgSrc ? `<img src="${escapeHtml(imgSrc)}" style="width:120px;height:70px;object-fit:cover;border-radius:6px;margin-right:8px">` : '';
     const created = a.createdAt ? new Date(a.createdAt).toLocaleString() : '';
     const expires = a.expiresAt ? new Date(a.expiresAt).toLocaleString() : '—';
     return `<div class="history-item" data-id="${escapeHtml(a.id)}">
@@ -396,110 +449,7 @@ async function sendNotification(){
 
     if(res.ok && json && (json.status === 'success' || res.status === 200 || res.status === 201)){
       showMsg('Announcement created and stored on server.');
-      // refresh active and history views
-      await refreshAllViews();
-      // clear form
-      clearNotif();
-    } else {
-      const message = (json && (json.message || json.error)) || `Server error (${res.status})`;
-      showMsg(message, true);
-    }
-  } catch(err){
-    console.error('sendNotification error', err);
-    showMsg('Network or server error. Announcement not saved.', true);
-    showDebugPanel(reqSummary, `NETWORK ERROR: ${String(err)}`);
-  } finally {
-    sendBtn.disabled = false;
-    sendBtn.innerText = 'Send';
-  }
-}
-
-// delete announcement (soft delete to 'deleted' status, per backend)
-async function deleteAnnouncement(idEncoded){
-  const id = decodeURIComponent(idEncoded);
-  if(!confirm('Permanent delete this announcement? This will mark it as deleted.')) return;
-  showMsg('Deleting...');
-  try {
-    const url = `${DELETE_URL_BASE}/${encodeURIComponent(id)}`;
-    const res = await fetch(url, {
-      method: 'DELETE',
-      credentials: 'include'
-    });
-
-    const raw = await res.text().catch(()=>null);
-    showDebugPanel(`DELETE ${url}`, `HTTP ${res.status}\n${raw || ''}`);
-
-    if(res.ok){
-      showMsg('Deleted.');
-      await refreshAllViews();
-    } else {
-      let json = null;
-      try{ json = raw ? JSON.parse(raw) : null } catch(e){ json = null }
-      showMsg((json && json.message) || 'Delete failed', true);
-    }
-  } catch(err){
-    console.error('deleteAnnouncement error', err);
-    showMsg('Network error while deleting', true);
-    showDebugPanel(`DELETE ${DELETE_URL_BASE}/${encodeURIComponent(id)}`, `NETWORK ERROR: ${String(err)}`);
-  }
-}
-
-
-// republish: set new expiry = now + 24h unless user chooses custom
-async function republishAnnouncement(idEncoded){
-  const id = decodeURIComponent(idEncoded);
-  const custom = prompt('Enter new expiry datetime (YYYY-MM-DD HH:MM or ISO) or leave blank for +24 hours from now:','');
-  let newExpiry = null;
-  if(custom){
-    const parsed = new Date(custom);
-    if(isNaN(parsed.getTime())){
-      alert('Invalid date format. Use e.g. 2025-12-01 14:30 or ISO string.');
-      return;
-    }
-    newExpiry = parsed.toISOString();
-  } else {
-    newExpiry = new Date(Date.now() + 24*60*60*1000).toISOString();
-  }
-
-  showMsg('Republishing...');
-  try {
-    const url = `${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`;
-    const res = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ expiresAt: newExpiry, createdAt: new Date().toISOString() })
-    });
-
-    const raw = await res.text().catch(()=>null);
-    showDebugPanel(`POST ${url}`, `HTTP ${res.status}\n${raw || ''}`);
-
-    if(res.ok){
-      showMsg('Republished.');
-      await refreshAllViews();
-    } else {
-      let json = null;
-      try{ json = raw ? JSON.parse(raw) : null } catch(e){ json = null }
-      showMsg((json && json.message) || 'Republish failed', true);
-    }
-  } catch(err){
-    console.error('republishAnnouncement', err);
-    showMsg('Network error while republishing', true);
-    showDebugPanel(`POST ${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, `NETWORK ERROR: ${String(err)}`);
-  }
-}
-
-// clear form
-function clearNotif(){
-  el('notifTitle').value = '';
-  el('notifBody').value = '';
-  el('notifTarget').value = 'all';
-  el('notifExpiry').value = '';
-  el('notifyFile').value = '';
-  imgPreview.style.display = 'none';
-  showMsg('');
-}
-
+      
 // refresh active + history
 async function refreshAllViews(){
   // active
@@ -514,11 +464,11 @@ async function refreshAllViews(){
 async function fetchActiveForUI(){
   try {
     const res = await fetch(ACTIVE_URL, { credentials:'include', cache:'no-store' });
-    if(res.ok){ const arr = await res.json(); return Array.isArray(arr) ? arr : (arr.announcements || arr.data || arr); }
+    if(res.ok){ const arr = await res.json(); const processed = Array.isArray(arr) ? arr.map(normalizeAnnImageFields) : (arr.announcements || arr.data || arr); return Array.isArray(processed) ? processed : (processed.announcements || processed.data || processed); }
   } catch(e){}
   try {
     const res2 = await fetch(`${API_BASE}/announcements/active`, { credentials:'include', cache:'no-store' });
-    if(res2.ok){ const arr2 = await res2.json(); return Array.isArray(arr2) ? arr2 : (arr2.announcements || arr2.data || arr2); }
+    if(res2.ok){ const arr2 = await res2.json(); const processed2 = Array.isArray(arr2) ? arr2.map(normalizeAnnImageFields) : (arr2.announcements || arr2.data || arr2); return Array.isArray(processed2) ? processed2 : (processed2.announcements || processed2.data || processed2); }
   } catch(e){}
   return [];
 }
