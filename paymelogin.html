@@ -70,7 +70,8 @@
     .qa i{font-size:20px;color:var(--primary)}
     .fee{font-size:10px;background:#fff3cd;color:#8a6d3b;border:1px solid #ffe49d;padding:1px 5px;border-radius:7px;margin-left:4px}
     .qr{font-size:11px;background:#c8e6c9;color:#2e7d32;padding:2px 6px;border-radius:7px;margin-left:6px}
-    .promo-card{margin:12px;background:var(--card);border-radius:14px;padding:0; position:relative; overflow:hidden; height:120px}
+    .promo-card{margin:12px;background:var(--card);border-radius:14px;padding:14px;
+      display:flex;align-items:center;justify-content:space-between;gap:10px; position:relative; overflow:hidden}
     .promo-card .title{font-weight:800;color:#2e7d32}
     .promo-card .sub{font-size:12px;color:#666;margin-top:2px}
     .outline{border:1px solid var(--primary);background:#fff;color:var(--primary);padding:8px 14px;border-radius:18px;font-weight:700;cursor:pointer}
@@ -98,16 +99,16 @@
     a{text-decoration:none;color:inherit}
     button{font:inherit}
 
-    /* Announcement carousel (promo area): image-only slides */
-    .ann-carousel { width:100%; height:120px; overflow:hidden; position:relative; }
-    .ann-track { display:flex; transition:transform .45s ease; height:100%; }
-    .ann-slide { min-width:100%; box-sizing:border-box; padding:0; display:flex; align-items:center; justify-content:center; height:100%; }
-    .ann-slide img{width:100%; height:100%; object-fit:cover; display:block}
-    .ann-dots { position:absolute; bottom:8px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5; }
-    .ann-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; border:1px solid rgba(0,0,0,0.06); }
-    .ann-dot.active { background:rgba(0,0,0,0.6); }
-    /* small transparent overlay to make tap area better */
-    .ann-overlay { position:absolute; inset:0; z-index:2 }
+    /* Announcement carousel styles (only for promo area) */
+    .ann-carousel { width:100%; display:flex; align-items:center; gap:12px; overflow:hidden; position:relative; }
+    .ann-track { display:flex; transition:transform .45s ease; width:100%; will-change:transform; }
+    .ann-slide { min-width:100%; box-sizing:border-box; padding:0; display:flex; align-items:center; justify-content:center; }
+    .ann-slide img{width:100%; height:140px; object-fit:cover; border-radius:10px;}
+    .ann-dots { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5; }
+    .ann-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; border:1px solid rgba(0,0,0,0.05) }
+    .ann-dot.active { background:#ffffff; box-shadow:0 0 0 3px rgba(0,0,0,0.06); }
+    /* small fallback text (hidden visually for user promo) */
+    .sr-only { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
   </style>
 </head>
 <body>
@@ -128,7 +129,7 @@
       </div>
     </header>
 
-    <!-- Balance card -->
+    <!-- Balance card (unchanged) -->
     <section class="card">
       <div class="row">
         <div>
@@ -138,7 +139,7 @@
         <div style="text-align:right">
           <a iclass="chip-link" href="transactions.html"><span>Transaction History</span> <i class="fa-solid fa-angle-right"></i></a>
           <div style="margin-top:8px">
-            <a href="addmoney.html" class="btn">Add Money</a>
+            <a href="addmoney.html"class="btn">Add Money</a>
           </div>
         </div>
       </div>
@@ -166,7 +167,7 @@
         </div>
       </a>
 
-      <a href="PaymeCrypto.html" style="text-decoration:none;color:inherit">
+      <a href="PaymeCrypto.html" style="text-decoration: none; color: inherit;">
         <div class="qa">
           <i class="fa-brands fa-btc"></i>
           <div>To Crypto Wallet</div>
@@ -174,10 +175,10 @@
       </a>
     </section>
 
-    <!-- Promo (announcement image carousel) -->
-    <section class="promo-card" id="promoCard" aria-live="polite">
-      <!-- default content (shown when no announcements available) -->
-      <div id="promoDefault" style="display:flex; align-items:center; gap:10px; width:100%; padding:14px;">
+    <!-- Promo (announcement image carousel placed exactly here) -->
+    <section class="promo-card" id="promoCard">
+      <!-- fallback / default promo (when no announcements active) -->
+      <div id="promoDefault" style="display:flex; align-items:center; gap:10px; width:100%;">
         <div>
           <div class="title">Verve Virtual Card 50% Off today</div>
           <div class="sub">One-Click Instant Access and Use it at Google Play, Netflix …</div>
@@ -185,17 +186,18 @@
         <button class="outline" id="promoDefaultBtn">View</button>
       </div>
 
-      <!-- announcement carousel container (hidden until announcements loaded) -->
-      <div id="promoAnnouncements" style="display:none; width:100%; height:100%;">
-        <div class="ann-carousel" id="annCarouselWrap" aria-hidden="false">
-          <div class="ann-track" id="annTrack"></div>
-          <div class="ann-dots" id="annDots" aria-hidden="false"></div>
-          <div class="ann-overlay" id="annOverlay" aria-hidden="false"></div>
+      <!-- announcement image-only carousel (hidden until announcements exist) -->
+      <div id="promoAnnouncements" style="display:none; width:100%;">
+        <div class="ann-carousel" id="annCarouselWrap" aria-live="polite">
+          <div class="ann-track" id="annTrack" role="list"></div>
         </div>
+        <div class="ann-dots" id="annDots" aria-hidden="false" style="display:none"></div>
+        <!-- small accessible label for screen readers -->
+        <div class="sr-only" id="annA11yLabel">Promotional announcements carousel</div>
       </div>
     </section>
 
-    <!-- Services -->
+    <!-- Services (unchanged) -->
     <section class="services">
       <div class="head">
         <h3>Services</h3>
@@ -207,18 +209,42 @@
     </section>
 
     <div class="grid">
-      <div class="svc"><a href="airtime.html"><i class="fa-solid fa-phone"></i> Airtime</a></div>
-      <div class="svc"><a href="Data.html"><i class="fa-solid fa-signal"></i>Data</a></div>
-      <div class="svc" onclick="window.location.href='betting.html'"><i class="fa-solid fa-dice"></i> Betting</div>
-      <div class="svc"><i class="fa-solid fa-bolt"></i> Electricity</div>
-      <div class="svc"><i class="fa-solid fa-shield-halved"></i> Insurance</div>
-      <div class="svc"><i class="fa-solid fa-coins"></i> Loan</div>
-      <div class="svc"><i class="fa-solid fa-tv"></i> TV</div>
-      <div class="svc"><i class="fa-solid fa-gift"></i> Refer &amp; Earn</div>
-      <div class="svc"><i class="fa-solid fa-money-bill"></i> Withdraw</div>
-      <div class="svc"><i class="fa-solid fa-box"></i> CashBox</div>
-      <div class="svc"><a href="savings.html"><i class="fa-solid fa-lightbulb"></i> SmartEarn</a></div>
-      <div class="svc"><i class="fa-solid fa-store"></i> My Business Hub</div>
+      <div class="svc">
+        <a href="airtime.html"><i class="fa-solid fa-phone"></i> Airtime</a>
+      </div>
+      <div class="svc">
+        <a href="Data.html"><i class="fa-solid fa-signal"></i>Data</a>
+      </div>
+      <div class="svc" onclick="window.location.href='betting.html'">
+        <i class="fa-solid fa-dice"></i> Betting
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-bolt"></i> Electricity
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-shield-halved"></i> Insurance
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-coins"></i> Loan
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-tv"></i> TV
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-gift"></i> Refer &amp; Earn
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-money-bill"></i> Withdraw
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-box"></i> CashBox
+      </div>
+      <div class="svc">
+        <a href="savings.html"><i class="fa-solid fa-lightbulb"></i> SmartEarn</a>
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-store"></i> My Business Hub
+      </div>
     </div>
 
     <!-- Big banner -->
@@ -250,102 +276,41 @@
   // Backend base
   const API_BASE = "https://payme-update.onrender.com";
 
-  // Utility: try to get user from either key used in your app
-  function getStoredUser() {
-    const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
-    try { return j ? JSON.parse(j) : null; } catch (e) { return null; }
-  }
-
-  // Update UI elements for user and balance
-  function updateUIWithUser(user) {
-    if (!user) return;
-    const hi = document.getElementById("hiUser");
-    if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
-    const balEl = document.getElementById("balance");
-    if (balEl) {
-      const b = typeof user.balance !== "undefined" ? Number(user.balance) : 0;
-      balEl.innerText = "₦" + b.toFixed(2);
-    }
-  }
-
-  // Fetch balance from backend and persist to storage
-  async function fetchAndUpdateBalance() {
-    const user = getStoredUser();
-    if (!user || !user.phone) return;
-    try {
-      const res = await fetch(`${API_BASE}/balance/${encodeURIComponent(user.phone)}`, { cache: "no-store", credentials: 'include' });
-      if (!res.ok) { updateUIWithUser(user); return; }
-      const data = await res.json();
-      if (data && (typeof data.balance === "number" || !isNaN(Number(data.balance)))) {
-        user.balance = Number(data.balance);
-        localStorage.setItem("loggedInUser", JSON.stringify(user));
-        localStorage.setItem("user", JSON.stringify(user));
-        updateUIWithUser(user);
-      } else updateUIWithUser(user);
-    } catch (err) { console.warn("Could not fetch balance:", err); updateUIWithUser(user); }
-  }
-
-  // Initial load
-  window.addEventListener("load", () => {
-    const user = getStoredUser();
-    if (!user) {
-      // do not redirect — keep original behavior
-    } else {
-      updateUIWithUser(user);
-      fetchAndUpdateBalance();
-    }
-    initAnnouncementsInPromo();
-  });
-
-  // Refresh when tab gets focus or visible
-  window.addEventListener("focus", fetchAndUpdateBalance);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") fetchAndUpdateBalance(); });
-
-  // Listen for storage changes to update quickly
-  window.addEventListener("storage", (e) => {
-    if (!e) return;
-    if (e.key === "loggedInUser" || e.key === "user") {
-      setTimeout(fetchAndUpdateBalance, 50);
-    }
-  });
-
-  // Poll balance occasionally
-  setInterval(() => {
-    const user = getStoredUser();
-    if (user && user.phone) fetchAndUpdateBalance();
-  }, 15000);
-</script>
-
-<!-- ANNOUNCEMENTS SCRIPT: image-only promo carousel -->
-<script>
+  // Announcement endpoints to try (keeps compatibility)
   const ANNOUNCEMENTS_ENDPOINTS = [
+    `${API_BASE}/api/announcements/active`,
     `${API_BASE}/announcements/active`,
     `${API_BASE}/admin/announcements/active`,
+    `${API_BASE}/api/announcements`, // fallback (server may return {status,announcements:[]})
     `${API_BASE}/admin/announcements`
   ];
 
-  const LOCAL_ANN_KEY = 'announcements_v1';
-  let annIndex = 0, annTimer = null, currentAnn = [];
+  // Poll / refresh interval (ms)
+  const REFRESH_INTERVAL_MS = 10000; // 10s
 
-  function readLocalAnnouncements(){ try { const raw = localStorage.getItem(LOCAL_ANN_KEY); return raw ? JSON.parse(raw) : []; } catch(e){ return []; } }
+  // Carousel state
+  let annIndex = 0;
+  let annTimer = null;
+  let currentAnn = [];
+
+  // Helper: sanitize minimal text for attributes
   function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
 
-  // Build absolute image URL when server returns relative filename/path
-  function buildImageUrlFromBackend(item){
-    if(!item) return null;
-    let candidate = item.image_url || item.imageUrl || item.image_path || item.imagePath || item.image || null;
+  // Build image URL robustly from fields server may return
+  function buildImageUrlFromItem(it){
+    // accept image_url, imageUrl, image_path, image, imagePath
+    let candidate = it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null;
     if(!candidate) return null;
     candidate = String(candidate);
-    if (/^https?:\/\//i.test(candidate)) return candidate;
-    // remove /api if present to build site root
+    if(/^https?:\/\//i.test(candidate)) return candidate;
+    // candidate is relative path or filename — create absolute using API site root (strip /api)
     const siteBase = API_BASE.replace(/\/api\/?$/i, '');
     if(candidate.startsWith('/')) return siteBase + candidate;
     if(candidate.toLowerCase().startsWith('admin/')) return siteBase + '/' + candidate;
-    // assume filename in announcements folder
-    return siteBase + `/admin/uploads/announcements/${candidate}`;
+    // assume it's filename under admin uploads
+    return `${siteBase}/admin/uploads/announcements/${candidate}`;
   }
 
-  // Try fetching announcements array from your endpoints (tries fallbacks)
   async function fetchAnnouncementsFromServer(){
     for(const url of ANNOUNCEMENTS_ENDPOINTS){
       try {
@@ -356,114 +321,117 @@
 
         let list = [];
         if(Array.isArray(json)) list = json;
-        else if(Array.isArray(json.data)) list = json.data;
         else if(Array.isArray(json.announcements)) list = json.announcements;
-        else if(json.status === 'success' && (Array.isArray(json.data) || Array.isArray(json.announcements))) list = json.data || json.announcements || [];
-        // Normalize and keep items with images
-        const normalized = (list || []).map(it => {
+        else if(Array.isArray(json.data)) list = json.data;
+        else if(Array.isArray(json.results)) list = json.results;
+        else if(json.status === 'success' && Array.isArray(json.announcements)) list = json.announcements;
+        else if(json.status === 'success' && Array.isArray(json.data)) list = json.data;
+        else if(json.announcements && Array.isArray(json.announcements)) list = json.announcements;
+        else {
+          // try to find an array anywhere
+          for(const k of Object.keys(json)){
+            if(Array.isArray(json[k])) { list = json[k]; break; }
+          }
+        }
+
+        // Normalize
+        const normalized = list.map(it=>{
+          const id = it.id || it._id || it.announcement_id || it.ann_id || it.announcementId || (it.title? Math.random().toString(36).slice(2,9) : null);
           return {
-            id: it.id || it._id || it.announcement_id || Math.random().toString(36).slice(2,9),
-            imageUrl: it.image_url || it.imageUrl || it.image || null,
-            image_path: it.image_path || it.imagePath || null,
-            expiresAt: it.expiresAt || it.expires_at || it.expiry || null,
+            id,
+            title: it.title || it.heading || '',
+            body: it.body || it.message || '',
+            target: it.target || 'all',
+            createdAt: it.createdAt || it.created_at || it.created || null,
+            expiresAt: it.expiresAt || it.expires_at || it.expires || null,
+            // image_url priority; third-party libs may return different keys
+            image_url: it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null,
             raw: it
           };
-        }).map(it => {
-          // ensure absolute imageUrl if possible
-          if(!it.imageUrl) it.imageUrl = buildImageUrlFromBackend(it.raw) || buildImageUrlFromBackend(it);
-          return it;
-        }).filter(it => it.id && it.imageUrl); // only keep items with images
+        }).filter(x=>x.id);
 
-        // filter expired
+        // Now filter active (not expired) and sort by createdAt desc if available
         const now = new Date();
-        const active = normalized.filter(a => !a.expiresAt || new Date(a.expiresAt) > now);
+        const active = normalized.filter(a => {
+          if(!a.expiresAt) return true;
+          const ex = new Date(a.expiresAt);
+          return !isNaN(ex.getTime()) ? ex > now : true;
+        });
 
         return active.slice(0, 10);
       } catch(e){
+        // try next endpoint
         continue;
       }
     }
+    // none succeeded
     return null;
   }
 
-  // load an <img data-src> with credentials (fetch blob) to handle cookie-protected images
-  async function loadImageWithCredentials(imgEl, src){
-    if(!imgEl || !src) return;
-    // first try fetch with credentials
-    try {
-      const res = await fetch(src, { credentials: 'include' });
-      if(res.ok){
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        imgEl.src = objectUrl;
-        return;
-      }
-    } catch(e){
-      // fallthrough to setting src directly
-    }
-    // finally set src directly (public)
-    imgEl.src = src;
-  }
-
-  // Render only image slides (no text or heading)
-  function renderAnnouncements(anns){
+  // Render the promo carousel: **ONLY images** show (no title/body)
+  function renderAnnouncementsImages(anns){
     currentAnn = anns || [];
     const track = document.getElementById('annTrack');
-    const dots = document.getElementById('annDots');
+    const dotsWrap = document.getElementById('annDots');
+    const promoDefault = document.getElementById('promoDefault');
+    const promoAnnouncements = document.getElementById('promoAnnouncements');
+
     if(!anns || anns.length === 0){
-      document.getElementById('promoDefault').style.display = 'flex';
-      document.getElementById('promoAnnouncements').style.display = 'none';
+      // show default promo
+      promoDefault.style.display = 'flex';
+      promoAnnouncements.style.display = 'none';
       return;
     }
 
-    track.innerHTML = anns.map(a => {
-      // use data-src so we can load with credentials
-      return `<div class="ann-slide" data-id="${esc(a.id)}">
-        <img data-src="${esc(a.imageUrl)}" alt="promo"/>
-      </div>`;
+    // build slides: for each item attempt to build full image url and append cache-bust so replaced images update quickly
+    const slidesHtml = anns.map((a)=>{
+      const candidateUrl = buildImageUrlFromItem(a) || a.image_url || a.raw?.image_url || null;
+      // add cachebust to force browser to revalidate images when server changed or deleted
+      const finalUrl = candidateUrl ? (candidateUrl + (candidateUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now()) : null;
+      // Only image is shown
+      if(finalUrl){
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><img src="${esc(finalUrl)}" alt=""></div>`;
+      } else {
+        // fallback visual placeholder (should not happen for promo)
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><div style="width:100%;height:140px;background:#f3f4f6;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div></div>`;
+      }
     }).join('');
 
+    track.innerHTML = slidesHtml;
+
     // dots
-    dots.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
+    dotsWrap.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
 
-    // show carousel UI
-    document.getElementById('promoDefault').style.display = 'none';
-    document.getElementById('promoAnnouncements').style.display = 'block';
+    // show announcements (hide default promo)
+    promoDefault.style.display = 'none';
+    promoAnnouncements.style.display = 'block';
+    dotsWrap.style.display = 'flex';
 
-    // load images with credential-aware fetch
-    const imgs = track.querySelectorAll('img[data-src]');
-    imgs.forEach(img => {
-      const src = img.getAttribute('data-src');
-      // attempt credentialed load. If it fails we set src directly inside function
-      loadImageWithCredentials(img, src).then(()=> img.removeAttribute('data-src')).catch(()=> img.setAttribute('src', src));
-    });
-
-    // reset index and autoplay
+    // reset index & transform
     annIndex = 0;
     updateAnnTransform();
     startAnnAutoPlay();
 
-    // attach dot click handlers
-    Array.from(dots.children).forEach(dot=>{
-      dot.onclick = () => {
+    // dot clicks
+    Array.from(dotsWrap.children).forEach(dot => {
+      dot.addEventListener('click', ()=> {
         annIndex = Number(dot.getAttribute('data-index') || 0);
         updateAnnTransform();
         restartAnnAutoPlay();
-      };
+      });
     });
 
-    
-    // attach swipe handlers on overlay (mobile)
-    attachSwipeHandlers();
+    // enable swipe gestures for manual movement
+    setupSwipe(track);
   }
 
   function updateAnnTransform(){
     const track = document.getElementById('annTrack');
-    if(!track) return;
     const len = currentAnn.length || 1;
     if(annIndex < 0) annIndex = 0;
     if(annIndex >= len) annIndex = len - 1;
     track.style.transform = `translateX(-${annIndex * 100}%)`;
+    // update dots
     const dots = document.querySelectorAll('#annDots .ann-dot');
     dots.forEach((d,i)=> d.classList.toggle('active', i===annIndex));
   }
@@ -479,54 +447,126 @@
   function stopAnnAutoPlay(){ if(annTimer) clearInterval(annTimer); annTimer = null; }
   function restartAnnAutoPlay(){ stopAnnAutoPlay(); startAnnAutoPlay(); }
 
-  // Touch / swipe for mobile
-  function attachSwipeHandlers(){
-    const overlay = document.getElementById('annOverlay');
-    if(!overlay) return;
-    let startX = 0, deltaX = 0, isDown = false;
-    overlay.onpointerdown = (e) => { isDown = true; startX = e.clientX || e.touches && e.touches[0].clientX; stopAnnAutoPlay(); };
-    overlay.onpointermove = (e) => { if(!isDown) return; const x = e.clientX || e.touches && e.touches[0].clientX; deltaX = x - startX; };
-    overlay.onpointerup = (e) => { isDown = false; if(Math.abs(deltaX) > 30){ if(deltaX < 0) annIndex = Math.min((currentAnn.length||1)-1, annIndex + 1); else annIndex = Math.max(0, annIndex - 1); updateAnnTransform(); } deltaX = 0; restartAnnAutoPlay(); };
-    // fallback mouse leave
-    overlay.onpointercancel = overlay.onpointerleave = () => { isDown = false; deltaX = 0; restartAnnAutoPlay(); };
-    // also pause on hover (desktop)
-    overlay.onmouseenter = stopAnnAutoPlay;
-    overlay.onmouseleave = startAnnAutoPlay;
+  // Simple swipe handler for desktop + mobile (touch + mouse drag)
+  function setupSwipe(trackEl){
+    if(!trackEl) return;
+    let startX = 0, deltaX = 0, isDown = false, startTime = 0;
+    const threshold = 40; // px
+    const allowedTime = 500; // ms for flick
+
+    // touch
+    trackEl.ontouchstart = function(e){
+      stopAnnAutoPlay();
+      const t = e.touches[0];
+      startX = t.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+    };
+    trackEl.ontouchmove = function(e){
+      const t = e.touches[0];
+      deltaX = t.clientX - startX;
+      // optionally add transform for drag feedback
+      trackEl.style.transition = 'none';
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    trackEl.ontouchend = function(e){
+      const elapsed = Date.now() - startTime;
+      trackEl.style.transition = '';
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) { // swipe left -> next
+          annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        } else { // swipe right -> prev
+          annIndex = Math.max(0, annIndex - 1);
+        }
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
+
+    // mouse drag for desktops
+    trackEl.onmousedown = function(e){
+      stopAnnAutoPlay();
+      isDown = true;
+      startX = e.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+      document.body.style.userSelect = 'none';
+      trackEl.style.transition = 'none';
+    };
+    window.onmousemove = function(e){
+      if(!isDown) return;
+      deltaX = e.clientX - startX;
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    window.onmouseup = function(e){
+      if(!isDown) return;
+      isDown = false;
+      document.body.style.userSelect = '';
+      trackEl.style.transition = '';
+      const elapsed = Date.now() - startTime;
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        else annIndex = Math.max(0, annIndex - 1);
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
   }
 
+  // Main initializer: fetch announcements, render, and set polling
   async function initAnnouncementsInPromo(){
     try {
       const serverList = await fetchAnnouncementsFromServer();
       let announcements = null;
-      if(Array.isArray(serverList)){
+      if(Array.isArray(serverList)) {
         announcements = serverList;
-        try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
+        try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
       } else {
-        announcements = readLocalAnnouncements().slice(0,10);
+        announcements = (function(){ try { return JSON.parse(localStorage.getItem('announcements_v1')||'[]'); } catch(e){ return []; } })();
       }
-      if(announcements && announcements.length > 0) renderAnnouncements(announcements);
+
+      if(announcements && announcements.length > 0) renderAnnouncementsImages(announcements);
       else {
+        // show default promo
         document.getElementById('promoDefault').style.display = 'flex';
         document.getElementById('promoAnnouncements').style.display = 'none';
       }
     } catch(e){
-      const fallback = readLocalAnnouncements().slice(0,10);
-      if(fallback.length) renderAnnouncements(fallback);
+      const fallback = (function(){ try { return JSON.parse(localStorage.getItem('announcements_v1')||'[]'); } catch(e){ return []; } })();
+      if(fallback && fallback.length) renderAnnouncementsImages(fallback);
       else {
         document.getElementById('promoDefault').style.display = 'flex';
         document.getElementById('promoAnnouncements').style.display = 'none';
       }
     }
 
-    // refresh announcements every 30s (keeps user-side in sync with admin actions)
+    // periodic refresh to reflect admin changes (deletions/creates)
     setInterval(async ()=>{
-      const serverList = await fetchAnnouncementsFromServer();
-      if(Array.isArray(serverList) && JSON.stringify(serverList) !== JSON.stringify(currentAnn)){
-        try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
-        renderAnnouncements(serverList);
-      }
-    }, 30000);
+      try {
+        const serverList = await fetchAnnouncementsFromServer();
+        if(Array.isArray(serverList)){
+          // compare simple JSON to see if really changed
+          const oldJson = JSON.stringify(currentAnn.map(a=>a.id || a.image_url));
+          const newJson = JSON.stringify(serverList.map(a=>a.id || a.image_url));
+          if(oldJson !== newJson){
+            // rerender & cache-bust images so updated deletions/changes reflect immediately
+            renderAnnouncementsImages(serverList);
+            try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
+          } else {
+            // even if ids same, sometimes image resource changed (same filename). Force image reload by re-render with cache-bust
+            // re-render but keep same index
+            renderAnnouncementsImages(serverList);
+          }
+        }
+      } catch(e){}
+    }, REFRESH_INTERVAL_MS);
   }
+
+  // Run on load
+  window.addEventListener('load', () => {
+    // init announcements in promo area
+    initAnnouncementsInPromo();
+  });
 </script>
 
 </body>
