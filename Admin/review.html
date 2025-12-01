@@ -64,30 +64,10 @@
 </div>
 
 <script>
-(async function() {
-  // ---------- Authentication ----------
-  const EXPECTED_ROLE = "notification"; // change per page if needed
-  try {
-    const authRes = await fetch("https://payme-update.onrender.com/auth/check", {
-      method: "GET",
-      credentials: "include",
-      headers: { "Accept": "application/json" }
-    });
-    if (!authRes.ok) throw new Error("Unauthorized");
-    const authData = await authRes.json();
-    const serverRole = (authData.role || "").toLowerCase();
-    if (serverRole !== EXPECTED_ROLE.toLowerCase()) {
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-      return;
-    }
-    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
-  } catch(err) {
-    window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
-    return;
-  }
+
 
   // ---------- Fetch Metrics ----------
-  try {
+  
     const metricsRes = await fetch("https://payme-update.onrender.com/admin/metrics", { credentials:"include" });
     const metrics = await metricsRes.json();
     if(metrics.status==="success"){
@@ -98,7 +78,7 @@
     }
   } catch(err){
     console.error("Metrics fetch failed", err);
-  }
+  
 
   // ---------- Fetch 7-day Transaction Summary ----------
   try {
