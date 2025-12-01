@@ -347,6 +347,8 @@ def register():
             msg = "Phone already exists"
         return jsonify({"status": "error", "message": msg}), 400
 
+
+
 @app.route("/login", methods=["POST"])
 def login():
     data, err, code = json_required(["login", "password"])
@@ -358,7 +360,7 @@ def login():
     payload_email = (data.get("email") or "").strip() or None
 
     # -------------------------
-    # ADMIN: environment-driven
+    # ADMIN: environment-driven (UNCHANGED)
     # -------------------------
     ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
     ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH")
@@ -370,7 +372,7 @@ def login():
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
     # -------------------------
-    # STAFF: database-driven (UPDATED — returns full GitHub Pages URLs)
+    # STAFF: database-driven (UPDATED)
     # -------------------------
     with get_conn() as conn:
         cur = conn.cursor()
@@ -397,14 +399,15 @@ def login():
             staff_email = staff_row[2] if len(staff_row) > 2 else None
 
         if stored_pw and check_password_hash(stored_pw, password):
-            # set session as before
+            # set session (keeps existing behavior)
             session["is_staff"] = True
             session["staff_id"] = staff_id
             session["staff_name"] = staff_name
-            # normalized role for guard checks
-            session["staff_role"] = (staff_role or "").strip().lower()
+            # normalized role (lowercase) — used by auth_check and for any server-side checks
+            normalized_role = (staff_role or "").strip().lower()
+            session["staff_role"] = normalized_role
 
-            # ROLE -> full GitHub Pages URL (your domain)
+            # --------------- role -> full GitHub Pages URL ---------------
             BASE = "https://ezehebubechidubem.github.io/Payme"
             ROLE_ROUTES = {
                 "customer-support": f"{BASE}/Admin/scaling.html",
@@ -421,8 +424,7 @@ def login():
                 "notification": f"{BASE}/Admin/notifications.html"
             }
 
-            role_key = (staff_role or "").strip().lower()
-            redirect_to = ROLE_ROUTES.get(role_key, f"{BASE}/Admin/staff.html")
+            redirect_to = ROLE_ROUTES.get(normalized_role, f"{BASE}/Admin/staff.html")
 
             return jsonify({
                 "status": "success",
@@ -439,7 +441,7 @@ def login():
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
     # -------------------------
-    # REGULAR USER: database
+    # REGULAR USER: database (UNCHANGED)
     # -------------------------
     with get_conn() as conn:
         cur = conn.cursor()
@@ -484,6 +486,20 @@ def login():
     }
 
     return jsonify({"status":"success","role":"user","user":user}), 200
+
+
+# ---------- small endpoint used by GitHub-hosted Admin pages to validate session ----------
+@app.route("/auth/check", methods=["GET", "OPTIONS"])
+def auth_check():
+    if request.method == "OPTIONS":
+        return "", 204
+    # return role only if staff logged-in
+    if session.get("is_staff"):
+        return jsonify({"status": "ok", "role": session.get("staff_role")}), 200
+    # allow admin detection if desired
+    if session.get("is_admin"):
+        return jsonify({"status": "ok", "role": "admin"}), 200
+    return jsonify({"status": "error", "message": "unauthorized"}), 401
 
 # -------------------------------------------------
 # Money: balance, add, send, transactions, users
