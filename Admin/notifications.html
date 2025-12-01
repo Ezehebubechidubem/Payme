@@ -128,7 +128,7 @@
         <div id="carouselTrack" class="carousel-track"></div>
         <div class="carousel-controls">
           <button id="prevBtn" aria-label="Previous">◀</button>
-          <button id="nextBtn" aria-label="Next">▶</button>
+          <button id='nextBtn' aria-label="Next">▶</button>
         </div>
       </div>
       <div id="noActive" class="small-muted">No active announcements</div>
@@ -152,7 +152,7 @@
 </div>
 
 <script>
-// Make this match the staff pattern: API_BASE includes /api prefix
+// Make this match the staff pattern: API_BASE includes the /api prefix
 const API_BASE = "https://payme-update.onrender.com/api";
 const CREATE_URL = `${API_BASE}/announcements`;
 const ACTIVE_URL = `${API_BASE}/announcements/active`;
@@ -271,7 +271,7 @@ async function fetchActive(){
   } catch(e){
     // try alternate endpoint (non-admin) for dashboard compatibility
     try {
-      const res2 = await fetch(`${API_BASE}/announcements/active`, { credentials: 'include', cache: 'no-store' });
+      const res2 = await fetch(`${API_BASE.replace(/\/api$/,'')}/announcements/active`, { credentials: 'include', cache: 'no-store' });
       if(!res2.ok) throw new Error('no alt endpoint');
       const list2 = await res2.json();
       return Array.isArray(list2) ? list2 : (list2.announcements || list2.data || list2);
@@ -443,6 +443,7 @@ async function sendNotification(){
   sendBtn.appendChild(spinner);
   showMsg('');
 
+  
   // Debug: show request keys
   const reqSummary = `POST ${CREATE_URL}\nFormData keys: ${Array.from(form.keys()).join(', ')}`;
   showDebugPanel(reqSummary, '');
