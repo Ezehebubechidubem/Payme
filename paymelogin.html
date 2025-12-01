@@ -273,9 +273,89 @@
   </nav>
 
 <script>
-  // Backend base
+  // single API base used everywhere
   const API_BASE = "https://payme-update.onrender.com";
 
+  // ---------- USER & BALANCE LOGIC (restores Hi and balance) ----------
+  // tries to read logged user from localStorage keys used across your app
+  function getStoredUser() {
+    const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+    try { return j ? JSON.parse(j) : null; } catch (e) { return null; }
+  }
+
+  function updateUIWithUser(user) {
+    if (!user) return;
+    const hi = document.getElementById("hiUser");
+    if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
+    const balEl = document.getElementById("balance");
+    if (balEl) {
+      const b = typeof user.balance !== "undefined" ? Number(user.balance) : (user.balance ? Number(user.balance) : 0);
+      balEl.innerText = "₦" + (isNaN(b) ? "0.00" : b.toFixed(2));
+    }
+  }
+
+  // Try two possible balance endpoints (with and without /api)
+  async function fetchBalanceFromEndpoints(phone) {
+    if (!phone) return null;
+    const candidates = [
+      `${API_BASE}/balance/${encodeURIComponent(phone)}`,
+      `${API_BASE}/api/balance/${encodeURIComponent(phone)}`
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) continue;
+        const data = await res.json().catch(()=>null);
+        if (data && (typeof data.balance === 'number' || !isNaN(Number(data.balance)))) {
+          return Number(data.balance);
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  async function fetchAndUpdateBalance() {
+    const user = getStoredUser();
+    if (!user || !user.phone) {
+      // still update UI using stored object if present
+      updateUIWithUser(user);
+      return;
+    }
+    try {
+      const bal = await fetchBalanceFromEndpoints(user.phone);
+      if (bal !== null) {
+        user.balance = bal;
+        try { localStorage.setItem("loggedInUser", JSON.stringify(user)); localStorage.setItem("user", JSON.stringify(user)); } catch(e){}
+        updateUIWithUser(user);
+        return;
+      }
+      // fallback: update UI with stored user (maybe balance already present)
+      updateUIWithUser(user);
+    } catch(err){
+      console.warn("fetchAndUpdateBalance error", err);
+      updateUIWithUser(user);
+    }
+  }
+
+  // Run on load + focus + visibility + storage changes + periodic poll
+  window.addEventListener("load", () => {
+    const user = getStoredUser();
+    if (user) updateUIWithUser(user);
+    // fetch latest
+    fetchAndUpdateBalance();
+  });
+
+  window.addEventListener("focus", () => { fetchAndUpdateBalance(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState==='visible') fetchAndUpdateBalance(); });
+  window.addEventListener("storage", (e) => { if (!e) return; if (e.key === "loggedInUser" || e.key === "user") setTimeout(fetchAndUpdateBalance, 50); });
+  setInterval(()=>{ const u = getStoredUser(); if (u && u.phone) fetchAndUpdateBalance(); }, 15000);
+  // --------------------------------------------------------------------
+</script>
+
+<!-- ANNOUNCEMENTS SCRIPT: unchanged functionality, uses same API_BASE -->
+<script>
   // Announcement endpoints to try (keeps compatibility)
   const ANNOUNCEMENTS_ENDPOINTS = [
     `${API_BASE}/api/announcements/active`,
@@ -377,7 +457,7 @@
     const promoAnnouncements = document.getElementById('promoAnnouncements');
 
     if(!anns || anns.length === 0){
-      // show default promo
+           // show default promo
       promoDefault.style.display = 'flex';
       promoAnnouncements.style.display = 'none';
       return;
@@ -554,7 +634,6 @@
             try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
           } else {
             // even if ids same, sometimes image resource changed (same filename). Force image reload by re-render with cache-bust
-            // re-render but keep same index
             renderAnnouncementsImages(serverList);
           }
         }
