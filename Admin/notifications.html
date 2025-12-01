@@ -34,12 +34,11 @@
  .spinner {display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.1);border-top-color:#000;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-left:8px}
  @keyframes spin{ to { transform: rotate(360deg);} }
 
-/* debug panel */
-#annDebug { display:none; position:fixed; right:12px; bottom:12px; width:420px; max-height:60vh; overflow:auto; background:#111827;color:#fff;padding:12px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.3); font-family:monospace; font-size:12px; z-index:9999;}
-#annDebug h4 { margin:0 0 8px 0; font-size:13px; }
-#annDebug pre { white-space:pre-wrap; word-break:break-word; background:rgba(255,255,255,0.03); padding:8px; border-radius:6px; margin:6px 0; max-height:28vh; overflow:auto;}
-#annDebug .close-btn{ background:#ef4444;color:#fff;border:0;padding:6px 8px;border-radius:6px; cursor:pointer; float:right;}
-.toggle-debug { position:absolute; right:12px; top:12px; background:#f3f4f6;color:#111;padding:6px 8px;border-radius:6px;border:0; cursor:pointer;}
+ /* debug panel */
+ #annDebug { position:fixed; right:16px; bottom:16px; width:420px; max-width:calc(100% - 32px); background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.06); padding:10px; display:none; z-index:9999; font-family:monospace; font-size:13px; }
+ #annDebug h4{margin:0 0 8px 0;font-size:14px}
+ #annDebug pre{white-space:pre-wrap;max-height:200px;overflow:auto;background:#f9fafb;padding:8px;border-radius:6px;border:1px solid #f1f5f9}
+ #debugToggleBtn{position:fixed; right:16px; bottom:440px; background:#fff;border:1px solid #e5e7eb;padding:6px 8px;border-radius:8px;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,0.04)}
 </style>
 </head>
 <body>
@@ -77,7 +76,6 @@
   <a href="https://ezehebubechidubem.github.io/Payme/index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>
   <div class="muted">Create announcements with images — they will appear on the main PayMe dashboard promo area.</div>
-  <button class="toggle-debug" onclick="toggleDebug()">Debug</button>
 </header>
 
 <div class="container">
@@ -141,31 +139,32 @@
   </div>
 </div>
 
-<!-- debug panel -->
-<div id="annDebug" role="dialog" aria-label="Announcements debug panel">
-  <button class="close-btn" onclick="toggleDebug(true)">Close</button>
-  <h4>Debug — Last Request & Response</h4>
-  <div><strong>Last Request</strong></div>
-  <pre id="lastReq"></pre>
-  <div><strong>Last Response</strong></div>
-  <pre id="lastRes"></pre>
+<!-- Debug toggle + panel (kept as requested) -->
+<button id="debugToggleBtn" onclick="toggleDebug()">Debug</button>
+<div id="annDebug" aria-hidden="true">
+  <h4>Debug — Last Request / Last Response</h4>
+  <div><strong>Last Request:</strong></div>
+  <pre id="lastReq">-</pre>
+  <div style="margin-top:8px"><strong>Last Response:</strong></div>
+  <pre id="lastRes">-</pre>
 </div>
 
 <script>
-// Make this match the staff pattern: API_BASE includes /api prefix
-const API_BASE = "https://payme-update.onrender.com/api";
-const CREATE_URL = `${API_BASE}/announcements`;
-const ACTIVE_URL = `${API_BASE}/announcements/active`;
-const HISTORY_URL = `${API_BASE}/announcements`;
-const DELETE_URL_BASE = `${API_BASE}/announcements`; // DELETE /<id>
-const REPUBLISH_URL_BASE = `${API_BASE}/announcements`; // POST /<id>/republish
+// Single place for API host — change here if your backend is served under a different base path
+const API_BASE = "https://payme-update.onrender.com";
+const CREATE_URL = `${API_BASE}/admin/announcements`;
+const ACTIVE_URL = `${API_BASE}/admin/announcements/active`;
+const HISTORY_URL = `${API_BASE}/admin/announcements`;
+const DELETE_URL_BASE = `${API_BASE}/admin/announcements`; // DELETE /<id>
+const REPUBLISH_URL_BASE = `${API_BASE}/admin/announcements`; // POST /<id>/republish
 const MAX_ACTIVE = 10;
 
-// Debug helpers
+// debug panel helpers
 function showDebugPanel(reqText, resText){
-  document.getElementById('lastReq').innerText = reqText || '';
-  document.getElementById('lastRes').innerText = resText || '';
-  document.getElementById('annDebug').style.display = 'block';
+  const panel = document.getElementById('annDebug');
+  document.getElementById('lastReq').innerText = reqText || '-';
+  document.getElementById('lastRes').innerText = resText || '-';
+  panel.style.display = 'block';
 }
 function toggleDebug(forceHide){
   const panel = document.getElementById('annDebug');
@@ -194,6 +193,23 @@ fileInput?.addEventListener('change', (e)=>{
   r.readAsDataURL(f);
 });
 
+// ---------- FIX: resolve relative image_url to backend host ----------
+function fixImageUrl(url){
+  if(!url) return "";
+  try {
+    // if it's already absolute, return as-is
+    if(url.startsWith("http://") || url.startsWith("https://")) return url;
+    // ensure base has no trailing slash
+    const base = API_BASE.replace(/\/$/, "");
+    // if url starts with '/', just append
+    if(url.startsWith("/")) return base + url;
+    // otherwise add a slash between
+    return base + "/" + url;
+  } catch(e){
+    return url;
+  }
+}
+
 // Fetch active announcements (for preview)
 async function fetchActive(){
   try {
@@ -213,14 +229,16 @@ async function fetchActive(){
   }
 }
 
-// Fetch history (staff)
+// Fetch history (staff) — FILTER OUT deleted items here
 async function fetchHistory(){
   try {
     const res = await fetch(HISTORY_URL, { credentials:'include', cache:'no-store' });
     if(!res.ok) throw new Error('history unauthorized');
     const json = await res.json();
-    // our admin route returns {status: "success", announcements: [...]}
-    return json.announcements || json.data || [];
+    const arr = json.announcements || json.data || [];
+    // Filter out any items that have status === 'deleted'
+    if(Array.isArray(arr)) return arr.filter(a => (a.status || "").toString().toLowerCase() !== "deleted");
+    return [];
   } catch(e){
     console.warn('fetchHistory failed', e);
     return [];
@@ -248,7 +266,8 @@ function renderActive(list){
   else limitWarning.style.display = 'none';
 
   track.innerHTML = list.map(a => {
-    const img = a.image_url ? `<img src="${escapeHtml(a.image_url)}" alt="">` : `<div style="width:160px;height:90px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
+    const imgUrl = fixImageUrl(a.image_url || a.imagePath || a.image || "");
+    const img = imgUrl ? `<img src="${escapeHtml(imgUrl)}" alt="">` : `<div style="width:160px;height:90px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
     const created = a.createdAt ? (new Date(a.createdAt)).toLocaleString() : '';
     return `<div class="slide" data-id="${escapeHtml(a.id || '')}">
       ${img}
@@ -285,7 +304,8 @@ function renderHistory(list){
   const container = el('history');
   if(!list || list.length === 0){ container.innerHTML = '<div class="small-muted">No announcements yet</div>'; return; }
   container.innerHTML = list.map(a => {
-    const img = a.image_url ? `<img src="${escapeHtml(a.image_url)}" style="width:120px;height:70px;object-fit:cover;border-radius:6px;margin-right:8px">` : '';
+    const imgUrl = fixImageUrl(a.image_url || a.imagePath || a.image || "");
+    const img = imgUrl ? `<img src="${escapeHtml(imgUrl)}" style="width:120px;height:70px;object-fit:cover;border-radius:6px;margin-right:8px">` : '';
     const created = a.createdAt ? new Date(a.createdAt).toLocaleString() : '';
     const expires = a.expiresAt ? new Date(a.expiresAt).toLocaleString() : '—';
     return `<div class="history-item" data-id="${escapeHtml(a.id)}">
@@ -316,11 +336,11 @@ async function countActiveServer(){
     if(!res.ok) return 0;
     const json = await res.json();
     const arr = json.announcements || [];
-    return Array.isArray(arr) ? arr.length : 0;
+    return Array.isArray(arr) ? arr.filter(a => (a.status || "").toString().toLowerCase() !== "deleted").length : 0;
   } catch(e){ return 0; }
 }
 
-// send announcement to backend (with debug)
+// send announcement to backend
 async function sendNotification(){
   const title = el('notifTitle').value.trim();
   const body = el('notifBody').value.trim();
@@ -368,9 +388,9 @@ async function sendNotification(){
   sendBtn.appendChild(spinner);
   showMsg('');
 
-  // Debug: show request keys
-  const reqSummary = `POST ${CREATE_URL}\nFormData keys: ${Array.from(form.keys()).join(', ')}`;
-  showDebugPanel(reqSummary, '');
+  // debug: show request keys
+  const debugReqText = `POST ${CREATE_URL}\nFormData keys: ${Array.from(form.keys()).join(', ')}`;
+  showDebugPanel(debugReqText, '');
 
   try {
     const res = await fetch(CREATE_URL, {
@@ -379,8 +399,9 @@ async function sendNotification(){
       body: form
     });
 
+    // capture response text for debug panel
     const rawText = await res.text().catch(()=>null);
-    showDebugPanel(reqSummary, `HTTP ${res.status}\n${rawText || ''}`);
+    showDebugPanel(debugReqText, `HTTP ${res.status}\n${rawText}`);
 
     // try parse json
     let json = null;
@@ -408,7 +429,7 @@ async function sendNotification(){
   } catch(err){
     console.error('sendNotification error', err);
     showMsg('Network or server error. Announcement not saved.', true);
-    showDebugPanel(reqSummary, `NETWORK ERROR: ${String(err)}`);
+    showDebugPanel(debugReqText, String(err));
   } finally {
     sendBtn.disabled = false;
     sendBtn.innerText = 'Send';
@@ -416,35 +437,33 @@ async function sendNotification(){
 }
 
 // delete announcement (soft delete to 'deleted' status, per backend)
+// UI immediately removes the item and refreshes filtered history
 async function deleteAnnouncement(idEncoded){
   const id = decodeURIComponent(idEncoded);
   if(!confirm('Permanent delete this announcement? This will mark it as deleted.')) return;
   showMsg('Deleting...');
   try {
-    const url = `${DELETE_URL_BASE}/${encodeURIComponent(id)}`;
-    const res = await fetch(url, {
+    const res = await fetch(`${DELETE_URL_BASE}/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include'
     });
 
     const raw = await res.text().catch(()=>null);
-    showDebugPanel(`DELETE ${url}`, `HTTP ${res.status}\n${raw || ''}`);
+    showDebugPanel(`DELETE ${DELETE_URL_BASE}/${encodeURIComponent(id)}`, `HTTP ${res.status}\n${raw}`);
 
     if(res.ok){
       showMsg('Deleted.');
+      // Immediately remove from UI (and refresh history/active which filters deleted)
       await refreshAllViews();
     } else {
-      let json = null;
-      try{ json = raw ? JSON.parse(raw) : null } catch(e){ json = null }
+      const json = raw ? (()=>{ try{return JSON.parse(raw)}catch(e){return null}})() : null;
       showMsg((json && json.message) || 'Delete failed', true);
     }
   } catch(err){
     console.error('deleteAnnouncement error', err);
     showMsg('Network error while deleting', true);
-    showDebugPanel(`DELETE ${DELETE_URL_BASE}/${encodeURIComponent(id)}`, `NETWORK ERROR: ${String(err)}`);
   }
 }
-
 
 // republish: set new expiry = now + 24h unless user chooses custom
 async function republishAnnouncement(idEncoded){
@@ -464,8 +483,7 @@ async function republishAnnouncement(idEncoded){
 
   showMsg('Republishing...');
   try {
-    const url = `${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`;
-    const res = await fetch(url, {
+    const res = await fetch(`${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, {
       method: 'POST',
       credentials: 'include',
       headers: {'Content-Type':'application/json'},
@@ -473,20 +491,18 @@ async function republishAnnouncement(idEncoded){
     });
 
     const raw = await res.text().catch(()=>null);
-    showDebugPanel(`POST ${url}`, `HTTP ${res.status}\n${raw || ''}`);
+    showDebugPanel(`POST ${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, `HTTP ${res.status}\n${raw}`);
 
     if(res.ok){
       showMsg('Republished.');
       await refreshAllViews();
     } else {
-      let json = null;
-      try{ json = raw ? JSON.parse(raw) : null } catch(e){ json = null }
+      const json = raw ? (()=>{ try{return JSON.parse(raw)}catch(e){return null}})() : null;
       showMsg((json && json.message) || 'Republish failed', true);
     }
   } catch(err){
     console.error('republishAnnouncement', err);
     showMsg('Network error while republishing', true);
-    showDebugPanel(`POST ${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, `NETWORK ERROR: ${String(err)}`);
   }
 }
 
