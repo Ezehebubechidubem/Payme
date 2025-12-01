@@ -16,6 +16,18 @@ from werkzeug.utils import secure_filename
 # --- Admin Blueprint ---
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 
+# --- CORS: after_request hook (minimal, echoes Origin for credentials support) ---
+@admin_bp.after_request
+def add_cors_headers(response):
+    # Echo the Origin header (safer than "*") so credentials can be used.
+    origin = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    # include common headers your frontend might send
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    return response
+
 # --- Global connection holder ---
 _get_conn = None
 
@@ -146,8 +158,11 @@ def list_staff():
         return jsonify({"status":"error","message":"Unable to list staff"}), 500
     return jsonify({"status":"success","staff": staff_list}), 200
 
-@admin_bp.route("/staff/<staff_id>", methods=["DELETE"])
+@admin_bp.route("/staff/<staff_id>", methods=["DELETE", "OPTIONS"])
 def delete_staff(staff_id):
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
@@ -448,8 +463,12 @@ def list_announcements():
 
     return jsonify({"status":"success","announcements": out}), 200
 
-@admin_bp.route("/announcements/<ann_id>", methods=["DELETE"])
+@admin_bp.route("/announcements/<ann_id>", methods=["DELETE", "OPTIONS"])
 def delete_announcement(ann_id):
+    # Handle preflight
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
@@ -469,8 +488,12 @@ def delete_announcement(ann_id):
 
     return jsonify({"status":"success","id":ann_id}), 200
 
-@admin_bp.route("/announcements/<ann_id>/republish", methods=["POST"])
+@admin_bp.route("/announcements/<ann_id>/republish", methods=["POST", "OPTIONS"])
 def republish_announcement(ann_id):
+    # Handle preflight
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
