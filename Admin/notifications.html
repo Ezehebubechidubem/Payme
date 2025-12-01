@@ -175,7 +175,7 @@ async function fetchActive(){
   } catch(e){
     // try alternate endpoint (non-admin) for dashboard compatibility
     try {
-      const res2 = await fetch(`${API_BASE}/api/announcements/active`, { credentials: 'include', cache: 'no-store' });
+      const res2 = await fetch(`${API_BASE}/api/admin/announcements/active`, { credentials: 'include', cache: 'no-store' });
       if(!res2.ok) throw new Error('no alt endpoint');
       const list2 = await res2.json();
       return Array.isArray(list2) ? list2 : (list2.announcements || list2.data || list2);
@@ -462,7 +462,7 @@ async function fetchActiveForUI(){
     if(res.ok){ const arr = await res.json(); return Array.isArray(arr) ? arr : (arr.announcements || arr.data || arr); }
   } catch(e){}
   try {
-    const res2 = await fetch(`${API_BASE}/api/announcements/active`, { credentials:'include', cache:'no-store' });
+    const res2 = await fetch(`${API_BASE}/api/admin/announcements/active`, { credentials:'include', cache:'no-store' });
     if(res2.ok){ const arr2 = await res2.json(); return Array.isArray(arr2) ? arr2 : (arr2.announcements || arr2.data || arr2); }
   } catch(e){}
   return [];
