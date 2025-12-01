@@ -33,7 +33,6 @@
  .actions-col button{margin-bottom:6px;width:120px}
  .spinner {display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.1);border-top-color:#000;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-left:8px}
  @keyframes spin{ to { transform: rotate(360deg);} }
- .debug-panel { margin:12px 0;padding:10px;border-radius:8px;background:#fff;border:1px dashed #e5e7eb;color:#374151;font-size:13px }
 </style>
 </head>
 <body>
@@ -41,8 +40,7 @@
 <!-- AUTH CHECK (same as monitoring), now uses API_BASE below -->
 <script>
 (async function(){
-  // NOTE: use same pattern as staff page — API_BASE includes the /api prefix so calls become e.g. `${API_BASE}/auth/check`
-  const API_BASE = "https://payme-update.onrender.com/api";
+  const API_BASE = "https://payme-update.onrender.com";
   const EXPECTED_ROLE = "notification";
   try {
     const res = await fetch(`${API_BASE}/auth/check`, {
@@ -113,17 +111,6 @@
     </div>
 
     <div id="limitWarning" class="limit-warning" style="display:none">Max 10 active announcements reached. Delete or republish in history to create more.</div>
-
-    <!-- keep a small debug panel (user asked to keep debug) -->
-    <div id="annDebug" class="debug-panel" style="display:none">
-      <strong>Debug</strong>
-      <div id="lastReq" style="margin-top:8px"></div>
-      <div id="lastRes" style="margin-top:6px;color:#6b7280"></div>
-      <div style="margin-top:8px">
-        <button onclick="toggleDebug(false)" style="padding:6px;border-radius:6px;border:0;background:#efefef;cursor:pointer">Hide</button>
-      </div>
-    </div>
-
   </div>
 
   <div class="card" style="margin-top:12px">
@@ -148,27 +135,13 @@
 
 <script>
 // Single place for API host — change here if your backend is served under a different base path
-// Make this match the pattern used in your staff page: API_BASE includes the /api prefix
-const API_BASE = "https://payme-update.onrender.com/api";
-const CREATE_URL = `${API_BASE}/announcements`;
-const ACTIVE_URL = `${API_BASE}/announcements/active`;
-const HISTORY_URL = `${API_BASE}/announcements`;
-const DELETE_URL_BASE = `${API_BASE}/announcements`; // DELETE /<id>
-const REPUBLISH_URL_BASE = `${API_BASE}/announcements`; // POST /<id>/republish
+const API_BASE = "https://payme-update.onrender.com";
+const CREATE_URL = `${API_BASE}/admin/announcements`;
+const ACTIVE_URL = `${API_BASE}/admin/announcements/active`;
+const HISTORY_URL = `${API_BASE}/admin/announcements`;
+const DELETE_URL_BASE = `${API_BASE}/admin/announcements`; // DELETE /<id>
+const REPUBLISH_URL_BASE = `${API_BASE}/admin/announcements`; // POST /<id>/republish
 const MAX_ACTIVE = 10;
-
-// allow showing debug panel
-function showDebugPanel(reqText, resText){
-  const panel = document.getElementById('annDebug');
-  document.getElementById('lastReq').innerText = reqText || '';
-  document.getElementById('lastRes').innerText = resText || '';
-  panel.style.display = 'block';
-}
-function toggleDebug(forceHide){
-  const panel = document.getElementById('annDebug');
-  if(forceHide) panel.style.display='none';
-  else panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
-}
 
 // utility
 function el(id){ return document.getElementById(id); }
@@ -197,12 +170,12 @@ async function fetchActive(){
     const res = await fetch(ACTIVE_URL, { credentials: 'include', cache: 'no-store' });
     if(!res.ok) throw new Error('no active endpoint');
     const list = await res.json();
+    // server may return array directly
     return Array.isArray(list) ? list : (list.announcements || list.data || list);
   } catch(e){
-    // try alternate endpoint (non-admin) for dashboard compatibility — try without /api prefix
+    // try alternate endpoint (non-admin) for dashboard compatibility
     try {
-      const altBase = API_BASE.replace(/\/api$/,'');
-      const res2 = await fetch(`${altBase}/announcements/active`, { credentials: 'include', cache: 'no-store' });
+      const res2 = await fetch(`${API_BASE}/announcements/active`, { credentials: 'include', cache: 'no-store' });
       if(!res2.ok) throw new Error('no alt endpoint');
       const list2 = await res2.json();
       return Array.isArray(list2) ? list2 : (list2.announcements || list2.data || list2);
@@ -216,6 +189,7 @@ async function fetchHistory(){
     const res = await fetch(HISTORY_URL, { credentials:'include', cache:'no-store' });
     if(!res.ok) throw new Error('history unauthorized');
     const json = await res.json();
+    // our admin route returns {status: "success", announcements: [...]}
     return json.announcements || json.data || [];
   } catch(e){
     console.warn('fetchHistory failed', e);
@@ -364,24 +338,12 @@ async function sendNotification(){
   sendBtn.appendChild(spinner);
   showMsg('');
 
-  // record debug request
-  const debugReqText = `POST ${CREATE_URL}\nFormData keys: ${Array.from(form.keys()).join(', ')}`;
-  showDebugPanel(debugReqText, '');
-
   try {
     const res = await fetch(CREATE_URL, {
       method: 'POST',
       credentials: 'include',
       body: form
     });
-
-    // capture response text for debug panel
-    const rawText = await res.text().catch(()=>null);
-    showDebugPanel(debugReqText, `HTTP ${res.status}\n${rawText}`);
-
-    // try parse json
-    let json = null;
-    try { json = rawText ? JSON.parse(rawText) : null; } catch(e){ json = null; }
 
     if(res.status === 404){
       showMsg(`Endpoint not found (404). Check backend URL: ${CREATE_URL}`, true);
@@ -392,6 +354,7 @@ async function sendNotification(){
       return;
     }
 
+    const json = await res.json().catch(()=>null);
     if(res.ok && json && (json.status === 'success' || res.status === 200 || res.status === 201)){
       showMsg('Announcement created and stored on server.');
       // refresh active and history views
@@ -405,7 +368,6 @@ async function sendNotification(){
   } catch(err){
     console.error('sendNotification error', err);
     showMsg('Network or server error. Announcement not saved.', true);
-    showDebugPanel(debugReqText, String(err));
   } finally {
     sendBtn.disabled = false;
     sendBtn.innerText = 'Send';
@@ -422,15 +384,11 @@ async function deleteAnnouncement(idEncoded){
       method: 'DELETE',
       credentials: 'include'
     });
-
-    const raw = await res.text().catch(()=>null);
-    showDebugPanel(`DELETE ${DELETE_URL_BASE}/${encodeURIComponent(id)}`, `HTTP ${res.status}\n${raw}`);
-
     if(res.ok){
       showMsg('Deleted.');
       await refreshAllViews();
     } else {
-      const json = raw ? (()=>{ try{return JSON.parse(raw)}catch(e){return null}})() : null;
+      const json = await res.json().catch(()=>null);
       showMsg((json && json.message) || 'Delete failed', true);
     }
   } catch(err){
@@ -463,15 +421,11 @@ async function republishAnnouncement(idEncoded){
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ expiresAt: newExpiry, createdAt: new Date().toISOString() })
     });
-
-    const raw = await res.text().catch(()=>null);
-    showDebugPanel(`POST ${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, `HTTP ${res.status}\n${raw}`);
-
     if(res.ok){
       showMsg('Republished.');
       await refreshAllViews();
     } else {
-      const json = raw ? (()=>{ try{return JSON.parse(raw)}catch(e){return null}})() : null;
+      const json = await res.json().catch(()=>null);
       showMsg((json && json.message) || 'Republish failed', true);
     }
   } catch(err){
@@ -508,8 +462,7 @@ async function fetchActiveForUI(){
     if(res.ok){ const arr = await res.json(); return Array.isArray(arr) ? arr : (arr.announcements || arr.data || arr); }
   } catch(e){}
   try {
-    const altBase = API_BASE.replace(/\/api$/,'');
-    const res2 = await fetch(`${altBase}/announcements/active`, { credentials:'include', cache:'no-store' });
+    const res2 = await fetch(`${API_BASE}/announcements/active`, { credentials:'include', cache:'no-store' });
     if(res2.ok){ const arr2 = await res2.json(); return Array.isArray(arr2) ? arr2 : (arr2.announcements || arr2.data || arr2); }
   } catch(e){}
   return [];
