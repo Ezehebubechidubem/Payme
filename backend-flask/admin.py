@@ -3,9 +3,11 @@ import uuid
 import re
 import string
 import random
+import os
 from datetime import datetime
-from flask import Flask, Blueprint, jsonify, request, current_app
+from flask import Flask, Blueprint, jsonify, request, current_app, send_from_directory, session
 from werkzeug.security import generate_password_hash
+from werkzeug.utils import secure_filename
 
 # --- Flask app instance (only if standalone) ---
 # If using from main app.py, comment this out
@@ -39,6 +41,23 @@ def init_admin(get_conn_func):
             )
             """)
             conn.commit()
+
+            # create announcements table (additive)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS announcements (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                body TEXT,
+                target TEXT,
+                image_path TEXT,
+                created_at TEXT,
+                expires_at TEXT,
+                status TEXT,
+                created_by TEXT
+            )
+            """)
+            conn.commit()
+
     except Exception as e:
         current_app.logger.exception("init_admin failed: %s", e)
         raise
@@ -164,17 +183,20 @@ def admin_metrics():
             cur = conn.cursor()
             # Total deposits
             cur.execute("SELECT COALESCE(SUM(amount),0) as deposits FROM transactions WHERE type='Deposit'")
-            deposits = cur.fetchone()["deposits"]
+            row = cur.fetchone()
+            deposits = row["deposits"] if hasattr(row, "keys") else (row[0] if row and len(row) > 0 else 0)
 
             # Total withdrawals
             cur.execute("SELECT COALESCE(SUM(amount),0) as withdrawals FROM transactions WHERE type='Transfer Out'")
-            withdrawals = cur.fetchone()["withdrawals"]
+            row = cur.fetchone()
+            withdrawals = row["withdrawals"] if hasattr(row, "keys") else (row[0] if row and len(row) > 0 else 0)
 
-            total_volume = deposits + withdrawals
+            total_volume = (deposits or 0) + (withdrawals or 0)
 
             # Active users
             cur.execute("SELECT COUNT(DISTINCT user_id) as active_users FROM transactions")
-            active_users = cur.fetchone()["active_users"]
+            row = cur.fetchone()
+            active_users = row["active_users"] if hasattr(row, "keys") else (row[0] if row and len(row) > 0 else 0)
 
     except Exception as e:
         current_app.logger.exception("admin_metrics failed: %s", e)
@@ -241,3 +263,246 @@ def daily_summary():
 # from admin import admin_bp, init_admin
 # app.register_blueprint(admin_bp)
 # init_admin(get_conn)
+
+# -----------------------------------------
+# Announcements backend (added below)
+# -----------------------------------------
+
+# Upload configuration
+UPLOAD_BASE = os.environ.get("UPLOAD_BASE", "uploads")
+ANN_UPLOAD_DIR = os.path.join(UPLOAD_BASE, "announcements")
+os.makedirs(ANN_UPLOAD_DIR, exist_ok=True)
+
+ALLOWED_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+def allowed_file(filename):
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return ext in ALLOWED_EXTS
+
+def _require_staff_or_admin():
+    # Simple check using session flags (adjust depending on your auth)
+    if session.get("is_admin") or session.get("is_staff"):
+        return True
+    return False
+
+@admin_bp.route("/announcements", methods=["POST", "OPTIONS"])
+def create_announcement():
+    if request.method == "OPTIONS":
+        return "", 204
+
+    if _get_conn is None:
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
+
+    # require staff or admin
+    if not _require_staff_or_admin():
+        return jsonify({"status":"error","message":"unauthorized"}), 401
+
+    title = (request.form.get("title") or "").strip()
+    body = (request.form.get("body") or "").strip()
+    target = (request.form.get("target") or "all").strip()
+    created_at = request.form.get("createdAt") or datetime.now().isoformat()
+    expires_at = request.form.get("expiresAt") or None
+
+    image_path = None
+    if "image" in request.files:
+        f = request.files["image"]
+        if f and f.filename:
+            if not allowed_file(f.filename):
+                return jsonify({"status":"error","message":"invalid file type"}), 400
+            filename = secure_filename(f.filename)
+            uid_name = uuid.uuid4().hex
+            ext = filename.rsplit(".", 1)[-1].lower()
+            saved_name = f"{uid_name}.{ext}"
+            saved_path = os.path.join(ANN_UPLOAD_DIR, saved_name)
+            try:
+                f.save(saved_path)
+                image_path = saved_name
+            except Exception as e:
+                current_app.logger.exception("Failed to save announcement image: %s", e)
+                return jsonify({"status":"error","message":"failed to save image"}), 500
+
+    ann_id = uuid.uuid4().hex
+    created_by = session.get("staff_id") or session.get("user_id") or None
+
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO announcements (id, title, body, target, image_path, created_at, expires_at, status, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (ann_id, title, body, target, image_path, created_at, expires_at, "active", created_by))
+            conn.commit()
+    except Exception as e:
+        current_app.logger.exception("create_announcement failed: %s", e)
+        return jsonify({"status":"error","message":"Failed to create announcement"}), 500
+
+    image_url = None
+    if image_path:
+        base = request.host_url.rstrip("/")
+        image_url = f"{base}/admin/uploads/announcements/{image_path}"
+
+    return jsonify({"status":"success", "id": ann_id, "image_url": image_url}), 200
+
+@admin_bp.route("/announcements/active", methods=["GET"])
+def get_active_announcements():
+    if _get_conn is None:
+        return jsonify([]), 200
+
+    now_iso = datetime.now().isoformat()
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, title, body, target, image_path, created_at, expires_at
+                FROM announcements
+                WHERE status = 'active' AND (expires_at IS NULL OR expires_at > ?)
+                ORDER BY created_at DESC
+                LIMIT 10
+            """, (now_iso,))
+            rows = cur.fetchall()
+    except Exception as e:
+        current_app.logger.exception("get_active_announcements failed: %s", e)
+        return jsonify([]), 200
+
+    out = []
+    for r in rows:
+        if hasattr(r, "keys"):
+            rp = {k: r[k] for k in r.keys()}
+        else:
+            # tuple fallback
+            rp = {
+                "id": r[0], "title": r[1], "body": r[2], "target": r[3],
+                "image_path": r[4], "created_at": r[5], "expires_at": r[6]
+            }
+        image_url = None
+        if rp.get("image_path"):
+            base = request.host_url.rstrip("/")
+            image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}"
+        out.append({
+            "id": rp.get("id"),
+            "title": rp.get("title"),
+            "body": rp.get("body"),
+            "target": rp.get("target"),
+            "image_url": image_url,
+            "createdAt": rp.get("created_at"),
+            "expiresAt": rp.get("expires_at")
+        })
+
+    return jsonify(out), 200
+
+@admin_bp.route("/announcements", methods=["GET"])
+def list_announcements():
+    # history — requires staff/admin
+    if _get_conn is None:
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
+
+    if not _require_staff_or_admin():
+        return jsonify({"status":"error","message":"unauthorized"}), 401
+
+    active_only = request.args.get("active") == "1"
+    now_iso = datetime.now().isoformat()
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            if active_only:
+                cur.execute("""
+                  SELECT id, title, body, target, image_path, created_at, expires_at, status
+                  FROM announcements
+                  WHERE status = 'active' AND (expires_at IS NULL OR expires_at > ?)
+                  ORDER BY created_at DESC
+                """, (now_iso,))
+            else:
+                cur.execute("""
+                  SELECT id, title, body, target, image_path, created_at, expires_at, status
+                  FROM announcements
+                  ORDER BY created_at DESC
+                """)
+            rows = cur.fetchall()
+    except Exception as e:
+        current_app.logger.exception("list_announcements failed: %s", e)
+        return jsonify({"status":"error","message":"Failed to fetch announcements"}), 500
+
+    out = []
+    for r in rows:
+        if hasattr(r, "keys"):
+            rp = {k: r[k] for k in r.keys()}
+        else:
+            rp = {
+                "id": r[0], "title": r[1], "body": r[2], "target": r[3],
+                "image_path": r[4], "created_at": r[5], "expires_at": r[6], "status": r[7]
+            }
+        image_url = None
+        if rp.get("image_path"):
+            base = request.host_url.rstrip("/")
+            image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}"
+        out.append({
+            "id": rp.get("id"),
+            "title": rp.get("title"),
+            "body": rp.get("body"),
+            "target": rp.get("target"),
+            "image_url": image_url,
+            "createdAt": rp.get("created_at"),
+            "expiresAt": rp.get("expires_at"),
+            "status": rp.get("status")
+        })
+
+    return jsonify({"status":"success","announcements": out}), 200
+
+@admin_bp.route("/announcements/<ann_id>", methods=["DELETE"])
+def delete_announcement(ann_id):
+    if _get_conn is None:
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
+
+    if not _require_staff_or_admin():
+        return jsonify({"status":"error","message":"unauthorized"}), 401
+
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE announcements SET status = 'deleted' WHERE id = ?", (ann_id,))
+            conn.commit()
+            if cur.rowcount == 0:
+                return jsonify({"status":"error","message":"not found"}), 404
+    except Exception as e:
+        current_app.logger.exception("delete_announcement failed: %s", e)
+        return jsonify({"status":"error","message":"Failed to delete announcement"}), 500
+
+    return jsonify({"status":"success","id":ann_id}), 200
+
+@admin_bp.route("/announcements/<ann_id>/republish", methods=["POST"])
+def republish_announcement(ann_id):
+    if _get_conn is None:
+        return jsonify({"status":"error","message":"DB not initialized"}), 500
+
+    if not _require_staff_or_admin():
+        return jsonify({"status":"error","message":"unauthorized"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    new_expires = payload.get("expiresAt")
+    new_created = payload.get("createdAt") or datetime.now().isoformat()
+
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+              UPDATE announcements
+              SET status = 'active', expires_at = ?, created_at = ?
+              WHERE id = ?
+            """, (new_expires, new_created, ann_id))
+            conn.commit()
+            if cur.rowcount == 0:
+                return jsonify({"status":"error","message":"not found"}), 404
+    except Exception as e:
+        current_app.logger.exception("republish_announcement failed: %s", e)
+        return jsonify({"status":"error","message":"Failed to republish"}), 500
+
+    return jsonify({"status":"success","id":ann_id}), 200
+
+# Serve uploaded images
+@admin_bp.route("/uploads/announcements/<filename>")
+def serve_ann_image(filename):
+    try:
+        return send_from_directory(ANN_UPLOAD_DIR, filename, conditional=True)
+    except Exception as e:
+        current_app.logger.exception("serve_ann_image failed: %s", e)
+        return jsonify({"status":"error","message":"File not found"}), 404
