@@ -83,7 +83,7 @@ def _validate_email(email):
     return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
 
 # --- Staff Routes ---
-@admin_bp.route("/staff/create", methods=["POST","OPTIONS"])
+@admin_bp.route("/staff/create", methods=["POST", "OPTIONS"])
 def create_staff():
     if request.method == "OPTIONS":
         return "", 204
@@ -132,8 +132,11 @@ def create_staff():
         "generated_password": plain_pw
     }), 201
 
-@admin_bp.route("/staff/list", methods=["GET"])
+@admin_bp.route("/staff/list", methods=["GET", "OPTIONS"])
 def list_staff():
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
@@ -177,7 +180,7 @@ def delete_staff(staff_id):
 
     return jsonify({"status":"success"}), 200
 
-@admin_bp.route("/staff/debug_echo", methods=["POST","OPTIONS"])
+@admin_bp.route("/staff/debug_echo", methods=["POST", "OPTIONS"])
 def staff_debug_echo():
     if request.method == "OPTIONS":
         return "", 204
@@ -188,8 +191,11 @@ def staff_debug_echo():
     })
 
 # --- Admin Metrics ---
-@admin_bp.route("/metrics", methods=["GET","OPTIONS"])
+@admin_bp.route("/metrics", methods=["GET", "OPTIONS"])
 def admin_metrics():
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
@@ -226,8 +232,11 @@ def admin_metrics():
     }), 200
 
 # --- Admin Recent Transactions ---
-@admin_bp.route("/recent_tx", methods=["GET","OPTIONS"])
+@admin_bp.route("/recent_tx", methods=["GET", "OPTIONS"])
 def admin_recent_tx():
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
@@ -256,8 +265,11 @@ def admin_recent_tx():
 
     return jsonify(result), 200
 
-@admin_bp.route("/daily_summary", methods=["GET"])
+@admin_bp.route("/daily_summary", methods=["GET", "OPTIONS"])
 def daily_summary():
+    if request.method == "OPTIONS":
+        return "", 204
+
     with _get_conn() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -358,8 +370,11 @@ def create_announcement():
 
     return jsonify({"status":"success", "id": ann_id, "image_url": image_url}), 200
 
-@admin_bp.route("/announcements/active", methods=["GET"])
+@admin_bp.route("/announcements/active", methods=["GET", "OPTIONS"])
 def get_active_announcements():
+    if request.method == "OPTIONS":
+        return "", 204
+
     if _get_conn is None:
         return jsonify([]), 200
 
@@ -405,8 +420,11 @@ def get_active_announcements():
 
     return jsonify(out), 200
 
-@admin_bp.route("/announcements", methods=["GET"])
+@admin_bp.route("/announcements", methods=["GET", "OPTIONS"])
 def list_announcements():
+    if request.method == "OPTIONS":
+        return "", 204
+
     # history — requires staff/admin
     if _get_conn is None:
         return jsonify({"status":"error","message":"DB not initialized"}), 500
@@ -465,7 +483,6 @@ def list_announcements():
 
 @admin_bp.route("/announcements/<ann_id>", methods=["DELETE", "OPTIONS"])
 def delete_announcement(ann_id):
-    # Handle preflight
     if request.method == "OPTIONS":
         return "", 204
 
@@ -488,9 +505,9 @@ def delete_announcement(ann_id):
 
     return jsonify({"status":"success","id":ann_id}), 200
 
+
 @admin_bp.route("/announcements/<ann_id>/republish", methods=["POST", "OPTIONS"])
 def republish_announcement(ann_id):
-    # Handle preflight
     if request.method == "OPTIONS":
         return "", 204
 
@@ -522,8 +539,10 @@ def republish_announcement(ann_id):
     return jsonify({"status":"success","id":ann_id}), 200
 
 # Serve uploaded images
-@admin_bp.route("/uploads/announcements/<filename>")
+@admin_bp.route("/uploads/announcements/<filename>", methods=["GET", "OPTIONS"])
 def serve_ann_image(filename):
+    if request.method == "OPTIONS":
+        return "", 204
     try:
         return send_from_directory(ANN_UPLOAD_DIR, filename, conditional=True)
     except Exception as e:
