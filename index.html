@@ -48,12 +48,26 @@ button:hover { background: var(--primary-dark); }
   </div>
 </div>
 
-<!-- Modals omitted (same as yours) -->
+<!-- Success Modal -->
 <div id="successModal" class="modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
-  <div class="modal" role="document"><div class="badge success">✓</div><h3 id="successHeading">Login successful</h3><p id="successText">You are now logged in.</p><div id="successActions" class="actions"></div></div>
+  <div class="modal" role="document">
+    <div class="badge success">✓</div>
+    <h3 id="successHeading">Login successful</h3>
+    <p id="successText">You are now logged in.</p>
+    <div id="successActions" class="actions"></div>
+  </div>
 </div>
+
+<!-- Error Modal -->
 <div id="errorModal" class="modal-overlay" aria-hidden="true" role="alertdialog" aria-modal="true">
-  <div class="modal" role="document"><div class="badge error">✕</div><h3 id="errorHeading">Error</h3><p id="errorText">An error occurred</p><div class="actions"><button id="errorOk" class="btn btn-primary">OK</button></div></div>
+  <div class="modal" role="document">
+    <div class="badge error">✕</div>
+    <h3 id="errorHeading">Error</h3>
+    <p id="errorText">An error occurred</p>
+    <div class="actions">
+      <button id="errorOk" class="btn btn-primary">OK</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -99,52 +113,86 @@ button:hover { background: var(--primary-dark); }
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify(payload)
       });
+
+      // Attempt to parse JSON body (safe fallback to null)
       const data = await res.json().catch(()=>null);
 
       if(res.ok && data && data.status === "success"){
-        // store user data
+        // store user data locally (non-sensitive)
         try { localStorage.setItem("user", JSON.stringify(data.user || {})); } catch(e){}
-        // if backend provided a redirect URL (full GitHub URL) follow it
+
+        // Determine server-provided role (prefer top-level data.role, fallback to data.user.role)
+        const serverRoleRaw = (
+          (data.role && data.role.toString()) ||
+          (data.user && data.user.role && data.user.role.toString()) ||
+          ""
+        ).toLowerCase();
+
+        // If server provided a redirect (server-driven), follow it.
         if(data.redirect){
-          // ALSO store normalized role in sessionStorage for per-page checks
-          const userRole = (data.user && data.user.role) ? (data.user.role || '').toString().toLowerCase() : null;
-          if(userRole) try { sessionStorage.setItem("staff_role", userRole); } catch(e){}
+          // If user role exists, save normalized staff role for per-page checks
+          try {
+            const staffRoleFromUser = (data.user && data.user.role) ? data.user.role.toString().toLowerCase() : null;
+            if(staffRoleFromUser) sessionStorage.setItem("staff_role", staffRoleFromUser);
+          } catch(e){}
+          // follow server redirect
           window.location.href = data.redirect;
           return;
         }
 
-        // fallback: old behavior (map role to Admin pages)
-        const topRole = (data.role || (data.user && data.user.role) || '').toString().toLowerCase();
-        const userRole = (data.user && data.user.role) ? data.user.role.toString().toLowerCase() : topRole;
-        if(topRole === "staff" || userRole){
-          // save staff role
-          try { sessionStorage.setItem("staff_role", userRole); } catch(e){}
-          // Map to GH URLs (fallback)
-          const BASE = "https://ezehebubechidubem.github.io/Payme";
-          const map = {
-            "notification": `${BASE}/Admin/notifications.html`,
-            "kyc": `${BASE}/Admin/kyc.html`,
-            "fraud": `${BASE}/Admin/fraud.html`,
-            "developer": `${BASE}/Admin/developer.html`,
-            "scaling": `${BASE}/Admin/scaling.html`,
-            "transaction-review": `${BASE}/Admin/review.html`,
-            "log": `${BASE}/Admin/log.html`
-          };
-          const goto = map[userRole] || map[topRole] || `${BASE}/Admin/staff.html`;
-          window.location.href = goto;
-          return;
+        // Normalize role for client logic:
+        // If top-level serverRoleRaw is "staff" but data.user.role exists and is more specific,
+        // use the user's role for mapping (e.g. "kyc", "developer", etc.)
+        let normalizedRole = serverRoleRaw;
+        if(normalizedRole === "staff" && data.user && data.user.role){
+          normalizedRole = data.user.role.toString().toLowerCase();
         }
 
-        if((data.role || '').toString().toLowerCase() === "admin"){
+        // ADMIN -> go to admin dashboard
+        if(normalizedRole === "admin"){
           showSuccess("Admin login successful", ()=>window.location.href="Admin/index.html");
           return;
         }
 
-        if((data.role || '').toString().toLowerCase() === "user"){
+        // Staff mappings (explicit)
+        const BASE = "https://ezehebubechidubem.github.io/Payme";
+        const ROLE_ROUTES = {
+          "customer-support": `${BASE}/Admin/scaling.html`,
+          "customer support": `${BASE}/Admin/scaling.html`,
+          "transaction-review": `${BASE}/Admin/review.html`,
+          "transaction review": `${BASE}/Admin/review.html`,
+          "scaling": `${BASE}/Admin/scaling.html`,
+          "api manager": `${BASE}/Admin/api_manager.html`,
+          "api-manager": `${BASE}/Admin/api_manager.html`,
+          "developer": `${BASE}/Admin/developer.html`,
+          "kyc": `${BASE}/Admin/kyc.html`,
+          "fraud": `${BASE}/Admin/fraud.html`,
+          "log": `${BASE}/Admin/log.html`,
+          "notification": `${BASE}/Admin/notifications.html`,
+          "staff": `${BASE}/Admin/staff.html`
+        };
+
+        // If normalizedRole matches a staff route -> treat as staff
+        if(Object.prototype.hasOwnProperty.call(ROLE_ROUTES, normalizedRole)){
+          try { sessionStorage.setItem("staff_role", normalizedRole); } catch(e){}
+          window.location.href = ROLE_ROUTES[normalizedRole];
+          return;
+        }
+
+        // If server explicitly said 'staff' and we didn't have a more specific mapping, go to staff landing
+        if(serverRoleRaw === "staff"){
+          try { sessionStorage.setItem("staff_role", (data.user && data.user.role) ? data.user.role.toString().toLowerCase() : "staff"); } catch(e){}
+          window.location.href = `${BASE}/Admin/staff.html`;
+          return;
+        }
+
+        // Regular user -> go to user landing
+        if(normalizedRole === "user" || normalizedRole === "customer" || normalizedRole === ""){
           showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html");
           return;
         }
 
+        // Unknown role
         showError("Role not recognized. Contact admin.");
         return;
       }
