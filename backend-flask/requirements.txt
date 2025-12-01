@@ -10,3 +10,4 @@ python-dotenv
 Flask-Limiter
 Flask-Migrate
 flask-jwt-extended>=4.7.1
+cloudinary
