@@ -258,4 +258,3 @@ def fund_betting():
     except Exception as e:
         current_app.logger.exception("fund_betting error")
         return jsonify({"status": "error", "message": "Internal server error", "details": str(e)}), 500
-```0
