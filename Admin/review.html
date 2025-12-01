@@ -21,7 +21,7 @@
 <!-- ---------------- AUTH CHECK ---------------- -->
 <script>
 (async function(){
-  const EXPECTED_ROLE = "transaction-review"; // must match backend role
+  const EXPECTED_ROLE = "transaction-review"; // backend normalized role
   try {
     const res = await fetch("https://payme-update.onrender.com/auth/check", {
       method: "GET",
@@ -32,13 +32,19 @@
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
+
     const data = await res.json();
-    const serverRole = (data.role || "").toLowerCase();
+
+    // Use staff role from data.user.role
+    const serverRole = (data.user?.role || "").toLowerCase();
+
     if (serverRole !== EXPECTED_ROLE.toLowerCase()){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
+
     try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
+
   } catch(err){
     window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
   }
