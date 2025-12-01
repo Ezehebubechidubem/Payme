@@ -14,6 +14,7 @@ table{width:100%;border-collapse:collapse}
 th,td{padding:8px;border-bottom:1px solid #eee}
 .muted{color:var(--muted)}
 .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+.role-banner{margin:0 18px 12px;padding:8px;background:#f0fdf4;color:#065f46;border-radius:8px;font-weight:600}
 </style>
 </head>
 <body>
@@ -23,6 +24,8 @@ th,td{padding:8px;border-bottom:1px solid #eee}
   <h2 style="margin:6px 0">Monitoring</h2>
   <div class="muted">View daily volume, deposits, withdrawals, active users, fraud attempts, and failed transactions.</div>
 </header>
+
+<div id="roleBanner" class="role-banner" style="display:none"></div>
 
 <div class="grid">
   <div class="card">
@@ -46,13 +49,13 @@ th,td{padding:8px;border-bottom:1px solid #eee}
     </table>
   </div>
 
-  <div class="card">
+  <div class="card" id="fraudCard">
     <h4>Fraud Attempts</h4>
     <div id="fraudCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
     <button class="btn" onclick="location.href='fraud.html'">Investigate</button>
   </div>
 
-  <div class="card">
+  <div class="card" id="failedCard">
     <h4>Failed Transactions</h4>
     <div id="failedCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
     <button class="btn" onclick="alert('Open transactions page in real app')">View</button>
@@ -66,14 +69,10 @@ th,td{padding:8px;border-bottom:1px solid #eee}
 
 <script>
 (async function(){
-  // ----------- Role Authentication -----------
-  const ALLOWED_ROLES = [
-    "transaction review", "transaction-review",
-    "customer support", "customer-support",
-    "scaling", "api manager", "api-manager",
-    "developer", "kyc", "fraud", "log", "notification"
-  ];
+  // ----------- Transaction-Only Role Authentication -----------
+  const TRANSACTION_ROLES = ["transaction review","transaction-review","customer support","customer-support"];
 
+  let staffRole = "";
   try {
     const res = await fetch("https://payme-update.onrender.com/auth/check", {
       method: "GET",
@@ -81,25 +80,34 @@ th,td{padding:8px;border-bottom:1px solid #eee}
       headers: {"Accept":"application/json"}
     });
 
-    if(!res.ok){
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
-      return;
-    }
+    if(!res.ok) throw new Error("Auth check failed");
 
     const data = await res.json();
-    // Check role in multiple fields
-    const serverRole = (data.role || data.user?.role || "").toLowerCase();
+    staffRole = (data.role || data.user?.role || "").toLowerCase();
 
-    if(!ALLOWED_ROLES.includes(serverRole)){
-      // redirect if role is not allowed
+    if(!TRANSACTION_ROLES.includes(staffRole)){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
 
-    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
+    // show role-specific banner
+    const banner = document.getElementById("roleBanner");
+    banner.innerText = `Logged in as: ${staffRole.toUpperCase()}`;
+    banner.style.display = "block";
+
+    sessionStorage.setItem("staff_role", staffRole);
 
   } catch(err){
     window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
+  }
+
+  // ----------- Role-specific UI Variants -----------
+  if(staffRole.includes("support")){
+    document.getElementById("fraudCard").style.display = "none"; // support doesn't see fraud
+  }
+
+  if(staffRole.includes("transaction")){
+    document.getElementById("failedCard").style.display = "block";
   }
 
   // ----------- Fetch Metrics -----------
@@ -132,7 +140,6 @@ th,td{padding:8px;border-bottom:1px solid #eee}
   // ----------- Placeholders -----------
   document.getElementById('fraudCount').innerText = '3';
   document.getElementById('failedCount').innerText = '12';
-
 })();
 </script>
 </body>
