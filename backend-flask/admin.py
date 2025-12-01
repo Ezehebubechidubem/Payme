@@ -19,11 +19,11 @@ admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 # --- CORS: after_request hook (minimal, echoes Origin for credentials support) ---
 @admin_bp.after_request
 def add_cors_headers(response):
-    # Echo the Origin header (safer than "*") so credentials can be used.
+    # Echo the Origin header so credentials can be used by the browser.
     origin = request.headers.get("Origin", "*")
     response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Credentials"] = "true"
-    # include common headers your frontend might send
+    # Include common headers your frontend might send
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return response
@@ -83,7 +83,7 @@ def _validate_email(email):
     return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
 
 # --- Staff Routes ---
-@admin_bp.route("/staff/create", methods=["POST", "OPTIONS"])
+@admin_bp.route("/staff/create", methods=["POST","OPTIONS"])
 def create_staff():
     if request.method == "OPTIONS":
         return "", 204
@@ -132,7 +132,7 @@ def create_staff():
         "generated_password": plain_pw
     }), 201
 
-@admin_bp.route("/staff/list", methods=["GET", "OPTIONS"])
+@admin_bp.route("/staff/list", methods=["GET","OPTIONS"])
 def list_staff():
     if request.method == "OPTIONS":
         return "", 204
@@ -161,7 +161,7 @@ def list_staff():
         return jsonify({"status":"error","message":"Unable to list staff"}), 500
     return jsonify({"status":"success","staff": staff_list}), 200
 
-@admin_bp.route("/staff/<staff_id>", methods=["DELETE", "OPTIONS"])
+@admin_bp.route("/staff/<staff_id>", methods=["DELETE","OPTIONS"])
 def delete_staff(staff_id):
     if request.method == "OPTIONS":
         return "", 204
@@ -180,7 +180,7 @@ def delete_staff(staff_id):
 
     return jsonify({"status":"success"}), 200
 
-@admin_bp.route("/staff/debug_echo", methods=["POST", "OPTIONS"])
+@admin_bp.route("/staff/debug_echo", methods=["POST","OPTIONS"])
 def staff_debug_echo():
     if request.method == "OPTIONS":
         return "", 204
@@ -191,7 +191,7 @@ def staff_debug_echo():
     })
 
 # --- Admin Metrics ---
-@admin_bp.route("/metrics", methods=["GET", "OPTIONS"])
+@admin_bp.route("/metrics", methods=["GET","OPTIONS"])
 def admin_metrics():
     if request.method == "OPTIONS":
         return "", 204
@@ -232,7 +232,7 @@ def admin_metrics():
     }), 200
 
 # --- Admin Recent Transactions ---
-@admin_bp.route("/recent_tx", methods=["GET", "OPTIONS"])
+@admin_bp.route("/recent_tx", methods=["GET","OPTIONS"])
 def admin_recent_tx():
     if request.method == "OPTIONS":
         return "", 204
@@ -265,7 +265,7 @@ def admin_recent_tx():
 
     return jsonify(result), 200
 
-@admin_bp.route("/daily_summary", methods=["GET", "OPTIONS"])
+@admin_bp.route("/daily_summary", methods=["GET","OPTIONS"])
 def daily_summary():
     if request.method == "OPTIONS":
         return "", 204
@@ -312,7 +312,7 @@ def _require_staff_or_admin():
         return True
     return False
 
-@admin_bp.route("/announcements", methods=["POST", "OPTIONS"])
+@admin_bp.route("/announcements", methods=["POST","OPTIONS"])
 def create_announcement():
     if request.method == "OPTIONS":
         return "", 204
@@ -370,7 +370,7 @@ def create_announcement():
 
     return jsonify({"status":"success", "id": ann_id, "image_url": image_url}), 200
 
-@admin_bp.route("/announcements/active", methods=["GET", "OPTIONS"])
+@admin_bp.route("/announcements/active", methods=["GET","OPTIONS"])
 def get_active_announcements():
     if request.method == "OPTIONS":
         return "", 204
@@ -420,7 +420,7 @@ def get_active_announcements():
 
     return jsonify(out), 200
 
-@admin_bp.route("/announcements", methods=["GET", "OPTIONS"])
+@admin_bp.route("/announcements", methods=["GET","OPTIONS"])
 def list_announcements():
     if request.method == "OPTIONS":
         return "", 204
@@ -481,7 +481,7 @@ def list_announcements():
 
     return jsonify({"status":"success","announcements": out}), 200
 
-@admin_bp.route("/announcements/<ann_id>", methods=["DELETE", "OPTIONS"])
+@admin_bp.route("/announcements/<ann_id>", methods=["DELETE","OPTIONS"])
 def delete_announcement(ann_id):
     if request.method == "OPTIONS":
         return "", 204
@@ -506,7 +506,7 @@ def delete_announcement(ann_id):
     return jsonify({"status":"success","id":ann_id}), 200
 
 
-@admin_bp.route("/announcements/<ann_id>/republish", methods=["POST", "OPTIONS"])
+@admin_bp.route("/announcements/<ann_id>/republish", methods=["POST","OPTIONS"])
 def republish_announcement(ann_id):
     if request.method == "OPTIONS":
         return "", 204
@@ -539,7 +539,7 @@ def republish_announcement(ann_id):
     return jsonify({"status":"success","id":ann_id}), 200
 
 # Serve uploaded images
-@admin_bp.route("/uploads/announcements/<filename>", methods=["GET", "OPTIONS"])
+@admin_bp.route("/uploads/announcements/<filename>", methods=["GET","OPTIONS"])
 def serve_ann_image(filename):
     if request.method == "OPTIONS":
         return "", 204
