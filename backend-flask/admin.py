@@ -10,6 +10,15 @@ from flask import Blueprint, jsonify, request, send_from_directory, session, cur
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
+# Try to import cloudinary (optional). If not installed or not configured, code will fallback to saving locally.
+try:
+    import cloudinary
+    import cloudinary.uploader
+    _CLOUDINARY_IMPORTED = True
+except Exception:
+    cloudinary = None
+    _CLOUDINARY_IMPORTED = False
+
 # --- Admin Blueprint ---
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 
@@ -36,6 +45,25 @@ def init_admin(get_conn_func):
     global _get_conn
     _get_conn = get_conn_func
 
+    # Configure cloudinary if available and env vars exist
+    try:
+        if _CLOUDINARY_IMPORTED:
+            cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
+            api_key = os.environ.get("CLOUDINARY_API_KEY")
+            api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+            if cloud_name and api_key and api_secret:
+                cloudinary.config(
+                    cloud_name=cloud_name,
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    secure=True
+                )
+                logger.info("init_admin: cloudinary configured")
+            else:
+                logger.debug("init_admin: cloudinary env not fully configured")
+    except Exception as e:
+        logger.exception("init_admin: cloudinary config failed: %s", e)
+
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
@@ -51,6 +79,7 @@ def init_admin(get_conn_func):
             """)
             conn.commit()
 
+            # Add image_url column to announcements table schema so we can store remote URLs (Cloudinary)
             cur.execute("""
             CREATE TABLE IF NOT EXISTS announcements (
                 id TEXT PRIMARY KEY,
@@ -58,6 +87,7 @@ def init_admin(get_conn_func):
                 body TEXT,
                 target TEXT,
                 image_path TEXT,
+                image_url TEXT,
                 created_at TEXT,
                 expires_at TEXT,
                 status TEXT,
@@ -334,24 +364,70 @@ def create_announcement():
     expires_at = request.form.get("expiresAt") or None
 
     image_path = None
+    image_url = None
+    uploaded_to_cloudinary = False
+
     if "image" in request.files:
         f = request.files["image"]
         if f and f.filename:
             if not allowed_file(f.filename):
                 logger.debug("create_announcement: invalid file type for filename=%s", f.filename)
                 return jsonify({"status":"error","message":"invalid file type"}), 400
-            filename = secure_filename(f.filename)
-            uid_name = uuid.uuid4().hex
-            ext = filename.rsplit(".", 1)[-1].lower()
-            saved_name = f"{uid_name}.{ext}"
-            saved_path = os.path.join(ANN_UPLOAD_DIR, saved_name)
+
+            # Try Cloudinary upload first if configured
             try:
-                f.save(saved_path)
-                image_path = saved_name
-                logger.debug("create_announcement: saved image to %s", saved_path)
+                cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
+                api_key = os.environ.get("CLOUDINARY_API_KEY")
+                api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+                if _CLOUDINARY_IMPORTED and cloud_name and api_key and api_secret:
+                    try:
+                        # pass the FileStorage directly; cloudinary handles file-like objects
+                        upload_result = cloudinary.uploader.upload(
+                            f,
+                            folder="payme/announcements",
+                            use_filename=True,
+                            unique_filename=True,
+                            overwrite=False
+                        )
+                        image_url = upload_result.get("secure_url")
+                        uploaded_to_cloudinary = True
+                        logger.info("create_announcement: uploaded image to cloudinary url=%s", image_url)
+                    except Exception as e:
+                        logger.exception("create_announcement: cloudinary upload failed: %s", e)
+                        # fall back to local save below
+                else:
+                    logger.debug("create_announcement: cloudinary not configured or not available, falling back to local save")
             except Exception as e:
-                logger.exception("Failed to save announcement image: %s", e)
-                return jsonify({"status":"error","message":"failed to save image"}), 500
+                logger.exception("create_announcement: cloudinary check failed: %s", e)
+
+            # If Cloudinary not used or failed, save to local disk
+            if not uploaded_to_cloudinary:
+                try:
+                    filename = secure_filename(f.filename)
+                    uid_name = uuid.uuid4().hex
+                    ext = filename.rsplit(".", 1)[-1].lower()
+                    saved_name = f"{uid_name}.{ext}"
+                    saved_path = os.path.join(ANN_UPLOAD_DIR, saved_name)
+                    # Ensure the file pointer is at start (in case cloudinary consumed some)
+                    try:
+                        f.stream.seek(0)
+                    except Exception:
+                        try:
+                            f.seek(0)
+                        except Exception:
+                            pass
+                    f.save(saved_path)
+                    image_path = saved_name
+                    logger.debug("create_announcement: saved image to %s", saved_path)
+                    # build image_url from host for local files (will be persisted in DB)
+                    try:
+                        base = request.host_url.rstrip("/") if request.host_url else ""
+                    except Exception:
+                        base = ""
+                    image_url = f"{base}/admin/uploads/announcements/{image_path}" if base else f"/admin/uploads/announcements/{image_path}"
+                except Exception as e:
+                    logger.exception("Failed to save announcement image: %s", e)
+                    return jsonify({"status":"error","message":"failed to save image"}), 500
 
     ann_id = uuid.uuid4().hex
     created_by = session.get("staff_id") or session.get("user_id") or None
@@ -360,29 +436,17 @@ def create_announcement():
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO announcements (id, title, body, target, image_path, created_at, expires_at, status, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (ann_id, title, body, target, image_path, created_at, expires_at, "active", created_by))
+                INSERT INTO announcements (id, title, body, target, image_path, image_url, created_at, expires_at, status, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (ann_id, title, body, target, image_path, image_url, created_at, expires_at, "active", created_by))
             conn.commit()
-            logger.info("create_announcement: created ann_id=%s by=%s", ann_id, created_by)
+            logger.info("create_announcement: created ann_id=%s by=%s image_url=%s image_path=%s", ann_id, created_by, image_url, image_path)
     except Exception as e:
         logger.exception("create_announcement failed: %s", e)
         return jsonify({"status":"error","message":"Failed to create announcement"}), 500
 
-    # Build image_url in a robust way
-    image_url = None
-    if image_path:
-        try:
-            base = request.host_url.rstrip("/")
-        except Exception:
-            base = ""
-        # If host_url present produce full absolute URL, else fallback to relative path
-        if base:
-            image_url = f"{base}/admin/uploads/announcements/{image_path}"
-        else:
-            image_url = f"/admin/uploads/announcements/{image_path}"
-
     return jsonify({"status":"success", "id": ann_id, "image_url": image_url}), 200
+
 
 @admin_bp.route("/announcements/active", methods=["GET","OPTIONS"])
 def get_active_announcements():
@@ -398,7 +462,7 @@ def get_active_announcements():
         with _get_conn() as conn:
             cur = conn.cursor()
             cur.execute("""
-                SELECT id, title, body, target, image_path, created_at, expires_at
+                SELECT id, title, body, target, image_path, image_url, created_at, expires_at
                 FROM announcements
                 WHERE status = 'active' AND (expires_at IS NULL OR expires_at > ?)
                 ORDER BY created_at DESC
@@ -416,12 +480,13 @@ def get_active_announcements():
         else:
             rp = {
                 "id": r[0], "title": r[1], "body": r[2], "target": r[3],
-                "image_path": r[4], "created_at": r[5], "expires_at": r[6]
+                "image_path": r[4], "image_url": r[5], "created_at": r[6], "expires_at": r[7]
             }
-        image_url = None
-        if rp.get("image_path"):
+        # Prefer image_url column (Cloudinary or built URL); fallback to constructed URL from image_path
+        image_url = rp.get("image_url")
+        if not image_url and rp.get("image_path"):
             try:
-                base = request.host_url.rstrip("/")
+                base = request.host_url.rstrip("/") if request.host_url else ""
             except Exception:
                 base = ""
             image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}" if base else f"/admin/uploads/announcements/{rp['image_path']}"
@@ -457,14 +522,14 @@ def list_announcements():
             cur = conn.cursor()
             if active_only:
                 cur.execute("""
-                  SELECT id, title, body, target, image_path, created_at, expires_at, status
+                  SELECT id, title, body, target, image_path, image_url, created_at, expires_at, status
                   FROM announcements
                   WHERE status = 'active' AND (expires_at IS NULL OR expires_at > ?)
                   ORDER BY created_at DESC
                 """, (now_iso,))
             else:
                 cur.execute("""
-                  SELECT id, title, body, target, image_path, created_at, expires_at, status
+                  SELECT id, title, body, target, image_path, image_url, created_at, expires_at, status
                   FROM announcements
                   ORDER BY created_at DESC
                 """)
@@ -480,12 +545,12 @@ def list_announcements():
         else:
             rp = {
                 "id": r[0], "title": r[1], "body": r[2], "target": r[3],
-                "image_path": r[4], "created_at": r[5], "expires_at": r[6], "status": r[7]
+                "image_path": r[4], "image_url": r[5], "created_at": r[6], "expires_at": r[7], "status": r[8]
             }
-        image_url = None
-        if rp.get("image_path"):
+        image_url = rp.get("image_url")
+        if not image_url and rp.get("image_path"):
             try:
-                base = request.host_url.rstrip("/")
+                base = request.host_url.rstrip("/") if request.host_url else ""
             except Exception:
                 base = ""
             image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}" if base else f"/admin/uploads/announcements/{rp['image_path']}"
@@ -520,15 +585,20 @@ def delete_announcement(ann_id):
         # Perform permanent deletion: remove DB row, and unlink image file if present
         with _get_conn() as conn:
             cur = conn.cursor()
-            # First fetch image_path (if any) so we can delete the file
-            cur.execute("SELECT image_path FROM announcements WHERE id = ?", (ann_id,))
+            # First fetch image_path and image_url (if any) so we can delete the file if saved locally
+            cur.execute("SELECT image_path, image_url FROM announcements WHERE id = ?", (ann_id,))
             row = cur.fetchone()
             image_path = None
+            image_url = None
             if row:
                 if hasattr(row, "keys"):
-                    image_path = row["image_path"]
+                    image_path = row.get("image_path")
+                    image_url = row.get("image_url")
                 else:
-                    image_path = row[0]
+                    # row is likely a tuple
+                    image_path = row[0] if len(row) > 0 else None
+                    image_url = row[1] if len(row) > 1 else None
+
             # Delete the DB row
             cur.execute("DELETE FROM announcements WHERE id = ?", (ann_id,))
             conn.commit()
@@ -536,7 +606,7 @@ def delete_announcement(ann_id):
                 logger.debug("delete_announcement: not found id=%s", ann_id)
                 return jsonify({"status":"error","message":"not found"}), 404
 
-            # If there was an image saved, attempt to remove the file
+            # If there was a locally saved image, attempt to remove the file
             if image_path:
                 try:
                     file_path = os.path.join(ANN_UPLOAD_DIR, image_path)
@@ -546,6 +616,8 @@ def delete_announcement(ann_id):
                 except Exception as e:
                     logger.exception("delete_announcement: failed to remove image file %s: %s", image_path, e)
 
+            # NOTE: If image_url points to Cloudinary, we do not automatically delete remote resource here
+            # unless you want to implement cloudinary.uploader.destroy with stored public_id.
             logger.info("delete_announcement: permanently deleted id=%s", ann_id)
     except Exception as e:
         logger.exception("delete_announcement failed: %s", e)
