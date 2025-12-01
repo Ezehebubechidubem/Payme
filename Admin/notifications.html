@@ -228,6 +228,38 @@ function buildImageUrl(obj){
   return `${siteBase}/admin/uploads/announcements/${candidate}`;
 }
 
+/* ---------- Load images using fetch + credentials (fallback) ----------
+   Some backends require cookies for image access. If a plain <img src=...>
+   is blocked (redirects to login or needs credentials) the browser will
+   show broken image. To handle that we try fetching the image with
+   credentials and convert it to an object URL and set img.src.
+--------------------------------------------------------------------- */
+function loadImagesWithCredentials(root){
+  if(!root) return;
+  const imgs = root.querySelectorAll('img[data-src]');
+  imgs.forEach(img => {
+    const src = img.getAttribute('data-src');
+    if(!src) return;
+    // attempt fetch with credentials
+    fetch(src, { credentials: 'include' })
+      .then(res => {
+        if(!res.ok) throw new Error('fetch-failed');
+        return res.blob();
+      })
+      .then(blob => {
+        // create object URL and set img.src
+        const objectUrl = URL.createObjectURL(blob);
+        img.src = objectUrl;
+        img.removeAttribute('data-src');
+      })
+      .catch(() => {
+        // fallback: set src directly (may work if public)
+        img.src = src;
+        img.removeAttribute('data-src');
+      });
+  });
+}
+
 // Fetch active announcements (for preview)
 async function fetchActive(){
   try {
@@ -283,7 +315,8 @@ function renderActive(list){
 
   track.innerHTML = list.map(a => {
     const imageUrl = buildImageUrl(a);
-    const img = imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="">` : `<div style="width:160px;height:90px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
+    // NOTE: use data-src instead of src so we can attempt credentialed fetch first
+    const img = imageUrl ? `<img data-src="${escapeHtml(imageUrl)}" alt="">` : `<div style="width:160px;height:90px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
     const created = a.createdAt ? (new Date(a.createdAt)).toLocaleString() : '';
     return `<div class="slide" data-id="${escapeHtml(a.id || '')}">
       ${img}
@@ -294,6 +327,10 @@ function renderActive(list){
       </div>
     </div>`;
   }).join('');
+
+  // attempt to load images with credentials (if required by backend)
+  // do this after DOM update
+  loadImagesWithCredentials(track);
 
   carousel.style.display = 'block';
   noActive.style.display = 'none';
@@ -321,7 +358,7 @@ function renderHistory(list){
   if(!list || list.length === 0){ container.innerHTML = '<div class="small-muted">No announcements yet</div>'; return; }
   container.innerHTML = list.map(a => {
     const imageUrl = buildImageUrl(a);
-    const img = imageUrl ? `<img src="${escapeHtml(imageUrl)}" style="width:120px;height:70px;object-fit:cover;border-radius:6px;margin-right:8px">` : '';
+    const img = imageUrl ? `<img data-src="${escapeHtml(imageUrl)}" style="width:120px;height:70px;object-fit:cover;border-radius:6px;margin-right:8px">` : '';
     const created = a.createdAt ? new Date(a.createdAt).toLocaleString() : '';
     const expires = a.expiresAt ? new Date(a.expiresAt).toLocaleString() : '—';
     return `<div class="history-item" data-id="${escapeHtml(a.id)}">
@@ -339,6 +376,9 @@ function renderHistory(list){
       </div>
     </div>`;
   }).join('');
+
+  // load history images with credentials as well
+  loadImagesWithCredentials(container);
 }
 
 // helpers to escape
