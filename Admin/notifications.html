@@ -33,6 +33,14 @@
  .actions-col button{margin-bottom:6px;width:120px}
  .spinner {display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.1);border-top-color:#000;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-left:8px}
  @keyframes spin{ to { transform: rotate(360deg);} }
+
+ /* debug UI */
+ .debug-toggle { position: fixed; right: 12px; top: 12px; z-index: 9999; background: #111827; color: #fff; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size:13px; }
+ .debug-panel { position: fixed; right: 12px; top: 52px; z-index: 9999; width:360px; max-height:60vh; overflow:auto; background:#ffffff; border:1px solid #e6e6e6; border-radius:8px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding:12px; display:none; font-family:monospace; font-size:12px; color:#111; }
+ .debug-panel pre{white-space:pre-wrap; word-break:break-word; font-family:monospace; font-size:12px; margin:6px 0; max-height:34vh; overflow:auto}
+ .debug-row{margin-bottom:8px}
+ .debug-label{font-weight:700;font-size:12px;color:#6b7280;margin-bottom:6px}
+ .curl-btn{background:#111827;color:#fff;padding:6px 8px;border-radius:6px;border:0;cursor:pointer;font-size:12px}
 </style>
 </head>
 <body>
@@ -69,7 +77,7 @@
 <header>
   <a href="https://ezehebubechidubem.github.io/Payme/index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">7 — Notifications & Announcements</h2>
-  <div class="muted"></div>
+  <div class="muted">Create announcements with images — they will appear on the main PayMe dashboard promo area.</div>
 </header>
 
 <div class="container">
@@ -93,7 +101,7 @@
         </select>
       </div>
       <div style="flex:1">
-        <label for="notifExpiry">Expiry</label>
+        <label for="notifExpiry">Expiry (when announcement should stop showing)</label>
         <input id="notifExpiry" type="datetime-local" />
       </div>
     </div>
@@ -133,15 +141,60 @@
   </div>
 </div>
 
+<!-- Debug toggle + panel -->
+<div id="debugToggle" class="debug-toggle" title="Toggle debug panel">Debug</div>
+<div id="debugPanel" class="debug-panel" role="dialog" aria-hidden="true">
+  <div class="debug-row"><div class="debug-label">Last Request</div><pre id="dbgRequest">—</pre></div>
+  <div class="debug-row"><div class="debug-label">Last Response</div><pre id="dbgResponse">—</pre></div>
+  <div class="debug-row"><div class="debug-label">Curl (POST) to reproduce</div><pre id="dbgCurl">—</pre></div>
+  <div style="display:flex;gap:8px">
+    <button id="clearDebug" class="curl-btn">Clear</button>
+  </div>
+</div>
+
 <script>
 // Single place for API host — change here if your backend is served under a different base path
 const API_BASE = "https://payme-update.onrender.com";
-const CREATE_URL = `${API_BASE}/api/Admin/announcements`;
-const ACTIVE_URL = `${API_BASE}/api/Admin/announcements/active`;
-const HISTORY_URL = `${API_BASE}/api/Admin/announcements`;
-const DELETE_URL_BASE = `${API_BASE}/api/Admin/announcements`; // DELETE /<id>
-const REPUBLISH_URL_BASE = `${API_BASE}/api/Admin/announcements`; // POST /<id>/republish
+const CREATE_URL = `${API_BASE}/api/admin/announcements`;
+const ACTIVE_URL = `${API_BASE}/api/admin/announcements/active`;
+const HISTORY_URL = `${API_BASE}/api/admin/announcements`;
+const DELETE_URL_BASE = `${API_BASE}/api/admin/announcements`; // DELETE /<id>
+const REPUBLISH_URL_BASE = `${API_BASE}/api/admin/announcements`; // POST /<id>/republish
 const MAX_ACTIVE = 10;
+
+// Debugging state (persisted)
+let DEBUG = (localStorage.getItem('ann_debug') === '1') || (new URLSearchParams(location.search).get('debug') === '1');
+
+const debugToggle = document.getElementById('debugToggle');
+const debugPanel = document.getElementById('debugPanel');
+const dbgRequest = document.getElementById('dbgRequest');
+const dbgResponse = document.getElementById('dbgResponse');
+const dbgCurl = document.getElementById('dbgCurl');
+const clearDebugBtn = document.getElementById('clearDebug');
+
+function updateDebugUI(){
+  if(DEBUG){
+    debugToggle.style.background = '#ef4444';
+    debugPanel.style.display = 'block';
+    debugPanel.setAttribute('aria-hidden','false');
+  } else {
+    debugToggle.style.background = '#111827';
+    debugPanel.style.display = 'none';
+    debugPanel.setAttribute('aria-hidden','true');
+  }
+}
+debugToggle.addEventListener('click', ()=>{
+  DEBUG = !DEBUG;
+  localStorage.setItem('ann_debug', DEBUG ? '1' : '0');
+  updateDebugUI();
+});
+clearDebugBtn.addEventListener('click', ()=>{
+  dbgRequest.textContent = '—';
+  dbgResponse.textContent = '—';
+  dbgCurl.textContent = '—';
+});
+
+updateDebugUI();
 
 // utility
 function el(id){ return document.getElementById(id); }
@@ -164,32 +217,94 @@ fileInput?.addEventListener('change', (e)=>{
   r.readAsDataURL(f);
 });
 
+// --- fetch wrapper with debug & safe response handling ---
+async function apiFetch(rawUrl, opts = {}) {
+  // attach debug query param for server-side debug if desired
+  let url = rawUrl;
+  if(DEBUG){
+    const u = new URL(url);
+    u.searchParams.set('debug', '1');
+    url = u.toString();
+    // add debug header as well
+    opts.headers = Object.assign({}, opts.headers || {}, {'X-Debug':'1'});
+  }
+
+  // ensure credentials: include unless explicitly set
+  if(!opts.credentials) opts.credentials = 'include';
+
+  // Save request debug info
+  try {
+    dbgRequest.textContent = `${opts.method || 'GET'} ${url}\nHeaders: ${JSON.stringify(opts.headers || {}, null, 2)}`;
+  } catch(e){ dbgRequest.textContent = `${opts.method || 'GET'} ${url}`; }
+
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (err){
+    dbgResponse.textContent = `Network error: ${err}`;
+    throw err;
+  }
+
+  // clone response to read text safely for debug
+  const clone = res.clone();
+  let text = '';
+  try { text = await clone.text(); } catch(e){ text = '<unable to read response text>'; }
+
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch(e){ json = null; }
+
+  // populate debug panel
+  dbgResponse.textContent = `HTTP ${res.status} ${res.statusText}\n\n${text || '<empty body>'}`;
+  // create curl for POST form-data if applicable
+  if(opts.method && opts.method.toUpperCase() === 'POST' && opts.body instanceof FormData){
+    // build -F fields
+    const fd = opts.body;
+    const entries = [];
+    for(const pair of fd.entries()){
+      const k = pair[0];
+      const v = pair[1];
+      if(v instanceof File){
+        entries.push(`-F "${k}=@${v.name};type=${v.type || 'application/octet-stream'}"`);
+      } else {
+        entries.push(`-F "${k}=${String(v).replace(/"/g, '\\"')}"`);
+      }
+    }
+    const curl = `curl -i -X POST "${rawUrl}" \\\n  ${entries.join(' \\\n  ')} \\\n  -b "COOKIE_JAR"`;
+    dbgCurl.textContent = curl;
+  } else {
+    dbgCurl.textContent = '(curl available for POST multipart/form-data only)';
+  }
+
+  return { ok: res.ok, status: res.status, statusText: res.statusText, json, text, res };
+}
+
 // Fetch active announcements (for preview)
 async function fetchActive(){
   try {
-    const res = await fetch(ACTIVE_URL, { credentials: 'include', cache: 'no-store' });
-    if(!res.ok) throw new Error('no active endpoint');
-    const list = await res.json();
-    // server may return array directly
+    const r = await apiFetch(ACTIVE_URL, { method: 'GET', cache:'no-store' });
+    if(!r.ok) throw new Error(`Active endpoint returned ${r.status}`);
+    const list = r.json || JSON.parse(r.text || 'null');
     return Array.isArray(list) ? list : (list.announcements || list.data || list);
   } catch(e){
     // try alternate endpoint (non-admin) for dashboard compatibility
     try {
-      const res2 = await fetch(`${API_BASE}/api/admin/announcements/active`, { credentials: 'include', cache: 'no-store' });
-      if(!res2.ok) throw new Error('no alt endpoint');
-      const list2 = await res2.json();
+      const r2 = await apiFetch(`${API_BASE}/api/announcements/active`, { method: 'GET', cache:'no-store' });
+      if(!r2.ok) throw new Error(`Alt active endpoint ${r2.status}`);
+      const list2 = r2.json || JSON.parse(r2.text || 'null');
       return Array.isArray(list2) ? list2 : (list2.announcements || list2.data || list2);
-    } catch(err){ console.warn('fetchActive failed', err); return []; }
+    } catch(err){ 
+      console.warn('fetchActive failed', err); 
+      return []; 
+    }
   }
 }
 
 // Fetch history (staff)
 async function fetchHistory(){
   try {
-    const res = await fetch(HISTORY_URL, { credentials:'include', cache:'no-store' });
-    if(!res.ok) throw new Error('history unauthorized');
-    const json = await res.json();
-    // our admin route returns {status: "success", announcements: [...]}
+    const r = await apiFetch(HISTORY_URL, { method:'GET', cache:'no-store' });
+    if(!r.ok) throw new Error(`history endpoint returned ${r.status}`);
+    const json = r.json || JSON.parse(r.text || 'null');
     return json.announcements || json.data || [];
   } catch(e){
     console.warn('fetchHistory failed', e);
@@ -282,9 +397,9 @@ function escapeJs(s){ return String(s||'').replace(/'/g, "\\'"); }
 // check how many active announcements exist (server-side authoritative)
 async function countActiveServer(){
   try {
-    const res = await fetch(`${HISTORY_URL}?active=1`, { credentials:'include', cache:'no-store' });
-    if(!res.ok) return 0;
-    const json = await res.json();
+    const r = await apiFetch(`${HISTORY_URL}?active=1`, { method:'GET', cache:'no-store' });
+    if(!r.ok) return 0;
+    const json = r.json || JSON.parse(r.text || 'null');
     const arr = json.announcements || [];
     return Array.isArray(arr) ? arr.length : 0;
   } catch(e){ return 0; }
@@ -339,31 +454,38 @@ async function sendNotification(){
   showMsg('');
 
   try {
-    const res = await fetch(CREATE_URL, {
+    const result = await apiFetch(CREATE_URL, {
       method: 'POST',
-      credentials: 'include',
       body: form
     });
 
-    if(res.status === 404){
+    if(result.status === 404){
       showMsg(`Endpoint not found (404). Check backend URL: ${CREATE_URL}`, true);
       return;
     }
-    if(res.status === 405){
+    if(result.status === 405){
       showMsg(`Method not allowed (405). Backend expects POST at ${CREATE_URL}`, true);
       return;
     }
 
-    const json = await res.json().catch(()=>null);
-    if(res.ok && json && (json.status === 'success' || res.status === 200 || res.status === 201)){
+    
+    // prefer parsed json if available
+    const json = result.json || (result.text ? ( (()=>{ try { return JSON.parse(result.text); } catch(e){ return null; } })() ) : null);
+
+    if(result.ok && json && (json.status === 'success' || result.status === 200 || result.status === 201)){
       showMsg('Announcement created and stored on server.');
       // refresh active and history views
       await refreshAllViews();
       // clear form
       clearNotif();
     } else {
-      const message = (json && (json.message || json.error)) || `Server error (${res.status})`;
-      showMsg(message, true);
+      const message = (json && (json.message || json.error)) || `Server error (${result.status})`;
+      // if server returned non-json raw body, show for debugging
+      if(!json && result.text) {
+        showMsg(`${message} — server body: ${result.text}`, true);
+      } else {
+        showMsg(message, true);
+      }
     }
   } catch(err){
     console.error('sendNotification error', err);
@@ -380,16 +502,15 @@ async function deleteAnnouncement(idEncoded){
   if(!confirm('Permanent delete this announcement? This will mark it as deleted.')) return;
   showMsg('Deleting...');
   try {
-    const res = await fetch(`${DELETE_URL_BASE}/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      credentials: 'include'
+    const r = await apiFetch(`${DELETE_URL_BASE}/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
     });
-    if(res.ok){
+    if(r.ok){
       showMsg('Deleted.');
       await refreshAllViews();
     } else {
-      const json = await res.json().catch(()=>null);
-      showMsg((json && json.message) || 'Delete failed', true);
+      const json = r.json || (r.text ? ( (()=>{ try { return JSON.parse(r.text); } catch(e){ return null; } })() ) : null);
+      showMsg((json && json.message) || `Delete failed (${r.status})`, true);
     }
   } catch(err){
     console.error('deleteAnnouncement error', err);
@@ -415,18 +536,17 @@ async function republishAnnouncement(idEncoded){
 
   showMsg('Republishing...');
   try {
-    const res = await fetch(`${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, {
+    const r = await apiFetch(`${REPUBLISH_URL_BASE}/${encodeURIComponent(id)}/republish`, {
       method: 'POST',
-      credentials: 'include',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ expiresAt: newExpiry, createdAt: new Date().toISOString() })
     });
-    if(res.ok){
+    if(r.ok){
       showMsg('Republished.');
       await refreshAllViews();
     } else {
-      const json = await res.json().catch(()=>null);
-      showMsg((json && json.message) || 'Republish failed', true);
+      const json = r.json || (r.text ? ( (()=>{ try { return JSON.parse(r.text); } catch(e){ return null; } })() ) : null);
+      showMsg((json && json.message) || `Republish failed (${r.status})`, true);
     }
   } catch(err){
     console.error('republishAnnouncement', err);
@@ -458,12 +578,12 @@ async function refreshAllViews(){
 // helper to fetch active announcements for UI (tries admin then global)
 async function fetchActiveForUI(){
   try {
-    const res = await fetch(ACTIVE_URL, { credentials:'include', cache:'no-store' });
-    if(res.ok){ const arr = await res.json(); return Array.isArray(arr) ? arr : (arr.announcements || arr.data || arr); }
+    const res = await apiFetch(ACTIVE_URL, { method:'GET', cache:'no-store' });
+    if(res.ok){ const arr = res.json || JSON.parse(res.text||'null'); return Array.isArray(arr) ? arr : (arr.announcements || arr.data || arr); }
   } catch(e){}
   try {
-    const res2 = await fetch(`${API_BASE}/api/admin/announcements/active`, { credentials:'include', cache:'no-store' });
-    if(res2.ok){ const arr2 = await res2.json(); return Array.isArray(arr2) ? arr2 : (arr2.announcements || arr2.data || arr2); }
+    const res2 = await apiFetch(`${API_BASE}/api/announcements/active`, { method:'GET', cache:'no-store' });
+    if(res2.ok){ const arr2 = res2.json || JSON.parse(res2.text||'null'); return Array.isArray(arr2) ? arr2 : (arr2.announcements || arr2.data || arr2); }
   } catch(e){}
   return [];
 }
