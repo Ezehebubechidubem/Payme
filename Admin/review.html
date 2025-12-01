@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payme — Monitoring</title>
+<title>Payme — Review</title>
 <style>
  :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
@@ -17,6 +17,7 @@
 </style>
 </head>
 <body>
+
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
   <h2 style="margin:6px 0">5 — Monitoring</h2>
@@ -64,10 +65,34 @@
 </div>
 
 <script>
+(async function(){
 
+  // ------------- AUTH CHECK -------------
+  const EXPECTED_ROLE = "monitor"; // adjust role as needed
+  try {
+    const authRes = await fetch("https://payme-update.onrender.com/auth/check", {
+      method:"GET",
+      credentials:"include",
+      headers: {"Accept":"application/json"}
+    });
+    if(!authRes.ok){
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+      return;
+    }
+    const authData = await authRes.json();
+    const serverRole = (authData.role||"").toLowerCase();
+    if(serverRole !== EXPECTED_ROLE.toLowerCase()){
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+      return;
+    }
+    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
+  } catch(err){
+    window.location.href = "https://ezehebubechidubem.github.io/Payme/login.html";
+    return;
+  }
 
-  // ---------- Fetch Metrics ----------
-  
+  // ------------- FETCH METRICS -------------
+  try {
     const metricsRes = await fetch("https://payme-update.onrender.com/admin/metrics", { credentials:"include" });
     const metrics = await metricsRes.json();
     if(metrics.status==="success"){
@@ -78,14 +103,14 @@
     }
   } catch(err){
     console.error("Metrics fetch failed", err);
-  
+  }
 
-  // ---------- Fetch 7-day Transaction Summary ----------
+  // ------------- FETCH 7-DAY SUMMARY -------------
   try {
     const summaryRes = await fetch("https://payme-update.onrender.com/admin/daily_summary", { credentials:"include" });
-    const data = await summaryRes.json();
-    if(data.status==="success" && data.summary){
-      const rows = data.summary.map(r=>`<tr>
+    const summaryData = await summaryRes.json();
+    if(summaryData.status==="success" && summaryData.summary){
+      const rows = summaryData.summary.map(r=>`<tr>
         <td>${r.day}</td>
         <td>₦${Number(r.total).toLocaleString()}</td>
         <td>₦${Number(r.deposits).toLocaleString()}</td>
@@ -97,9 +122,13 @@
     console.error("Daily summary fetch failed", err);
   }
 
-  // ---------- Demo placeholders for Fraud & Failed Tx (optional) ----------
-  document.getElementById('fraudCount').innerText = '3';       // replace with real DB query if available
-  document.getElementById('failedCount').innerText = '12';     // replace with real DB query if available
+  // ------------- Placeholder for Fraud & Failed TX -------------
+  try {
+    // Replace with real DB calls
+    document.getElementById('fraudCount').innerText = '3';
+    document.getElementById('failedCount').innerText = '12';
+  } catch(err){ console.error(err); }
+
 })();
 </script>
 </body>
