@@ -3,63 +3,24 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payme — Monitoring</title>
+<title>PayMe — Monitoring</title>
 <style>
- :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
- body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
- header{padding:18px;border-bottom:1px solid #f0f2f3}
- .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:18px}
- .card{background:var(--card);padding:14px;border-radius:12px}
- table{width:100%;border-collapse:collapse}
- th,td{padding:8px;border-bottom:1px solid #eee}
- .muted{color:var(--muted)}
- .btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
+:root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
+header{padding:18px;border-bottom:1px solid #f0f2f3}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:18px}
+.card{background:var(--card);padding:14px;border-radius:12px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid #eee}
+.muted{color:var(--muted)}
+.btn{background:var(--green);color:#fff;padding:8px;border-radius:8px;border:0;cursor:pointer}
 </style>
 </head>
 <body>
 
-<!-- ---------------- AUTH CHECK ---------------- -->
-<script>
-(async function(){
-  // List all acceptable role variants for transaction-review staff
-  const ACCEPTED_ROLES = [
-    "transaction review",
-    "transaction-review",
-    "transaction_review"
-  ];
-
-  try {
-    const res = await fetch("https://payme-update.onrender.com/auth/check", {
-      method:"GET",
-      credentials:"include",
-      headers:{"Accept":"application/json"}
-    });
-
-    if(!res.ok){
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
-      return;
-    }
-
-    const data = await res.json();
-    const serverRole = (data.role || data.user?.role || "").toLowerCase();
-
-    if(!ACCEPTED_ROLES.includes(serverRole)){
-      window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
-      return;
-    }
-
-    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
-
-  } catch(err){
-    window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
-  }
-})();
-</script>
-
-<!-- ---------------- PAGE CONTENT ---------------- -->
 <header>
   <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
-  <h2 style="margin:6px 0">5 — Monitoring</h2>
+  <h2 style="margin:6px 0">Monitoring</h2>
   <div class="muted">View daily volume, deposits, withdrawals, active users, fraud attempts, and failed transactions.</div>
 </header>
 
@@ -88,13 +49,13 @@
   <div class="card">
     <h4>Fraud Attempts</h4>
     <div id="fraudCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
-    <button class="btn" style="margin-top:10px" onclick="location.href='fraud.html'">Investigate</button>
+    <button class="btn" onclick="location.href='fraud.html'">Investigate</button>
   </div>
 
   <div class="card">
     <h4>Failed Transactions</h4>
     <div id="failedCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
-    <button class="btn" style="margin-top:10px" onclick="alert('Open transactions page in real app')">View</button>
+    <button class="btn" onclick="alert('Open transactions page in real app')">View</button>
   </div>
 
   <div class="card">
@@ -105,6 +66,43 @@
 
 <script>
 (async function(){
+  // ----------- Role Authentication -----------
+  const ALLOWED_ROLES = [
+    "transaction review", "transaction-review",
+    "customer support", "customer-support",
+    "scaling", "api manager", "api-manager",
+    "developer", "kyc", "fraud", "log", "notification"
+  ];
+
+  try {
+    const res = await fetch("https://payme-update.onrender.com/auth/check", {
+      method: "GET",
+      credentials: "include",
+      headers: {"Accept":"application/json"}
+    });
+
+    if(!res.ok){
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
+      return;
+    }
+
+    const data = await res.json();
+    // Check role in multiple fields
+    const serverRole = (data.role || data.user?.role || "").toLowerCase();
+
+    if(!ALLOWED_ROLES.includes(serverRole)){
+      // redirect if role is not allowed
+      window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
+      return;
+    }
+
+    try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
+
+  } catch(err){
+    window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
+  }
+
+  // ----------- Fetch Metrics -----------
   try {
     const metricsRes = await fetch("https://payme-update.onrender.com/admin/metrics", { credentials:"include" });
     const metrics = await metricsRes.json();
@@ -114,8 +112,9 @@
       document.getElementById('wd').innerText = `₦${Number(metrics.withdrawals).toLocaleString()}`;
       document.getElementById('actUsers').innerText = Number(metrics.active_users).toLocaleString();
     }
-  } catch(err){ console.error(err); }
+  } catch(err){ console.error("Metrics fetch failed:", err); }
 
+  // ----------- Fetch Daily Summary -----------
   try {
     const summaryRes = await fetch("https://payme-update.onrender.com/admin/daily_summary", { credentials:"include" });
     const summaryData = await summaryRes.json();
@@ -128,13 +127,13 @@
       </tr>`);
       document.getElementById('summary').innerHTML = rows.join('');
     }
-  } catch(err){ console.error(err); }
+  } catch(err){ console.error("Daily summary fetch failed:", err); }
 
-  // placeholders
+  // ----------- Placeholders -----------
   document.getElementById('fraudCount').innerText = '3';
   document.getElementById('failedCount').innerText = '12';
+
 })();
 </script>
-
 </body>
 </html>
