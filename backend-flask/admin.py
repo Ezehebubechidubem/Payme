@@ -702,3 +702,17 @@ def admin_debug():
     except Exception as e:
         logger.exception("admin_debug failed: %s", e)
         return jsonify({"status":"error","message":"debug failed"}), 500
+
+@admin_bp.route("/fix-announcement-columns", methods=["GET"])
+def fix_announcement_columns():
+    try:
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_path TEXT;")
+            cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_url TEXT;")
+            cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';")
+            cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS created_by TEXT;")
+            conn.commit()
+        return jsonify({"status": "success", "message": "Columns updated"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
