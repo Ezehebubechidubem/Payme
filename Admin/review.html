@@ -21,24 +21,35 @@
 <!-- ---------------- AUTH CHECK ---------------- -->
 <script>
 (async function(){
-  const EXPECTED_ROLE = "transaction review"; // role name exactly as in backend session
+  // List all acceptable role variants for transaction-review staff
+  const ACCEPTED_ROLES = [
+    "transaction review",
+    "transaction-review",
+    "transaction_review"
+  ];
+
   try {
     const res = await fetch("https://payme-update.onrender.com/auth/check", {
       method:"GET",
       credentials:"include",
       headers:{"Accept":"application/json"}
     });
+
     if(!res.ok){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
+
     const data = await res.json();
     const serverRole = (data.role || data.user?.role || "").toLowerCase();
-    if(serverRole !== EXPECTED_ROLE.toLowerCase()){
+
+    if(!ACCEPTED_ROLES.includes(serverRole)){
       window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
       return;
     }
+
     try { sessionStorage.setItem("staff_role", serverRole); } catch(e){}
+
   } catch(err){
     window.location.href = "https://ezehebubechidubem.github.io/Payme/index.html";
   }
@@ -77,13 +88,13 @@
   <div class="card">
     <h4>Fraud Attempts</h4>
     <div id="fraudCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
-    <button class="btn" onclick="location.href='fraud.html'">Investigate</button>
+    <button class="btn" style="margin-top:10px" onclick="location.href='fraud.html'">Investigate</button>
   </div>
 
   <div class="card">
     <h4>Failed Transactions</h4>
     <div id="failedCount" style="font-weight:800;font-size:18px;margin-top:8px">0</div>
-    <button class="btn" onclick="alert('Open transactions page in real app')">View</button>
+    <button class="btn" style="margin-top:10px" onclick="alert('Open transactions page in real app')">View</button>
   </div>
 
   <div class="card">
