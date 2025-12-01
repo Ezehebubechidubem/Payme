@@ -6,7 +6,7 @@ import random
 import os
 import logging
 from datetime import datetime
-from flask import Blueprint, jsonify, request, send_from_directory, session
+from flask import Blueprint, jsonify, request, send_from_directory, session, current_app
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -24,42 +24,21 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept, X-Debug"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    # for preflight callers we just return headers; actual routes will handle OPTIONS explicitly
     return response
 
-# --- Small request logger to help spot 405/OPTIONS issues (non-fatal) ---
-@admin_bp.before_app_request
-def _log_incoming_request():
-    try:
-        origin = request.headers.get("Origin")
-        content_type = request.headers.get("Content-Type")
-        acr_method = request.headers.get("Access-Control-Request-Method")
-        acr_headers = request.headers.get("Access-Control-Request-Headers")
-        logger.debug("[ADMIN_REQ] %s -> %s %s Origin=%s Content-Type=%s AC-Req-Method=%s AC-Req-Headers=%s",
-                     request.remote_addr, request.method, request.path, origin, content_type, acr_method, acr_headers)
-    except Exception:
-        # never fail the request on logging problems
-        pass
-
-# --- Global connection holder (injected by main app) ---
+# --- Global connection holder (set by your app) ---
 _get_conn = None
 
 def init_admin(get_conn_func):
     """
-    Inject the get_conn function from app.py.
-    This function will ensure required tables exist, WITHOUT using flask.current_app
-    (avoids 'working outside of application context' during init).
+    Inject the get_conn function from app.py
     """
     global _get_conn
     _get_conn = get_conn_func
 
-    if _get_conn is None:
-        raise RuntimeError("init_admin requires a get_conn function")
-
     try:
         with _get_conn() as conn:
             cur = conn.cursor()
-            # staff table
             cur.execute("""
             CREATE TABLE IF NOT EXISTS staff (
                 id TEXT PRIMARY KEY,
@@ -72,7 +51,6 @@ def init_admin(get_conn_func):
             """)
             conn.commit()
 
-            # announcements table
             cur.execute("""
             CREATE TABLE IF NOT EXISTS announcements (
                 id TEXT PRIMARY KEY,
@@ -88,7 +66,7 @@ def init_admin(get_conn_func):
             """)
             conn.commit()
 
-            logger.info("init_admin: DB tables ensured")
+            logger.debug("init_admin: DB tables ensured")
     except Exception as e:
         logger.exception("init_admin failed: %s", e)
         raise
@@ -102,7 +80,7 @@ def _validate_email(email):
     return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
 
 # --- Staff Routes ---
-@admin_bp.route("/staff/create", methods=["POST", "OPTIONS"])
+@admin_bp.route("/staff/create", methods=["POST","OPTIONS"])
 def create_staff():
     if request.method == "OPTIONS":
         return "", 204
@@ -112,7 +90,6 @@ def create_staff():
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
     if not request.is_json:
-        logger.debug("create_staff: bad content-type (not JSON)")
         return jsonify({"status":"error","message":"Content-Type must be application/json"}), 400
 
     data = request.get_json(silent=True) or {}
@@ -154,7 +131,7 @@ def create_staff():
         "generated_password": plain_pw
     }), 201
 
-@admin_bp.route("/staff/list", methods=["GET", "OPTIONS"])
+@admin_bp.route("/staff/list", methods=["GET","OPTIONS"])
 def list_staff():
     if request.method == "OPTIONS":
         return "", 204
@@ -184,7 +161,7 @@ def list_staff():
         return jsonify({"status":"error","message":"Unable to list staff"}), 500
     return jsonify({"status":"success","staff": staff_list}), 200
 
-@admin_bp.route("/staff/<staff_id>", methods=["DELETE", "OPTIONS"])
+@admin_bp.route("/staff/<staff_id>", methods=["DELETE","OPTIONS"])
 def delete_staff(staff_id):
     if request.method == "OPTIONS":
         return "", 204
@@ -205,19 +182,18 @@ def delete_staff(staff_id):
 
     return jsonify({"status":"success"}), 200
 
-@admin_bp.route("/staff/debug_echo", methods=["POST", "OPTIONS"])
+@admin_bp.route("/staff/debug_echo", methods=["POST","OPTIONS"])
 def staff_debug_echo():
     if request.method == "OPTIONS":
         return "", 204
     return jsonify({
         "received": request.get_json(silent=True),
-        "headers": {k: request.headers.get(k) for k in ("Origin","Content-Type","Accept","X-Requested-With","X-Debug")},
-        "method": request.method,
-        "path": request.path
+        "headers": dict(request.headers),
+        "method": request.method
     })
 
-# --- Admin Metrics & utility routes ---
-@admin_bp.route("/metrics", methods=["GET", "OPTIONS"])
+# --- Admin Metrics & Recent TX & Daily summary (kept as before) ---
+@admin_bp.route("/metrics", methods=["GET","OPTIONS"])
 def admin_metrics():
     if request.method == "OPTIONS":
         return "", 204
@@ -243,6 +219,7 @@ def admin_metrics():
             row = cur.fetchone()
             active_users = row["active_users"] if hasattr(row, "keys") else (row[0] if row and len(row) > 0 else 0)
 
+            logger.debug("admin_metrics: deposits=%s withdrawals=%s active_users=%s", deposits, withdrawals, active_users)
     except Exception as e:
         logger.exception("admin_metrics failed: %s", e)
         return jsonify({"status":"error","message":"Failed to fetch metrics"}), 500
@@ -255,7 +232,7 @@ def admin_metrics():
         "active_users": active_users
     }), 200
 
-@admin_bp.route("/recent_tx", methods=["GET", "OPTIONS"])
+@admin_bp.route("/recent_tx", methods=["GET","OPTIONS"])
 def admin_recent_tx():
     if request.method == "OPTIONS":
         return "", 204
@@ -283,13 +260,14 @@ def admin_recent_tx():
                     "other_party": row_dict.get("other_party","-"),
                     "date": row_dict.get("date","-")
                 })
+            logger.debug("admin_recent_tx: returning %d rows", len(result))
     except Exception as e:
         logger.exception("admin_recent_tx failed: %s", e)
         return jsonify({"status":"error","message":"Failed to fetch recent transactions"}), 500
 
     return jsonify(result), 200
 
-@admin_bp.route("/daily_summary", methods=["GET", "OPTIONS"])
+@admin_bp.route("/daily_summary", methods=["GET","OPTIONS"])
 def daily_summary():
     if request.method == "OPTIONS":
         return "", 204
@@ -298,34 +276,30 @@ def daily_summary():
         logger.error("daily_summary: DB not initialized")
         return jsonify({"status":"error","message":"DB not initialized"}), 500
 
-    try:
-        with _get_conn() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT DATE(date) as day,
-                       COALESCE(SUM(CASE WHEN type='Deposit' THEN amount END),0) as deposits,
-                       COALESCE(SUM(CASE WHEN type='Transfer Out' THEN amount END),0) as withdrawals,
-                       COALESCE(SUM(amount),0) as total
-                FROM transactions
-                WHERE date >= DATE('now','-6 days')
-                GROUP BY DATE(date)
-                ORDER BY day DESC
-            """)
-            rows = cur.fetchall()
-            summary = [{"day": r["day"], "deposits": r["deposits"], "withdrawals": r["withdrawals"], "total": r["total"]} for r in rows]
-    except Exception as e:
-        logger.exception("daily_summary failed: %s", e)
-        return jsonify({"status":"error","message":"Failed to fetch summary"}), 500
-
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DATE(date) as day,
+                   COALESCE(SUM(CASE WHEN type='Deposit' THEN amount END),0) as deposits,
+                   COALESCE(SUM(CASE WHEN type='Transfer Out' THEN amount END),0) as withdrawals,
+                   COALESCE(SUM(amount),0) as total
+            FROM transactions
+            WHERE date >= DATE('now','-6 days')
+            GROUP BY DATE(date)
+            ORDER BY day DESC
+        """)
+        rows = cur.fetchall()
+        summary = [{"day": r["day"], "deposits": r["deposits"], "withdrawals": r["withdrawals"], "total": r["total"]} for r in rows]
+        logger.debug("daily_summary: rows=%d", len(summary))
     return jsonify({"status":"success","summary":summary})
 
 # -----------------------------------------
 # Announcements backend
 # -----------------------------------------
 
-# Upload configuration
+# Upload configuration: ensure absolute path so send_from_directory works reliably
 UPLOAD_BASE = os.environ.get("UPLOAD_BASE", "uploads")
-ANN_UPLOAD_DIR = os.path.join(UPLOAD_BASE, "announcements")
+ANN_UPLOAD_DIR = os.path.abspath(os.path.join(UPLOAD_BASE, "announcements"))
 os.makedirs(ANN_UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
@@ -340,7 +314,7 @@ def _require_staff_or_admin():
         return True
     return False
 
-@admin_bp.route("/announcements", methods=["POST", "OPTIONS"])
+@admin_bp.route("/announcements", methods=["POST","OPTIONS"])
 def create_announcement():
     if request.method == "OPTIONS":
         return "", 204
@@ -395,15 +369,22 @@ def create_announcement():
         logger.exception("create_announcement failed: %s", e)
         return jsonify({"status":"error","message":"Failed to create announcement"}), 500
 
+    # Build image_url in a robust way
     image_url = None
     if image_path:
-        # request.host_url may not be present in some contexts; build relative path
-        base = request.host_url.rstrip("/") if request.host_url else ""
-        image_url = f"{base}/admin/uploads/announcements/{image_path}"
+        try:
+            base = request.host_url.rstrip("/")
+        except Exception:
+            base = ""
+        # If host_url present produce full absolute URL, else fallback to relative path
+        if base:
+            image_url = f"{base}/admin/uploads/announcements/{image_path}"
+        else:
+            image_url = f"/admin/uploads/announcements/{image_path}"
 
     return jsonify({"status":"success", "id": ann_id, "image_url": image_url}), 200
 
-@admin_bp.route("/announcements/active", methods=["GET", "OPTIONS"])
+@admin_bp.route("/announcements/active", methods=["GET","OPTIONS"])
 def get_active_announcements():
     if request.method == "OPTIONS":
         return "", 204
@@ -439,8 +420,11 @@ def get_active_announcements():
             }
         image_url = None
         if rp.get("image_path"):
-            base = request.host_url.rstrip("/") if request.host_url else ""
-            image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}"
+            try:
+                base = request.host_url.rstrip("/")
+            except Exception:
+                base = ""
+            image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}" if base else f"/admin/uploads/announcements/{rp['image_path']}"
         out.append({
             "id": rp.get("id"),
             "title": rp.get("title"),
@@ -453,8 +437,7 @@ def get_active_announcements():
 
     return jsonify(out), 200
 
-
-@admin_bp.route("/announcements", methods=["GET", "OPTIONS"])
+@admin_bp.route("/announcements", methods=["GET","OPTIONS"])
 def list_announcements():
     if request.method == "OPTIONS":
         return "", 204
@@ -501,8 +484,11 @@ def list_announcements():
             }
         image_url = None
         if rp.get("image_path"):
-            base = request.host_url.rstrip("/") if request.host_url else ""
-            image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}"
+            try:
+                base = request.host_url.rstrip("/")
+            except Exception:
+                base = ""
+            image_url = f"{base}/admin/uploads/announcements/{rp['image_path']}" if base else f"/admin/uploads/announcements/{rp['image_path']}"
         out.append({
             "id": rp.get("id"),
             "title": rp.get("title"),
@@ -516,7 +502,8 @@ def list_announcements():
 
     return jsonify({"status":"success","announcements": out}), 200
 
-@admin_bp.route("/announcements/<ann_id>", methods=["DELETE", "OPTIONS"])
+
+@admin_bp.route("/announcements/<ann_id>", methods=["DELETE","OPTIONS"])
 def delete_announcement(ann_id):
     if request.method == "OPTIONS":
         return "", 204
@@ -530,20 +517,43 @@ def delete_announcement(ann_id):
         return jsonify({"status":"error","message":"unauthorized"}), 401
 
     try:
+        # Perform permanent deletion: remove DB row, and unlink image file if present
         with _get_conn() as conn:
             cur = conn.cursor()
-            cur.execute("UPDATE announcements SET status = 'deleted' WHERE id = ?", (ann_id,))
+            # First fetch image_path (if any) so we can delete the file
+            cur.execute("SELECT image_path FROM announcements WHERE id = ?", (ann_id,))
+            row = cur.fetchone()
+            image_path = None
+            if row:
+                if hasattr(row, "keys"):
+                    image_path = row["image_path"]
+                else:
+                    image_path = row[0]
+            # Delete the DB row
+            cur.execute("DELETE FROM announcements WHERE id = ?", (ann_id,))
             conn.commit()
             if getattr(cur, "rowcount", 0) == 0:
+                logger.debug("delete_announcement: not found id=%s", ann_id)
                 return jsonify({"status":"error","message":"not found"}), 404
-            logger.info("delete_announcement: marked deleted id=%s", ann_id)
+
+            # If there was an image saved, attempt to remove the file
+            if image_path:
+                try:
+                    file_path = os.path.join(ANN_UPLOAD_DIR, image_path)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.debug("delete_announcement: removed image file %s", file_path)
+                except Exception as e:
+                    logger.exception("delete_announcement: failed to remove image file %s: %s", image_path, e)
+
+            logger.info("delete_announcement: permanently deleted id=%s", ann_id)
     except Exception as e:
         logger.exception("delete_announcement failed: %s", e)
         return jsonify({"status":"error","message":"Failed to delete announcement"}), 500
 
     return jsonify({"status":"success","id":ann_id}), 200
 
-@admin_bp.route("/announcements/<ann_id>/republish", methods=["POST", "OPTIONS"])
+@admin_bp.route("/announcements/<ann_id>/republish", methods=["POST","OPTIONS"])
 def republish_announcement(ann_id):
     if request.method == "OPTIONS":
         return "", 204
@@ -570,6 +580,7 @@ def republish_announcement(ann_id):
             """, (new_expires, new_created, ann_id))
             conn.commit()
             if getattr(cur, "rowcount", 0) == 0:
+                logger.debug("republish_announcement: not found id=%s", ann_id)
                 return jsonify({"status":"error","message":"not found"}), 404
             logger.info("republish_announcement: republished id=%s", ann_id)
     except Exception as e:
@@ -579,13 +590,43 @@ def republish_announcement(ann_id):
     return jsonify({"status":"success","id":ann_id}), 200
 
 # Serve uploaded images
-@admin_bp.route("/uploads/announcements/<filename>", methods=["GET", "OPTIONS"])
+@admin_bp.route("/uploads/announcements/<filename>", methods=["GET","OPTIONS"])
 def serve_ann_image(filename):
     if request.method == "OPTIONS":
         return "", 204
     try:
-        logger.debug("serve_ann_image: serving %s", filename)
+        logger.debug("serve_ann_image: serving %s from %s", filename, ANN_UPLOAD_DIR)
         return send_from_directory(ANN_UPLOAD_DIR, filename, conditional=True)
     except Exception as e:
         logger.exception("serve_ann_image failed: %s", e)
         return jsonify({"status":"error","message":"File not found"}), 404
+
+# --- Small admin debug route for inspecting admin routes (kept) ---
+@admin_bp.route("/debug", methods=["GET","OPTIONS"])
+def admin_debug():
+    if request.method == "OPTIONS":
+        return "", 204
+    try:
+        url_rules = []
+        for r in sorted(current_app.url_map.iter_rules(), key=lambda x: str(x.rule)):
+            rule = str(r.rule)
+            if "/admin" in rule:
+                url_rules.append({
+                    "rule": rule,
+                    "methods": sorted([m for m in r.methods if m not in ("HEAD","OPTIONS")])
+                })
+        return jsonify({
+            "status": "success",
+            "request_sample": {
+                "method": request.method,
+                "path": request.path,
+                "origin": request.headers.get("Origin"),
+                "content_type": request.headers.get("Content-Type"),
+                "x_debug": request.headers.get("X-Debug"),
+                "query_debug": request.args.get("debug")
+            },
+            "admin_routes": url_rules
+        }), 200
+    except Exception as e:
+        logger.exception("admin_debug failed: %s", e)
+        return jsonify({"status":"error","message":"debug failed"}), 500
