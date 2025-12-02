@@ -294,6 +294,42 @@
     }
   }
 
+  // Try two possible user endpoints (with and without /api)
+  async function fetchUserFromServer(phone) {
+    if (!phone) return null;
+    const candidates = [
+      `${API_BASE}/user/${encodeURIComponent(phone)}`,
+      `${API_BASE}/api/user/${encodeURIComponent(phone)}`
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) continue;
+        const data = await res.json().catch(()=>null);
+        if (!data) continue;
+        // server returns {status:"success","user":{...}} or maybe direct user object
+        if (data.status === 'success' && data.user) {
+          // ensure phone exists
+          const user = data.user;
+          if (!user.phone && phone) user.phone = phone;
+          return user;
+        }
+        // sometimes server might return the user object directly
+        if (data.username || data.phone) {
+          return data;
+        }
+        // sometimes server returns wrapper {username, phone}
+        if (data.username && data.phone) {
+          return data;
+        }
+      } catch (e) {
+        // try next candidate
+        continue;
+      }
+    }
+    return null;
+  }
+
   // Try two possible balance endpoints (with and without /api)
   async function fetchBalanceFromEndpoints(phone) {
     if (!phone) return null;
@@ -339,17 +375,62 @@
     }
   }
 
+  // ---------- UPDATED Hi-user flow: fetch authoritative user from backend ----------
+  async function ensureFreshUserOnLoad() {
+    const stored = getStoredUser();
+    if (stored && stored.phone) {
+      const fresh = await fetchUserFromServer(stored.phone).catch(()=>null);
+      if (fresh && (fresh.username || fresh.phone)) {
+        // merge balance if present in stored object
+        if (typeof stored.balance !== 'undefined' && typeof fresh.balance === 'undefined') fresh.balance = stored.balance;
+        try {
+          localStorage.setItem("loggedInUser", JSON.stringify(fresh));
+          localStorage.setItem("user", JSON.stringify(fresh));
+        } catch(e){}
+        updateUIWithUser(fresh);
+        return;
+      }
+    }
+    // fallback to stored UI
+    if (stored) updateUIWithUser(stored);
+  }
+
   // Run on load + focus + visibility + storage changes + periodic poll
   window.addEventListener("load", () => {
-    const user = getStoredUser();
-    if (user) updateUIWithUser(user);
-    // fetch latest
-    fetchAndUpdateBalance();
+    // new: ensure hi shows the real logged user from backend first
+    ensureFreshUserOnLoad().finally(()=> {
+      // after ensuring user, fetch balance and announcements
+      fetchAndUpdateBalance();
+      // init announcements (rest of your code relies on this function existing below)
+      if (typeof initAnnouncementsInPromo === 'function') {
+        try { initAnnouncementsInPromo(); } catch(e){}
+      }
+    });
   });
 
   window.addEventListener("focus", () => { fetchAndUpdateBalance(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState==='visible') fetchAndUpdateBalance(); });
-  window.addEventListener("storage", (e) => { if (!e) return; if (e.key === "loggedInUser" || e.key === "user") setTimeout(fetchAndUpdateBalance, 50); });
+  window.addEventListener("storage", async (e) => {
+    // when another tab changes loggedInUser/user (login/logout), refresh
+    if (!e) return;
+    if (e.key === "loggedInUser" || e.key === "user") {
+      // small debounce
+      setTimeout(async ()=> {
+        // if storage now has a phone, fetch authoritative user
+        const stored = getStoredUser();
+        if (stored && stored.phone) {
+          const fresh = await fetchUserFromServer(stored.phone).catch(()=>null);
+          if (fresh) {
+            try { localStorage.setItem("loggedInUser", JSON.stringify(fresh)); localStorage.setItem("user", JSON.stringify(fresh)); } catch(e){}
+            updateUIWithUser(fresh);
+            return;
+          }
+        }
+        // else just update UI with whatever stored value exists
+        updateUIWithUser(stored);
+      }, 50);
+    }
+  });
   setInterval(()=>{ const u = getStoredUser(); if (u && u.phone) fetchAndUpdateBalance(); }, 15000);
   // --------------------------------------------------------------------
 </script>
@@ -383,7 +464,7 @@
     if(!candidate) return null;
     candidate = String(candidate);
     if(/^https?:\/\//i.test(candidate)) return candidate;
-    // candidate is relative path or filename — create absolute using API site root (strip /api)
+      // candidate is relative path or filename — create absolute using API site root (strip /api)
     const siteBase = API_BASE.replace(/\/api\/?$/i, '');
     if(candidate.startsWith('/')) return siteBase + candidate;
     if(candidate.toLowerCase().startsWith('admin/')) return siteBase + '/' + candidate;
@@ -644,7 +725,10 @@
   // Run on load
   window.addEventListener('load', () => {
     // init announcements in promo area
-    initAnnouncementsInPromo();
+    // (initAnnouncementsInPromo is called earlier in the user flow too; calling here is safe)
+    if (typeof initAnnouncementsInPromo === 'function') {
+      try { initAnnouncementsInPromo(); } catch(e){}
+    }
   });
 </script>
 
