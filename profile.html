@@ -67,23 +67,24 @@
   <div class="app">
     <!-- Top bar -->
     <header class="topbar">
-   <a href="javascript:void(0);" onclick="goToDashboard()">
-  <i class="fa-solid fa-arrow-left"></i>
-</a>
+      <a href="javascript:void(0);" onclick="goToDashboard()">
+        <i class="fa-solid fa-arrow-left"></i>
+      </a>
 
-<script>
-function goToDashboard() {
-  window.location.href = "paymelogin.html"; 
-}
-</script>
+      <script>
+        function goToDashboard() {
+          window.location.href = "paymelogin.html";
+        }
+      </script>
       <h2>My Profile</h2>
     </header>
 
     <!-- Profile header -->
     <div class="profile-header">
       <div class="avatar"></div>
-      
-      
+      <!-- optionally show username here by reading stored user -->
+      <h3 id="profileName">User</h3>
+      <p id="profilePhone" style="color:var(--muted)"></p>
     </div>
 
     <!-- Menu items -->
@@ -96,10 +97,10 @@ function goToDashboard() {
         </div>
       </a>
       <div class="menu-item" onclick="window.location.href='Admin/index.html'">
-  <i class="fa-solid fa-user"></i>
-  <span>Tier</span>
-  <i class="fa-solid fa-angle-right"></i>
-</div>
+        <i class="fa-solid fa-user"></i>
+        <span>Tier</span>
+        <i class="fa-solid fa-angle-right"></i>
+      </div>
       <div class="menu-item">
         <i class="fa-solid fa-id-card"></i>
         <span>KYC</span>
@@ -113,7 +114,8 @@ function goToDashboard() {
         </div>
       </a>
       <div class="menu-item logout">
-        <a href="paymeregister.html">
+        <!-- call logout JS so we can clear local storage first -->
+        <a href="javascript:void(0);" id="logoutLink" onclick="performLogout()">
           <i class="fa-solid fa-right-from-bracket"></i>
           <span>Log Out</span>
           <i class="fa-solid fa-angle-right"></i>
@@ -121,6 +123,34 @@ function goToDashboard() {
       </div>
     </div>
   </div>
+
+<script>
+  // Show stored username/phone (small nicety)
+  (function showProfileFromStorage(){
+    try {
+      const raw = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+      if (!raw) return;
+      const user = JSON.parse(raw);
+      if (user && user.username) document.getElementById("profileName").innerText = user.username;
+      if (user && user.phone) document.getElementById("profilePhone").innerText = user.phone;
+    } catch(e){}
+  })();
+
+  // Clear login keys and redirect to login page
+  function performLogout() {
+    try {
+      // keys we clear: user and loggedInUser - keep it explicit
+      localStorage.removeItem("loggedInUser");
+      localStorage.removeItem("user");
+      // also clear announcements cache optionally (won't break anything)
+      // localStorage.removeItem("announcements_v1");
+      // if you keep any session tokens, clear them here too:
+      // localStorage.removeItem("auth_token");
+    } catch(e){ console.warn("logout clear error", e); }
+    // Go to login or register page
+    window.location.href = "paymeregister.html";
+  }
+</script>
 
 </body>
 </html>
