@@ -273,89 +273,9 @@
   </nav>
 
 <script>
-  // single API base used everywhere
+  // Backend base
   const API_BASE = "https://payme-update.onrender.com";
 
-  // ---------- USER & BALANCE LOGIC (restores Hi and balance) ----------
-  // tries to read logged user from localStorage keys used across your app
-  function getStoredUser() {
-    const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
-    try { return j ? JSON.parse(j) : null; } catch (e) { return null; }
-  }
-
-  function updateUIWithUser(user) {
-    if (!user) return;
-    const hi = document.getElementById("hiUser");
-    if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
-    const balEl = document.getElementById("balance");
-    if (balEl) {
-      const b = typeof user.balance !== "undefined" ? Number(user.balance) : (user.balance ? Number(user.balance) : 0);
-      balEl.innerText = "₦" + (isNaN(b) ? "0.00" : b.toFixed(2));
-    }
-  }
-
-  // Try two possible balance endpoints (with and without /api)
-  async function fetchBalanceFromEndpoints(phone) {
-    if (!phone) return null;
-    const candidates = [
-      `${API_BASE}/balance/${encodeURIComponent(phone)}`,
-      `${API_BASE}/api/balance/${encodeURIComponent(phone)}`
-    ];
-    for (const url of candidates) {
-      try {
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) continue;
-        const data = await res.json().catch(()=>null);
-        if (data && (typeof data.balance === 'number' || !isNaN(Number(data.balance)))) {
-          return Number(data.balance);
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    return null;
-  }
-
-  async function fetchAndUpdateBalance() {
-    const user = getStoredUser();
-    if (!user || !user.phone) {
-      // still update UI using stored object if present
-      updateUIWithUser(user);
-      return;
-    }
-    try {
-      const bal = await fetchBalanceFromEndpoints(user.phone);
-      if (bal !== null) {
-        user.balance = bal;
-        try { localStorage.setItem("loggedInUser", JSON.stringify(user)); localStorage.setItem("user", JSON.stringify(user)); } catch(e){}
-        updateUIWithUser(user);
-        return;
-      }
-      // fallback: update UI with stored user (maybe balance already present)
-      updateUIWithUser(user);
-    } catch(err){
-      console.warn("fetchAndUpdateBalance error", err);
-      updateUIWithUser(user);
-    }
-  }
-
-  // Run on load + focus + visibility + storage changes + periodic poll
-  window.addEventListener("load", () => {
-    const user = getStoredUser();
-    if (user) updateUIWithUser(user);
-    // fetch latest
-    fetchAndUpdateBalance();
-  });
-
-  window.addEventListener("focus", () => { fetchAndUpdateBalance(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState==='visible') fetchAndUpdateBalance(); });
-  window.addEventListener("storage", (e) => { if (!e) return; if (e.key === "loggedInUser" || e.key === "user") setTimeout(fetchAndUpdateBalance, 50); });
-  setInterval(()=>{ const u = getStoredUser(); if (u && u.phone) fetchAndUpdateBalance(); }, 15000);
-  // --------------------------------------------------------------------
-</script>
-
-<!-- ANNOUNCEMENTS SCRIPT: unchanged functionality, uses same API_BASE -->
-<script>
   // Announcement endpoints to try (keeps compatibility)
   const ANNOUNCEMENTS_ENDPOINTS = [
     `${API_BASE}/api/announcements/active`,
@@ -457,7 +377,7 @@
     const promoAnnouncements = document.getElementById('promoAnnouncements');
 
     if(!anns || anns.length === 0){
-           // show default promo
+      // show default promo
       promoDefault.style.display = 'flex';
       promoAnnouncements.style.display = 'none';
       return;
@@ -534,7 +454,7 @@
     const threshold = 40; // px
     const allowedTime = 500; // ms for flick
 
-    // touch
+        // touch
     trackEl.ontouchstart = function(e){
       stopAnnAutoPlay();
       const t = e.touches[0];
@@ -593,6 +513,138 @@
     };
   }
 
+  // ----------------------------
+  // USER + BALANCE: fetch current logged-in user from backend (primary)
+  // ----------------------------
+
+  // Try these auth endpoints (in order) to retrieve current user/session info.
+  // Will try multiple candidates to be robust across deployments.
+  const AUTH_USER_ENDPOINTS = [
+    `${API_BASE}/api/auth/check`,
+    `${API_BASE}/auth/check`,
+    `${API_BASE}/api/me`,
+    `${API_BASE}/me`,
+    `${API_BASE}/api/users/me`
+  ];
+
+  // Fallback localStorage key names your app used before
+  const LOCAL_USER_KEYS = ["loggedInUser", "user"];
+
+  // Attempt to fetch user info from the server. Returns user object or null.
+  async function fetchUserFromServer(){
+    for(const url of AUTH_USER_ENDPOINTS){
+      try {
+        const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
+        if(!res.ok) continue;
+        const json = await res.json().catch(()=>null);
+        if(!json) continue;
+
+        // Normalization: many endpoints return { user: {...} } or {data: {...}} or top-level user fields
+        let user = null;
+        if(json.user && typeof json.user === 'object') user = json.user;
+        else if(json.data && typeof json.data === 'object') user = json.data;
+        else if(json.result && typeof json.result === 'object') user = json.result;
+        else {
+          // if JSON has recognizable fields, treat it as user
+          const keys = Object.keys(json);
+          const likely = ["id","username","name","email","phone"];
+          if(likely.some(k=>keys.includes(k))) user = json;
+        }
+
+        if(user){
+          // Ensure some canonical fields exist
+          user.username = user.username || user.name || user.email || user.phone || "User";
+          // Some APIs return nested profile/balance
+          if(typeof user.balance === 'undefined' && json.balance) user.balance = json.balance;
+          return user;
+        }
+      } catch(e){
+        // try next endpoint
+        continue;
+      }
+    }
+    return null;
+  }
+
+  // fallback: read user from localStorage (old behaviour)
+  function readUserFromLocalStorage(){
+    for(const k of LOCAL_USER_KEYS){
+      const raw = localStorage.getItem(k);
+      if(!raw) continue;
+      try { const parsed = JSON.parse(raw); if(parsed && typeof parsed === 'object') return parsed; } catch(e){ continue; }
+    }
+    return null;
+  }
+
+  // Update UI elements for user and balance
+  function updateUIWithUser(user) {
+    if (!user) return;
+    const hi = document.getElementById("hiUser");
+    if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
+    const balEl = document.getElementById("balance");
+    if (balEl) {
+      const b = typeof user.balance !== "undefined" ? Number(user.balance) : 0;
+      if(!isNaN(b)) balEl.innerText = "₦" + b.toFixed(2);
+      else balEl.innerText = "₦0.00";
+    }
+  }
+
+  // If server doesn't include balance, try separate balance endpoint (existing behavior)
+  async function fetchBalanceIfMissing(user){
+    if(!user) return;
+    if(typeof user.balance !== 'undefined' && !isNaN(Number(user.balance))) {
+      updateUIWithUser(user);
+      return;
+    }
+    // attempt to fetch by phone if present
+    const phone = user.phone || user.mobile || user.msisdn || user.username;
+    if(!phone) { updateUIWithUser(user); return; }
+    try {
+      const res = await fetch(`${API_BASE}/balance/${encodeURIComponent(phone)}`, { cache: "no-store" });
+      if(!res.ok){ updateUIWithUser(user); return; }
+      const data = await res.json().catch(()=>null);
+      if(data && (typeof data.balance === "number" || !isNaN(Number(data.balance)))){
+        user.balance = Number(data.balance);
+        // persist into local storage so other parts of app keep working
+        try { localStorage.setItem("loggedInUser", JSON.stringify(user)); localStorage.setItem("user", JSON.stringify(user)); } catch(e){}
+      }
+    } catch(e){}
+    updateUIWithUser(user);
+  }
+
+  // Primary getter used by page: tries server first, falls back to localStorage
+  async function getCurrentUser(){
+    // try server
+    try {
+      const u = await fetchUserFromServer();
+      if(u){
+        // store to local for compatibility
+        try { localStorage.setItem("loggedInUser", JSON.stringify(u)); localStorage.setItem("user", JSON.stringify(u)); } catch(e){}
+        return u;
+      }
+    } catch(e){}
+    // fallback local
+    return readUserFromLocalStorage();
+  }
+
+  // When other tabs change login state they update localStorage -> keep UI updated
+  window.addEventListener("storage", (e) => {
+    if (!e) return;
+    if (e.key === "loggedInUser" || e.key === "user") {
+      // small debounce
+      setTimeout(async ()=>{
+        const u = await getCurrentUser();
+        if(u) {
+          updateUIWithUser(u);
+        }
+      }, 50);
+    }
+  });
+
+  // ----------------------------
+  // ANNOUNCEMENTS (unchanged behavior, kept below)
+  // ----------------------------
+
   // Main initializer: fetch announcements, render, and set polling
   async function initAnnouncementsInPromo(){
     try {
@@ -634,6 +686,7 @@
             try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
           } else {
             // even if ids same, sometimes image resource changed (same filename). Force image reload by re-render with cache-bust
+            // re-render but keep same index
             renderAnnouncementsImages(serverList);
           }
         }
@@ -642,7 +695,25 @@
   }
 
   // Run on load
-  window.addEventListener('load', () => {
+  window.addEventListener('load', async () => {
+    // Get current user from backend first (fall back to localStorage)
+    try {
+      const user = await getCurrentUser();
+      if(user){
+        updateUIWithUser(user);
+        // if server omitted balance, call balance endpoint
+        fetchBalanceIfMissing(user);
+      } else {
+        // no server/user -> try local
+        const local = readUserFromLocalStorage();
+        if(local) updateUIWithUser(local);
+      }
+    } catch(e){
+      // fallback to local storage
+      const local = readUserFromLocalStorage();
+      if(local) updateUIWithUser(local);
+    }
+
     // init announcements in promo area
     initAnnouncementsInPromo();
   });
