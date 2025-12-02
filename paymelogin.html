@@ -55,7 +55,7 @@
       display:flex;align-items:center;gap:6px}
     .chip-link{font-size:12px;color:#555;display:flex;align-items:center;gap:6px}
     .ghost-link{font-weight:600;color:var(--primary-dark)}
-    .btn{background:var(--primary);Color:#fff;border:0;cursor:pointer;
+    .btn{background:var(--primary);color:#fff;border:0;cursor:pointer;
       padding:10px 16px;border-radius:22px;font-weight:700;font-size:13px}
     .btn:hover{background:var(--primary-dark)}
     .inline-promo{margin-top:12px;background:#fff;border-radius:10px;
@@ -107,6 +107,7 @@
     .ann-dots { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5; }
     .ann-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; border:1px solid rgba(0,0,0,0.05) }
     .ann-dot.active { background:#ffffff; box-shadow:0 0 0 3px rgba(0,0,0,0.06); }
+    /* small fallback text (hidden visually for user promo) */
     .sr-only { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
   </style>
 </head>
@@ -174,7 +175,7 @@
       </a>
     </section>
 
-    <!-- Promo (announcement image-only carousel placed exactly here) -->
+    <!-- Promo (announcement image carousel placed exactly here) -->
     <section class="promo-card" id="promoCard">
       <!-- fallback / default promo (when no announcements active) -->
       <div id="promoDefault" style="display:flex; align-items:center; gap:10px; width:100%;">
@@ -272,208 +273,123 @@
   </nav>
 
 <script>
-  // Backend base
+  // single API base used everywhere
   const API_BASE = "https://payme-update.onrender.com";
 
-  // --- USER / BALANCE LOGIC (updated to prefer backend session) ---
-  // currentUser: canonical source used across UI (populated from server when possible)
-  let currentUser = null;
-
-  // Utility: try to get user from either key used in your app (localStorage fallback)
+  // ---------- USER & BALANCE LOGIC (restores Hi and balance) ----------
+  // tries to read logged user from localStorage keys used across your app
   function getStoredUser() {
     const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
-    try {
-      return j ? JSON.parse(j) : null;
-    } catch (e) {
-      return null;
-    }
+    try { return j ? JSON.parse(j) : null; } catch (e) { return null; }
   }
 
-  // Update UI elements for user and balance
   function updateUIWithUser(user) {
     if (!user) return;
     const hi = document.getElementById("hiUser");
     if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
     const balEl = document.getElementById("balance");
     if (balEl) {
-      const b = typeof user.balance !== "undefined" ? Number(user.balance) : 0;
+      const b = typeof user.balance !== "undefined" ? Number(user.balance) : (user.balance ? Number(user.balance) : 0);
       balEl.innerText = "₦" + (isNaN(b) ? "0.00" : b.toFixed(2));
     }
   }
 
-  // Fetch user info from server using session/auth check
-  async function fetchCurrentUserFromServer(){
-    try {
-      // prefer auth/check if available on your backend (returns session user)
-      const authRes = await fetch(`${API_BASE}/auth/check`, { credentials: 'include', cache: 'no-store' });
-      if(authRes.ok){
-        const authJson = await authRes.json().catch(()=>null);
-        // auth endpoint might return { user: {...} } or { username, phone } etc
-        let phone = authJson?.phone || authJson?.user?.phone || authJson?.user?.phone_number || null;
-        let username = authJson?.username || authJson?.user?.username || authJson?.user?.name || null;
-
-        // If we have phone, fetch canonical user route for balance and latest fields
-        if(phone){
-          try {
-            const uRes = await fetch(`${API_BASE}/user/${encodeURIComponent(phone)}`, { credentials: 'include', cache: 'no-store' });
-            if(uRes.ok){
-              const uJson = await uRes.json().catch(()=>null);
-              if(uJson && uJson.status === 'success' && uJson.user){
-                // canonical server user
-                return uJson.user;
-              } else {
-                // fallback to authJson
-                return { username: username || authJson?.user?.username || 'User', phone };
-              }
-            } else {
-              // fallback to authJson
-              return { username: username || authJson?.user?.username || 'User', phone };
-            }
-          } catch(e){
-            return { username: username || authJson?.user?.username || 'User', phone };
-          }
+  // Try two possible balance endpoints (with and without /api)
+  async function fetchBalanceFromEndpoints(phone) {
+    if (!phone) return null;
+    const candidates = [
+      `${API_BASE}/balance/${encodeURIComponent(phone)}`,
+      `${API_BASE}/api/balance/${encodeURIComponent(phone)}`
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) continue;
+        const data = await res.json().catch(()=>null);
+        if (data && (typeof data.balance === 'number' || !isNaN(Number(data.balance)))) {
+          return Number(data.balance);
         }
-
-        // If auth returns username directly but no phone
-        if(username){
-          return { username };
-        }
+      } catch (e) {
+        continue;
       }
-    } catch(e){
-      // ignore and fallback
     }
-
-    // fallback: try to read stored user from localStorage (keeps backward compatibility)
-    const stored = getStoredUser();
-    if(stored) return stored;
     return null;
   }
 
-  // Fetch balance from backend by phone (or use stored balance)
-  async function fetchAndUpdateBalance(){
-    // prefer currentUser.phone; if not present, fallback to stored user
-    let userCandidate = currentUser || getStoredUser();
-    if(!userCandidate || !userCandidate.phone) {
-      // update UI from candidate if present
-      if(userCandidate) updateUIWithUser(userCandidate);
+  async function fetchAndUpdateBalance() {
+    const user = getStoredUser();
+    if (!user || !user.phone) {
+      // still update UI using stored object if present
+      updateUIWithUser(user);
       return;
     }
-    const phone = userCandidate.phone;
     try {
-      const res = await fetch(`${API_BASE}/user/${encodeURIComponent(phone)}`, { credentials: 'include', cache: 'no-store' });
-      if(!res.ok){
-        // still update UI from whichever we have
-        updateUIWithUser(userCandidate);
+      const bal = await fetchBalanceFromEndpoints(user.phone);
+      if (bal !== null) {
+        user.balance = bal;
+        try { localStorage.setItem("loggedInUser", JSON.stringify(user)); localStorage.setItem("user", JSON.stringify(user)); } catch(e){}
+        updateUIWithUser(user);
         return;
       }
-      const data = await res.json();
-      if(data && data.status === 'success' && data.user){
-        currentUser = data.user;
-        // Persist to localStorage for compatibility across the app
-        try { localStorage.setItem("loggedInUser", JSON.stringify(currentUser)); localStorage.setItem("user", JSON.stringify(currentUser)); } catch(e){}
-        updateUIWithUser(currentUser);
-      } else {
-        updateUIWithUser(userCandidate);
-      }
-    } catch(err){
-      console.warn("Could not fetch balance:", err);
-      updateUIWithUser(userCandidate);
-    }
-  }
-
-  // Initialize currentUser on load using server if possible
-  async function initCurrentUser(){
-    const user = await fetchCurrentUserFromServer();
-    if(user){
-      currentUser = user;
-      try { localStorage.setItem("loggedInUser", JSON.stringify(user)); localStorage.setItem("user", JSON.stringify(user)); } catch(e){}
+      // fallback: update UI with stored user (maybe balance already present)
       updateUIWithUser(user);
-    } else {
-      // fallback to local stored user
-      const stored = getStoredUser();
-      if(stored){
-        currentUser = stored;
-        updateUIWithUser(currentUser);
-      }
+    } catch(err){
+      console.warn("fetchAndUpdateBalance error", err);
+      updateUIWithUser(user);
     }
   }
 
-  // Initial load
-  window.addEventListener("load", async () => {
-    // Initialize user from server (session) or fallback
-    await initCurrentUser();
-    // Then fetch balance (will use canonical /user/<phone> endpoint)
-    fetchAndUpdateBalance();
-    // also initialize announcements display
-    initAnnouncementsInPromo();
-  });
-
-  // Refresh when tab gets focus (user likely returned from add-money or changed login)
-  window.addEventListener("focus", async () => {
-    // re-read server session to detect login changes
-    await initCurrentUser();
+  // Run on load + focus + visibility + storage changes + periodic poll
+  window.addEventListener("load", () => {
+    const user = getStoredUser();
+    if (user) updateUIWithUser(user);
+    // fetch latest
     fetchAndUpdateBalance();
   });
 
-  // Refresh when page becomes visible
-  document.addEventListener("visibilitychange", async () => {
-    if (document.visibilityState === "visible") {
-      await initCurrentUser();
-      fetchAndUpdateBalance();
-    }
-  });
+  window.addEventListener("focus", () => { fetchAndUpdateBalance(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState==='visible') fetchAndUpdateBalance(); });
+  window.addEventListener("storage", (e) => { if (!e) return; if (e.key === "loggedInUser" || e.key === "user") setTimeout(fetchAndUpdateBalance, 50); });
+  setInterval(()=>{ const u = getStoredUser(); if (u && u.phone) fetchAndUpdateBalance(); }, 15000);
+  // --------------------------------------------------------------------
+</script>
 
-  // Listen for storage changes (e.g., login changed in another tab)
-  window.addEventListener("storage", (e) => {
-    if (!e) return;
-    if (e.key === "loggedInUser" || e.key === "user") {
-      // small debounce
-      setTimeout(async ()=>{
-        // pick up new stored user and then prefer server if available
-        const stored = getStoredUser();
-        if(stored){
-          currentUser = stored;
-          updateUIWithUser(currentUser);
-        }
-        // also try server to be sure
-        await initCurrentUser();
-        fetchAndUpdateBalance();
-      }, 50);
-    }
-  });
-
-  // Poll every 15s to keep balance fresh (won't run if no user)
-  setInterval(async () => {
-    const user = currentUser || getStoredUser();
-    if (user && user.phone) await fetchAndUpdateBalance();
-  }, 15000);
-
-  // --- ANNOUNCEMENTS SCRIPT: only affects promo-card area (left unchanged except using same API_BASE) ---
-  // Endpoint candidates (update if your API uses a different path)
+<!-- ANNOUNCEMENTS SCRIPT: unchanged functionality, uses same API_BASE -->
+<script>
+  // Announcement endpoints to try (keeps compatibility)
   const ANNOUNCEMENTS_ENDPOINTS = [
+    `${API_BASE}/api/announcements/active`,
     `${API_BASE}/announcements/active`,
     `${API_BASE}/admin/announcements/active`,
-    `${API_BASE}/admin/announcements` // fallback (server may return list)
+    `${API_BASE}/api/announcements`, // fallback (server may return {status,announcements:[]})
+    `${API_BASE}/admin/announcements`
   ];
 
-  // localStorage fallback key (keeps compatibility with notifications.html)
-  const LOCAL_ANN_KEY = 'announcements_v1';
+  // Poll / refresh interval (ms)
+  const REFRESH_INTERVAL_MS = 10000; // 10s
 
-  // autoplay timer
+  // Carousel state
   let annIndex = 0;
   let annTimer = null;
   let currentAnn = [];
 
-  function readLocalAnnouncements(){
-    try {
-      const raw = localStorage.getItem(LOCAL_ANN_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch(e){ return []; }
-  }
-
-  
-  // sanitize small text
+  // Helper: sanitize minimal text for attributes
   function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+
+  // Build image URL robustly from fields server may return
+  function buildImageUrlFromItem(it){
+    // accept image_url, imageUrl, image_path, image, imagePath
+    let candidate = it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null;
+    if(!candidate) return null;
+    candidate = String(candidate);
+    if(/^https?:\/\//i.test(candidate)) return candidate;
+    // candidate is relative path or filename — create absolute using API site root (strip /api)
+    const siteBase = API_BASE.replace(/\/api\/?$/i, '');
+    if(candidate.startsWith('/')) return siteBase + candidate;
+    if(candidate.toLowerCase().startsWith('admin/')) return siteBase + '/' + candidate;
+    // assume it's filename under admin uploads
+    return `${siteBase}/admin/uploads/announcements/${candidate}`;
+  }
 
   async function fetchAnnouncementsFromServer(){
     for(const url of ANNOUNCEMENTS_ENDPOINTS){
@@ -483,42 +399,45 @@
         const json = await r.json().catch(()=>null);
         if(!json) continue;
 
-        // server might respond with {status:"success", data:[...]} or a raw array
         let list = [];
         if(Array.isArray(json)) list = json;
-        else if(Array.isArray(json.data)) list = json.data;
         else if(Array.isArray(json.announcements)) list = json.announcements;
-        else if(json.status === 'success' && (Array.isArray(json.data) || Array.isArray(json.announcements))) {
-          list = json.data || json.announcements || [];
-        } else if(json.status === 'success' && json.announcements && Array.isArray(json.announcements)) {
-          list = json.announcements;
-        } else if(json.status === 'success' && Array.isArray(json.results)) {
-          list = json.results;
-        } else if(json.status === 'success' && json.payload && Array.isArray(json.payload)) {
-          list = json.payload;
-        } else {
-          // if none matched, try to use top-level fields; fallback to empty
+        else if(Array.isArray(json.data)) list = json.data;
+        else if(Array.isArray(json.results)) list = json.results;
+        else if(json.status === 'success' && Array.isArray(json.announcements)) list = json.announcements;
+        else if(json.status === 'success' && Array.isArray(json.data)) list = json.data;
+        else if(json.announcements && Array.isArray(json.announcements)) list = json.announcements;
+        else {
+          // try to find an array anywhere
+          for(const k of Object.keys(json)){
+            if(Array.isArray(json[k])) { list = json[k]; break; }
+          }
         }
 
-        // Normalize items (pull expected fields)
+        // Normalize
         const normalized = list.map(it=>{
+          const id = it.id || it._id || it.announcement_id || it.ann_id || it.announcementId || (it.title? Math.random().toString(36).slice(2,9) : null);
           return {
-            id: it.id || it._id || it.announcement_id || (it.title? (Math.random().toString(36).slice(2,9)) : null),
-            title: it.title || it.title_text || it.heading || '',
-            body: it.body || it.message || it.text || '',
+            id,
+            title: it.title || it.heading || '',
+            body: it.body || it.message || '',
             target: it.target || 'all',
-            createdAt: it.createdAt || it.created_at || it.date || it.created || null,
-            expiresAt: it.expiresAt || it.expires_at || it.expiry || null,
-            imageUrl: it.image_url || it.imageUrl || it.image || null,
+            createdAt: it.createdAt || it.created_at || it.created || null,
+            expiresAt: it.expiresAt || it.expires_at || it.expires || null,
+            // image_url priority; third-party libs may return different keys
+            image_url: it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null,
             raw: it
           };
         }).filter(x=>x.id);
 
-        // filter active items (not expired)
+        // Now filter active (not expired) and sort by createdAt desc if available
         const now = new Date();
-        const active = normalized.filter(a => !a.expiresAt || new Date(a.expiresAt) > now);
+        const active = normalized.filter(a => {
+          if(!a.expiresAt) return true;
+          const ex = new Date(a.expiresAt);
+          return !isNaN(ex.getTime()) ? ex > now : true;
+        });
 
-        // limit to 10
         return active.slice(0, 10);
       } catch(e){
         // try next endpoint
@@ -529,58 +448,66 @@
     return null;
   }
 
-  function renderPromoFallback(){
-    // show existing default promo if no announcements
-    document.getElementById('promoDefault').style.display = 'flex';
-    document.getElementById('promoAnnouncements').style.display = 'none';
-  }
-
-  function renderAnnouncements(anns){
+    // Render the promo carousel: **ONLY images** show (no title/body)
+  function renderAnnouncementsImages(anns){
     currentAnn = anns || [];
     const track = document.getElementById('annTrack');
-    const controls = document.getElementById('annControls');
-    const dots = document.getElementById('annDots');
+    const dotsWrap = document.getElementById('annDots');
+    const promoDefault = document.getElementById('promoDefault');
+    const promoAnnouncements = document.getElementById('promoAnnouncements');
 
     if(!anns || anns.length === 0){
-      renderPromoFallback();
+           // show default promo
+      promoDefault.style.display = 'flex';
+      promoAnnouncements.style.display = 'none';
       return;
     }
-    // Build slides
-    track.innerHTML = anns.map(a => {
-      const img = a.imageUrl ? `<img src="${esc(a.imageUrl)}" alt="${esc(a.title)}">` : `<div style="width:120px;height:72px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div>`;
-      return `<div class="ann-slide" data-id="${esc(a.id)}">
-        ${img}
-      </div>`;
+
+    // build slides: for each item attempt to build full image url and append cache-bust so replaced images update quickly
+    const slidesHtml = anns.map((a)=>{
+      const candidateUrl = buildImageUrlFromItem(a) || a.image_url || a.raw?.image_url || null;
+      // add cachebust to force browser to revalidate images when server changed or deleted
+      const finalUrl = candidateUrl ? (candidateUrl + (candidateUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now()) : null;
+      // Only image is shown
+      if(finalUrl){
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><img src="${esc(finalUrl)}" alt=""></div>`;
+      } else {
+        // fallback visual placeholder (should not happen for promo)
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><div style="width:100%;height:140px;background:#f3f4f6;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div></div>`;
+      }
     }).join('');
 
+    track.innerHTML = slidesHtml;
+
     // dots
-    dots.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
+    dotsWrap.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
 
-    // show carousel UI
-    document.getElementById('promoDefault').style.display = 'none';
-    document.getElementById('promoAnnouncements').style.display = 'block';
-    if(controls) controls.style.display = 'none';
-    dots.style.display = 'flex';
+    // show announcements (hide default promo)
+    promoDefault.style.display = 'none';
+    promoAnnouncements.style.display = 'block';
+    dotsWrap.style.display = 'flex';
 
+    // reset index & transform
     annIndex = 0;
     updateAnnTransform();
     startAnnAutoPlay();
 
-    // attach dot click handlers
-    Array.from(dots.children).forEach(dot=>{
+    // dot clicks
+    Array.from(dotsWrap.children).forEach(dot => {
       dot.addEventListener('click', ()=> {
         annIndex = Number(dot.getAttribute('data-index') || 0);
         updateAnnTransform();
         restartAnnAutoPlay();
       });
     });
+
+    // enable swipe gestures for manual movement
+    setupSwipe(track);
   }
 
   function updateAnnTransform(){
     const track = document.getElementById('annTrack');
-    if(!track) return;
     const len = currentAnn.length || 1;
-    // clamp index
     if(annIndex < 0) annIndex = 0;
     if(annIndex >= len) annIndex = len - 1;
     track.style.transform = `translateX(-${annIndex * 100}%)`;
@@ -600,41 +527,125 @@
   function stopAnnAutoPlay(){ if(annTimer) clearInterval(annTimer); annTimer = null; }
   function restartAnnAutoPlay(){ stopAnnAutoPlay(); startAnnAutoPlay(); }
 
+  // Simple swipe handler for desktop + mobile (touch + mouse drag)
+  function setupSwipe(trackEl){
+    if(!trackEl) return;
+    let startX = 0, deltaX = 0, isDown = false, startTime = 0;
+    const threshold = 40; // px
+    const allowedTime = 500; // ms for flick
+
+    // touch
+    trackEl.ontouchstart = function(e){
+      stopAnnAutoPlay();
+      const t = e.touches[0];
+      startX = t.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+    };
+    trackEl.ontouchmove = function(e){
+      const t = e.touches[0];
+      deltaX = t.clientX - startX;
+      // optionally add transform for drag feedback
+      trackEl.style.transition = 'none';
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    trackEl.ontouchend = function(e){
+      const elapsed = Date.now() - startTime;
+      trackEl.style.transition = '';
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) { // swipe left -> next
+          annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        } else { // swipe right -> prev
+          annIndex = Math.max(0, annIndex - 1);
+        }
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
+
+    // mouse drag for desktops
+    trackEl.onmousedown = function(e){
+      stopAnnAutoPlay();
+      isDown = true;
+      startX = e.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+      document.body.style.userSelect = 'none';
+      trackEl.style.transition = 'none';
+    };
+    window.onmousemove = function(e){
+      if(!isDown) return;
+      deltaX = e.clientX - startX;
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    window.onmouseup = function(e){
+      if(!isDown) return;
+      isDown = false;
+      document.body.style.userSelect = '';
+      trackEl.style.transition = '';
+      const elapsed = Date.now() - startTime;
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        else annIndex = Math.max(0, annIndex - 1);
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
+  }
+
+  // Main initializer: fetch announcements, render, and set polling
   async function initAnnouncementsInPromo(){
     try {
-      // try fetch
       const serverList = await fetchAnnouncementsFromServer();
       let announcements = null;
-      if(Array.isArray(serverList)){
+      if(Array.isArray(serverList)) {
         announcements = serverList;
-        // also store to local fallback for offline
-        try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
+        try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
       } else {
-        // fallback to local cache
-        announcements = readLocalAnnouncements().slice(0,10);
+        announcements = (function(){ try { return JSON.parse(localStorage.getItem('announcements_v1')||'[]'); } catch(e){ return []; } })();
       }
-      if(announcements && announcements.length > 0){
-        renderAnnouncements(announcements);
-      } else {
-        renderPromoFallback();
+
+      if(announcements && announcements.length > 0) renderAnnouncementsImages(announcements);
+      else {
+        // show default promo
+        document.getElementById('promoDefault').style.display = 'flex';
+        document.getElementById('promoAnnouncements').style.display = 'none';
       }
     } catch(e){
-      // fallback to local only
-      const fallback = readLocalAnnouncements().slice(0,10);
-      if(fallback.length) renderAnnouncements(fallback);
-      else renderPromoFallback();
+      const fallback = (function(){ try { return JSON.parse(localStorage.getItem('announcements_v1')||'[]'); } catch(e){ return []; } })();
+      if(fallback && fallback.length) renderAnnouncementsImages(fallback);
+      else {
+        document.getElementById('promoDefault').style.display = 'flex';
+        document.getElementById('promoAnnouncements').style.display = 'none';
+      }
     }
 
-    // refresh announcements every 30s (or adjust as needed)
+    // periodic refresh to reflect admin changes (deletions/creates)
     setInterval(async ()=>{
-      const serverList = await fetchAnnouncementsFromServer();
-      if(Array.isArray(serverList) && JSON.stringify(serverList) !== JSON.stringify(currentAnn)){
-        // update local store & UI
-        try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
-        renderAnnouncements(serverList);
-      }
-    }, 30000);
+      try {
+        const serverList = await fetchAnnouncementsFromServer();
+        if(Array.isArray(serverList)){
+          // compare simple JSON to see if really changed
+          const oldJson = JSON.stringify(currentAnn.map(a=>a.id || a.image_url));
+          const newJson = JSON.stringify(serverList.map(a=>a.id || a.image_url));
+          if(oldJson !== newJson){
+            // rerender & cache-bust images so updated deletions/changes reflect immediately
+            renderAnnouncementsImages(serverList);
+            try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
+          } else {
+            // even if ids same, sometimes image resource changed (same filename). Force image reload by re-render with cache-bust
+            renderAnnouncementsImages(serverList);
+          }
+        }
+      } catch(e){}
+    }, REFRESH_INTERVAL_MS);
   }
+
+  // Run on load
+  window.addEventListener('load', () => {
+    // init announcements in promo area
+    initAnnouncementsInPromo();
+  });
 </script>
 
 </body>
