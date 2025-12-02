@@ -92,7 +92,7 @@
     .refer p{font-size:13px;color:#666;margin-top:3px}
     .refer .go{background:var(--primary);color:#fff;border:0;border-radius:18px;padding:8px 16px;font-weight:700}
     .bottom{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
-      display:grid;grid-template-columns:repeat(5,1fr);padding:8px 0;z-index:20}
+      display:grid;grid-template-columns:repeat(5,1fr);Padding:8px 0;z-index:20}
     .nav-item{text-align:center;font-size:11px;color:#666}
     .nav-item i{display:block;font-size:18px;margin-bottom:2px;color:#666}
     .nav-item.active, .nav-item.active i{color:#000}
@@ -294,42 +294,6 @@
     }
   }
 
-  // Try two possible user endpoints (with and without /api)
-  async function fetchUserFromServer(phone) {
-    if (!phone) return null;
-    const candidates = [
-      `${API_BASE}/user/${encodeURIComponent(phone)}`,
-      `${API_BASE}/api/user/${encodeURIComponent(phone)}`
-    ];
-    for (const url of candidates) {
-      try {
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) continue;
-        const data = await res.json().catch(()=>null);
-        if (!data) continue;
-        // server returns {status:"success","user":{...}} or maybe direct user object
-        if (data.status === 'success' && data.user) {
-          // ensure phone exists
-          const user = data.user;
-          if (!user.phone && phone) user.phone = phone;
-          return user;
-        }
-        // sometimes server might return the user object directly
-        if (data.username || data.phone) {
-          return data;
-        }
-        // sometimes server returns wrapper {username, phone}
-        if (data.username && data.phone) {
-          return data;
-        }
-      } catch (e) {
-        // try next candidate
-        continue;
-      }
-    }
-    return null;
-  }
-
   // Try two possible balance endpoints (with and without /api)
   async function fetchBalanceFromEndpoints(phone) {
     if (!phone) return null;
@@ -375,63 +339,108 @@
     }
   }
 
-  // ---------- UPDATED Hi-user flow: fetch authoritative user from backend ----------
-  async function ensureFreshUserOnLoad() {
-    const stored = getStoredUser();
-    if (stored && stored.phone) {
-      const fresh = await fetchUserFromServer(stored.phone).catch(()=>null);
-      if (fresh && (fresh.username || fresh.phone)) {
-        // merge balance if present in stored object
-        if (typeof stored.balance !== 'undefined' && typeof fresh.balance === 'undefined') fresh.balance = stored.balance;
-        try {
-          localStorage.setItem("loggedInUser", JSON.stringify(fresh));
-          localStorage.setItem("user", JSON.stringify(fresh));
-        } catch(e){}
-        updateUIWithUser(fresh);
-        return;
+  // NEW: refresh logged-in user's display name from backend (ONLY touches hi user)
+  async function refreshLoggedInUserName(){
+    const user = getStoredUser();
+    if(!user) return;
+
+    // update UI immediately with stored name while we try to refresh
+    updateUIWithUser(user);
+
+    // helper to set username locally + UI
+    function applyUsername(name){
+      if(!name) return;
+      user.username = name;
+      try {
+        // update both common storage keys
+        localStorage.setItem("loggedInUser", JSON.stringify(user));
+        localStorage.setItem("user", JSON.stringify(user));
+      } catch(e){}
+      const hi = document.getElementById("hiUser");
+      if(hi) hi.innerText = "Hi, " + name;
+    }
+
+    // prefer account_number route when available (10-digit)
+    const acct = String(user.account_number || "").trim();
+    if(/^\d{10}$/.test(acct)){
+      const candidates = [
+        `${API_BASE}/user_by_account/${acct}`,
+        `${API_BASE}/api/user_by_account/${acct}`
+      ];
+      for(const url of candidates){
+        try{
+          const r = await fetch(url, { cache: 'no-store' });
+          if(!r.ok) continue;
+          const j = await r.json().catch(()=>null);
+          if(!j) continue;
+          // route returns: {status:'success', username: '...' } per your backend snippet
+          if(j.status === 'success' && j.username){
+            applyUsername(j.username);
+            return;
+          }
+          // some implementations may return username at top-level
+          if(j.username){
+            applyUsername(j.username);
+            return;
+          }
+        }catch(e){ continue; }
       }
     }
-    // fallback to stored UI
-    if (stored) updateUIWithUser(stored);
+
+    // fallback: use phone endpoint if available
+    const phone = String(user.phone || "").trim();
+    if(phone){
+      const candidates = [
+        `${API_BASE}/user/${encodeURIComponent(phone)}`,
+        `${API_BASE}/api/user/${encodeURIComponent(phone)}`
+      ];
+      for(const url of candidates){
+        try{
+          const r = await fetch(url, { cache: 'no-store' });
+          if(!r.ok) continue;
+          const j = await r.json().catch(()=>null);
+          if(!j) continue;
+          // your /user/<phone> returns: {status:'success', user: {username, ...}}
+          if(j.status === 'success' && j.user && (j.user.username || j.user.name)){
+            applyUsername(j.user.username || j.user.name);
+            return;
+          }
+          // some responses might just be the user object
+          if(j.username || j.name){
+            applyUsername(j.username || j.name);
+            return;
+          }
+          // some may return {"user": {...}}
+          if(j.user && (j.user.username || j.user.name)){
+            applyUsername(j.user.username || j.user.name);
+            return;
+          }
+        }catch(e){ continue; }
+      }
+    }
+
+    // if all fails, we keep stored name (no change)
   }
 
   // Run on load + focus + visibility + storage changes + periodic poll
   window.addEventListener("load", () => {
-    // new: ensure hi shows the real logged user from backend first
-    ensureFreshUserOnLoad().finally(()=> {
-      // after ensuring user, fetch balance and announcements
-      fetchAndUpdateBalance();
-      // init announcements (rest of your code relies on this function existing below)
-      if (typeof initAnnouncementsInPromo === 'function') {
-        try { initAnnouncementsInPromo(); } catch(e){}
-      }
-    });
+    const user = getStoredUser();
+    if (user) updateUIWithUser(user);
+    // fetch latest balance
+    fetchAndUpdateBalance();
+    // announcements init (keeps original behavior)
+    if(typeof initAnnouncementsInPromo === 'function') initAnnouncementsInPromo();
+    // refresh Hi user from backend (only change)
+    refreshLoggedInUserName();
   });
 
-  window.addEventListener("focus", () => { fetchAndUpdateBalance(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState==='visible') fetchAndUpdateBalance(); });
-  window.addEventListener("storage", async (e) => {
-    // when another tab changes loggedInUser/user (login/logout), refresh
+  window.addEventListener("focus", () => { fetchAndUpdateBalance(); refreshLoggedInUserName(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState==='visible') { fetchAndUpdateBalance(); refreshLoggedInUserName(); } });
+  window.addEventListener("storage", (e) => {
     if (!e) return;
-    if (e.key === "loggedInUser" || e.key === "user") {
-      // small debounce
-      setTimeout(async ()=> {
-        // if storage now has a phone, fetch authoritative user
-        const stored = getStoredUser();
-        if (stored && stored.phone) {
-          const fresh = await fetchUserFromServer(stored.phone).catch(()=>null);
-          if (fresh) {
-            try { localStorage.setItem("loggedInUser", JSON.stringify(fresh)); localStorage.setItem("user", JSON.stringify(fresh)); } catch(e){}
-            updateUIWithUser(fresh);
-            return;
-          }
-        }
-        // else just update UI with whatever stored value exists
-        updateUIWithUser(stored);
-      }, 50);
-    }
+    if (e.key === "loggedInUser" || e.key === "user") setTimeout(() => { fetchAndUpdateBalance(); refreshLoggedInUserName(); }, 50);
   });
-  setInterval(()=>{ const u = getStoredUser(); if (u && u.phone) fetchAndUpdateBalance(); }, 15000);
+  setInterval(()=>{ const u = getStoredUser(); if (u && u.phone) { fetchAndUpdateBalance(); refreshLoggedInUserName(); } }, 15000);
   // --------------------------------------------------------------------
 </script>
 
@@ -464,7 +473,7 @@
     if(!candidate) return null;
     candidate = String(candidate);
     if(/^https?:\/\//i.test(candidate)) return candidate;
-      // candidate is relative path or filename — create absolute using API site root (strip /api)
+       // candidate is relative path or filename — create absolute using API site root (strip /api)
     const siteBase = API_BASE.replace(/\/api\/?$/i, '');
     if(candidate.startsWith('/')) return siteBase + candidate;
     if(candidate.toLowerCase().startsWith('admin/')) return siteBase + '/' + candidate;
@@ -725,10 +734,7 @@
   // Run on load
   window.addEventListener('load', () => {
     // init announcements in promo area
-    // (initAnnouncementsInPromo is called earlier in the user flow too; calling here is safe)
-    if (typeof initAnnouncementsInPromo === 'function') {
-      try { initAnnouncementsInPromo(); } catch(e){}
-    }
+    initAnnouncementsInPromo();
   });
 </script>
 
