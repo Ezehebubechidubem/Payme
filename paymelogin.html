@@ -98,7 +98,6 @@
     .nav-item.active, .nav-item.active i{color:#000}
     a{text-decoration:none;color:inherit}
     button{font:inherit}
-
     /* Announcement carousel styles (only for promo area) */
     .ann-carousel { width:100%; display:flex; align-items:center; gap:12px; overflow:hidden; position:relative; }
     .ann-track { display:flex; transition:transform .45s ease; width:100%; will-change:transform; }
@@ -107,7 +106,6 @@
     .ann-dots { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5; }
     .ann-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; border:1px solid rgba(0,0,0,0.05) }
     .ann-dot.active { background:#ffffff; box-shadow:0 0 0 3px rgba(0,0,0,0.06); }
-    /* small fallback text (hidden visually for user promo) */
     .sr-only { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
   </style>
 </head>
@@ -276,250 +274,209 @@
   // single API base used everywhere
   const API_BASE = "https://payme-update.onrender.com";
 
-  /********************************
-   * USER DETECTION (only touched)
-   * - Attempts server session endpoints with credentials.
-   * - Falls back to validating localStorage user via /user/<phone>.
-   * - Falls back to user_by_account if account number available.
-   * - Updates localStorage and UI when a current user is found.
-   ********************************/
-
-  // try a list of likely "who am I" endpoints (server-side session based)
-  async function fetchCurrentSessionUser() {
-    const sessionUrls = [
-      `${API_BASE}/api/me`,
-      `${API_BASE}/me`,
-      `${API_BASE}/api/session`,
-      `${API_BASE}/session`,
-      `${API_BASE}/api/user/me`,
-      `${API_BASE}/user/me`
-    ];
-    for (const url of sessionUrls) {
-      try {
-        const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
-        if (!res.ok) continue;
-        const json = await res.json().catch(()=>null);
-        if (!json) continue;
-        // Accept many shapes: {status:'success', user: {...} } or {user:{}} or direct {username, phone}
-        if (json.user && (json.user.username || json.user.phone)) return normalizeUser(json.user);
-        if (json.username || json.phone) return normalizeUser(json);
-        // maybe nested under data
-        if (json.data && json.data.user) return normalizeUser(json.data.user);
-      } catch (e) {
-        // ignore and try next
-        continue;
-      }
-    }
-    return null;
-  }
-
-  // query by phone (two endpoints tried)
-  async function fetchUserByPhone(phone) {
-    if (!phone) return null;
-    const urls = [
-      `${API_BASE}/user/${encodeURIComponent(phone)}`,
-      `${API_BASE}/api/user/${encodeURIComponent(phone)}`
-    ];
-    for (const url of urls) {
-      try {
-        const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
-        if (!res.ok) continue;
-        const json = await res.json().catch(()=>null);
-        if (!json) continue;
-        // server returns {status:'success', user: {...}}
-        if (json.user) return normalizeUser(json.user);
-        if (json.username || json.phone) return normalizeUser(json);
-        // maybe top-level user data
-        if (json.status === 'success' && json.user) return normalizeUser(json.user);
-      } catch (e) { continue; }
-    }
-    return null;
-  }
-
-  // query by account number
-  async function fetchUserByAccount(accountNumber) {
-    if (!accountNumber) return null;
-    const urls = [
-      `${API_BASE}/user_by_account/${encodeURIComponent(accountNumber)}`,
-      `${API_BASE}/api/user_by_account/${encodeURIComponent(accountNumber)}`
-    ];
-    for (const url of urls) {
-      try {
-        const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
-        if (!res.ok) continue;
-        const json = await res.json().catch(()=>null);
-        if (!json) continue;
-        if (json.status === 'success' && (json.username || json.phone)) {
-          return normalizeUser({ username: json.username, phone: json.phone, account_number: accountNumber });
-        }
-      } catch (e) { continue; }
-    }
-    return null;
-  }
-
-  // Accept local stored user but also try to validate against backend
+  // ---------- Hi-user and balance logic (ONLY changed to fetch real user) ----------
+  // tries to read logged user from localStorage keys used across your app
   function getStoredUser() {
     const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
     try { return j ? JSON.parse(j) : null; } catch (e) { return null; }
   }
 
-  // minimal normalizer for user object we use in UI
-  function normalizeUser(raw) {
-    if (!raw) return null;
-    const u = {};
-    u.username = raw.username || raw.name || raw.user_name || raw.displayName || raw.fullname || raw.full_name || null;
-    u.phone = raw.phone || raw.mobile || raw.msisdn || raw.user_phone || null;
-    u.account_number = raw.account_number || raw.accountNumber || raw.account || null;
-    u.balance = (typeof raw.balance !== 'undefined') ? Number(raw.balance) : (raw.balance ? Number(raw.balance) : undefined);
-    return u;
-  }
-
-  // update UI + persist to storage
   function updateUIWithUser(user) {
     if (!user) return;
     const hi = document.getElementById("hiUser");
-    if (hi) hi.innerText = "Hi, " + (user.username || "User");
+    if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
     const balEl = document.getElementById("balance");
     if (balEl) {
-      const b = (typeof user.balance !== "undefined" && !isNaN(Number(user.balance))) ? Number(user.balance) : 0;
+      const b = typeof user.balance !== "undefined" ? Number(user.balance) : (user.balance ? Number(user.balance) : 0);
       balEl.innerText = "₦" + (isNaN(b) ? "0.00" : b.toFixed(2));
     }
-    // persist best-practice keys so other pages keep working
-    try {
-      if (user) {
-        localStorage.setItem("loggedInUser", JSON.stringify(user));
-        localStorage.setItem("user", JSON.stringify(user));
-      }
-    } catch(e){}
   }
 
-  // Clear stored user to avoid stale Emeka problem if backend says not logged
-  function clearStoredUser() {
+  // Try endpoint variants for robustness
+  async function fetchJsonIfOk(url){
     try {
-      localStorage.removeItem("loggedInUser");
-      localStorage.removeItem("user");
-    } catch(e){}
+      const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
+      if(!res.ok) return null;
+      const j = await res.json().catch(()=>null);
+      return j;
+    } catch(e){ return null; }
   }
 
-  // Control flow to determine current user (tries server session -> validate stored -> account lookup)
-  async function determineAndSetCurrentUser() {
-    // 1) Try session-based endpoints (cookies)
-    try {
-      const sessionUser = await fetchCurrentSessionUser();
-      if (sessionUser) { updateUIWithUser(sessionUser); return sessionUser; }
-    } catch(e){ /* ignore */ }
-
-    // 2) If localStorage has user, validate with /user/<phone>
-    const stored = getStoredUser();
-    if (stored && stored.phone) {
-      try {
-        const serverUser = await fetchUserByPhone(stored.phone);
-        if (serverUser) { updateUIWithUser(serverUser); return serverUser; }
-        // stored phone not valid on server -> clear stored record
-        clearStoredUser();
-      } catch(e){
-        // on error, still use stored user as fallback UI, but try account number below
-        updateUIWithUser(stored);
+  // Attempt to fetch user by phone or by account number.
+  // Tries multiple URL permutations (/api/ and without).
+  async function fetchUserFromServer(phone, account_number){
+    const candidates = [];
+    if (phone) {
+      candidates.push(`${API_BASE}/user/${encodeURIComponent(phone)}`);
+      candidates.push(`${API_BASE}/api/user/${encodeURIComponent(phone)}`);
+    }
+    if (account_number) {
+      candidates.push(`${API_BASE}/user_by_account/${encodeURIComponent(account_number)}`);
+      candidates.push(`${API_BASE}/api/user_by_account/${encodeURIComponent(account_number)}`);
+    }
+    // also try endpoints that some deployments use:
+    if (phone) {
+      candidates.push(`${API_BASE}/api/user/${encodeURIComponent(phone)}/`);
+      candidates.push(`${API_BASE}/user/${encodeURIComponent(phone)}/`);
+    }
+    for (const url of candidates) {
+      const json = await fetchJsonIfOk(url);
+      if (!json) continue;
+      // we expect either {status:"success", user: {...}} or {status:"success", username:.., phone:..} or raw {user...}
+      if (json.status === 'success' && json.user && typeof json.user === 'object') {
+        return json.user;
       }
+      if (json.status === 'success' && json.username) {
+        // user_by_account returns username & phone
+        return {
+          username: json.username,
+          phone: json.phone || phone,
+          account_number: account_number || null,
+          balance: json.balance || undefined
+        };
+      }
+      // maybe endpoint returns user directly
+      if (json.username || json.phone || json.account_number) {
+        return {
+          username: json.username || json.name || null,
+          phone: json.phone || phone,
+          account_number: json.account_number || account_number || null,
+          balance: json.balance || undefined
+        };
+      }
+      // fallback: if top-level contains an array or field 'user' try nested
+      if (json.user && typeof json.user === 'object') return json.user;
     }
-
-    // 3) If localStorage includes account_number, query /user_by_account
-    const acctFromStorage = (stored && stored.account_number) ? stored.account_number : (localStorage.getItem("accountNumber") || localStorage.getItem("account_number") || null);
-    if (acctFromStorage) {
-      try {
-        const byAcct = await fetchUserByAccount(acctFromStorage);
-        if (byAcct) { updateUIWithUser(byAcct); return byAcct; }
-      } catch(e){ /* ignore */ }
-    }
-
-    // 4) Nothing found — clear to be safe and keep default label
-    // Don't clear stored user unnecessarily if user is offline; only clear if we validated earlier that phone not found.
     return null;
   }
 
-  /********************
-   * BALANCE LOGIC (unchanged behavior, but we call determineAndSetCurrentUser first)
-   ********************/
-  async function fetchBalanceFromEndpoints(phone) {
+  // fetch balance endpoint fallback if we only have phone
+  async function fetchBalanceByPhone(phone){
     if (!phone) return null;
     const candidates = [
       `${API_BASE}/balance/${encodeURIComponent(phone)}`,
       `${API_BASE}/api/balance/${encodeURIComponent(phone)}`
     ];
-    for (const url of candidates) {
+    for (const url of candidates){
       try {
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) continue;
-        const data = await res.json().catch(()=>null);
-        if (data && (typeof data.balance === 'number' || !isNaN(Number(data.balance)))) {
-          return Number(data.balance);
-        }
-      } catch (e) {
-        continue;
-      }
+        const j = await res.json().catch(()=>null);
+        if (j && (typeof j.balance === 'number' || !isNaN(Number(j.balance)))) return Number(j.balance);
+      } catch(e){}
     }
     return null;
   }
 
-  async function fetchAndUpdateBalance() {
-    const user = getStoredUser();
-    if (!user || !user.phone) {
-           // nothing to fetch; UI may already be updated by determineAndSetCurrentUser
-      return;
-    }
+  // Master function: ensure hi shows the real current user by consulting server.
+  // - If localStorage contains a user object with phone/account_number, ask server for fresh user data.
+  // - If server returns user, update localStorage and UI.
+  // - If server not reachable, fall back to localStorage (unchanged behavior).
+  async function ensureCurrentUser(){
+    const stored = getStoredUser();
+    if (!stored) return; // nothing to do (app expects guest)
+    // prefer phone then account number
+    const phone = stored.phone || null;
+    const account_number = stored.account_number || stored.acc || null;
     try {
-      const bal = await fetchBalanceFromEndpoints(user.phone);
-      if (bal !== null) {
-        user.balance = bal;
-        try { localStorage.setItem("loggedInUser", JSON.stringify(user)); localStorage.setItem("user", JSON.stringify(user)); } catch(e){}
-        updateUIWithUser(user);
-      } else {
-        updateUIWithUser(user);
+      const serverUser = await fetchUserFromServer(phone, account_number);
+      if (serverUser) {
+        // If server didn't return balance, try to fetch it
+        if (typeof serverUser.balance === 'undefined') {
+          const bal = await fetchBalanceByPhone(serverUser.phone || phone);
+          if (bal !== null) serverUser.balance = bal;
+        }
+        // Normalize keys and persist to localStorage so app everywhere uses fresh user
+        const normalized = {
+          username: serverUser.username || serverUser.name || stored.username || stored.name,
+          phone: serverUser.phone || phone || stored.phone,
+          account_number: serverUser.account_number || account_number || stored.account_number || stored.acc,
+          balance: typeof serverUser.balance !== 'undefined' ? Number(serverUser.balance) : (stored.balance !== undefined ? stored.balance : undefined)
+        };
+        try {
+          localStorage.setItem("loggedInUser", JSON.stringify(normalized));
+          localStorage.setItem("user", JSON.stringify(normalized));
+        } catch(e){}
+        updateUIWithUser(normalized);
+        return;
       }
-    } catch(err){
-      console.warn("fetchAndUpdateBalance error", err);
-      updateUIWithUser(user);
+      // if server did not provide user, fallback to stored object - but still update the UI from storage
+      updateUIWithUser(stored);
+    } catch(e){
+      // network error - fallback to stored user
+      updateUIWithUser(stored);
     }
   }
 
-  // On load: determine current user from server (preferred) then fetch balance and init announcements
-  window.addEventListener("load", async () => {
-    try {
-      await determineAndSetCurrentUser();
-    } catch (e) { /* ignore */ }
-    // now fetch balance (if any) and start announcements
-    try { fetchAndUpdateBalance(); } catch(e){}
-    try { initAnnouncementsInPromo(); } catch(e){}
+  // Call ensureCurrentUser on load and when storage changes (login/logout) and on focus.
+  window.addEventListener("load", () => {
+    const user = getStoredUser();
+    if (user) {
+      // show immediate stored info while we fetch authoritative user
+      updateUIWithUser(user);
+      // fetch authoritative user and update UI/localStorage
+      ensureCurrentUser();
+    }
+    // also initialise announcements (kept unchanged elsewhere)
+    if (typeof initAnnouncementsInPromo === 'function') {
+      try { initAnnouncementsInPromo(); } catch(e){}
+    }
   });
 
-  // keep prior refresh hooks
-  window.addEventListener("focus", () => { fetchAndUpdateBalance(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") fetchAndUpdateBalance(); });
-  window.addEventListener("storage", (e) => { if (!e) return; if (e.key === "loggedInUser" || e.key === "user") setTimeout(fetchAndUpdateBalance, 50); });
-  setInterval(()=>{ const u = getStoredUser(); if (u && u.phone) fetchAndUpdateBalance(); }, 15000);
+  // When tab regains focus, re-check current user (useful after login/logout in another tab)
+  window.addEventListener("focus", () => { ensureCurrentUser(); });
 
-  /********************************
-   * ANNOUNCEMENTS SCRIPT (unchanged from your working version)
-   ********************************/
+  // When visibility changes to visible re-check
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === 'visible') ensureCurrentUser(); });
+
+  // When localStorage changes (login/logout in same browser), re-check and update UI
+  window.addEventListener("storage", (e) => {
+    if (!e) return;
+    if (e.key === "loggedInUser" || e.key === "user") {
+      // small debounce
+      setTimeout(ensureCurrentUser, 50);
+    }
+  });
+
+  // also periodic guard to keep UI in sync
+  setInterval(()=>{ const u = getStoredUser(); if (u && (u.phone || u.account_number)) ensureCurrentUser(); }, 15000);
+  // --------------------------------------------------------------------
+</script>
+
+<!-- ANNOUNCEMENTS SCRIPT: unchanged functionality, uses same API_BASE -->
+<script>
+  // Announcement endpoints to try (keeps compatibility)
   const ANNOUNCEMENTS_ENDPOINTS = [
     `${API_BASE}/api/announcements/active`,
     `${API_BASE}/announcements/active`,
     `${API_BASE}/admin/announcements/active`,
-    `${API_BASE}/api/announcements`,
+        `${API_BASE}/api/announcements`, // fallback (server may return {status,announcements:[]})
     `${API_BASE}/admin/announcements`
   ];
-  const REFRESH_INTERVAL_MS = 10000;
-  let annIndex = 0, annTimer = null, currentAnn = [];
 
+  // Poll / refresh interval (ms)
+  const REFRESH_INTERVAL_MS = 10000; // 10s
+
+  // Carousel state
+  let annIndex = 0;
+  let annTimer = null;
+  let currentAnn = [];
+
+  // Helper: sanitize minimal text for attributes
   function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+
+  // Build image URL robustly from fields server may return
   function buildImageUrlFromItem(it){
+    // accept image_url, imageUrl, image_path, image, imagePath
     let candidate = it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null;
     if(!candidate) return null;
     candidate = String(candidate);
     if(/^https?:\/\//i.test(candidate)) return candidate;
+    // candidate is relative path or filename — create absolute using API site root (strip /api)
     const siteBase = API_BASE.replace(/\/api\/?$/i, '');
     if(candidate.startsWith('/')) return siteBase + candidate;
     if(candidate.toLowerCase().startsWith('admin/')) return siteBase + '/' + candidate;
+    // assume it's filename under admin uploads
     return `${siteBase}/admin/uploads/announcements/${candidate}`;
   }
 
@@ -540,11 +497,13 @@
         else if(json.status === 'success' && Array.isArray(json.data)) list = json.data;
         else if(json.announcements && Array.isArray(json.announcements)) list = json.announcements;
         else {
+          // try to find an array anywhere
           for(const k of Object.keys(json)){
             if(Array.isArray(json[k])) { list = json[k]; break; }
           }
         }
 
+        // Normalize
         const normalized = list.map(it=>{
           const id = it.id || it._id || it.announcement_id || it.ann_id || it.announcementId || (it.title? Math.random().toString(36).slice(2,9) : null);
           return {
@@ -554,11 +513,13 @@
             target: it.target || 'all',
             createdAt: it.createdAt || it.created_at || it.created || null,
             expiresAt: it.expiresAt || it.expires_at || it.expires || null,
+            // image_url priority; third-party libs may return different keys
             image_url: it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null,
             raw: it
           };
         }).filter(x=>x.id);
 
+        // Now filter active (not expired) and sort by createdAt desc if available
         const now = new Date();
         const active = normalized.filter(a => {
           if(!a.expiresAt) return true;
@@ -567,11 +528,16 @@
         });
 
         return active.slice(0, 10);
-      } catch(e){ continue; }
+      } catch(e){
+        // try next endpoint
+        continue;
+      }
     }
+    // none succeeded
     return null;
   }
 
+    // Render the promo carousel: **ONLY images** show (no title/body)
   function renderAnnouncementsImages(anns){
     currentAnn = anns || [];
     const track = document.getElementById('annTrack');
@@ -580,29 +546,42 @@
     const promoAnnouncements = document.getElementById('promoAnnouncements');
 
     if(!anns || anns.length === 0){
+           // show default promo
       promoDefault.style.display = 'flex';
       promoAnnouncements.style.display = 'none';
       return;
     }
 
+    // build slides: for each item attempt to build full image url and append cache-bust so replaced images update quickly
     const slidesHtml = anns.map((a)=>{
       const candidateUrl = buildImageUrlFromItem(a) || a.image_url || a.raw?.image_url || null;
+      // add cachebust to force browser to revalidate images when server changed or deleted
       const finalUrl = candidateUrl ? (candidateUrl + (candidateUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now()) : null;
+      // Only image is shown
       if(finalUrl){
         return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><img src="${esc(finalUrl)}" alt=""></div>`;
       } else {
+        // fallback visual placeholder (should not happen for promo)
         return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><div style="width:100%;height:140px;background:#f3f4f6;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div></div>`;
       }
     }).join('');
 
     track.innerHTML = slidesHtml;
+
+    // dots
     dotsWrap.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
+
+    // show announcements (hide default promo)
     promoDefault.style.display = 'none';
     promoAnnouncements.style.display = 'block';
     dotsWrap.style.display = 'flex';
+
+    // reset index & transform
     annIndex = 0;
     updateAnnTransform();
     startAnnAutoPlay();
+
+    // dot clicks
     Array.from(dotsWrap.children).forEach(dot => {
       dot.addEventListener('click', ()=> {
         annIndex = Number(dot.getAttribute('data-index') || 0);
@@ -610,29 +589,100 @@
         restartAnnAutoPlay();
       });
     });
+
+    // enable swipe gestures for manual movement
     setupSwipe(track);
   }
 
-  function updateAnnTransform(){ const track = document.getElementById('annTrack'); const len = currentAnn.length || 1; if(annIndex < 0) annIndex = 0; if(annIndex >= len) annIndex = len - 1; track.style.transform = `translateX(-${annIndex * 100}%)`; const dots = document.querySelectorAll('#annDots .ann-dot'); dots.forEach((d,i)=> d.classList.toggle('active', i===annIndex)); }
-  function startAnnAutoPlay(){ if(annTimer) clearInterval(annTimer); if((currentAnn||[]).length <= 1) return; annTimer = setInterval(()=> { annIndex = (annIndex + 1) % currentAnn.length; updateAnnTransform(); }, 4000); }
+  function updateAnnTransform(){
+    const track = document.getElementById('annTrack');
+    const len = currentAnn.length || 1;
+    if(annIndex < 0) annIndex = 0;
+    if(annIndex >= len) annIndex = len - 1;
+    track.style.transform = `translateX(-${annIndex * 100}%)`;
+    // update dots
+    const dots = document.querySelectorAll('#annDots .ann-dot');
+    dots.forEach((d,i)=> d.classList.toggle('active', i===annIndex));
+  }
+
+  function startAnnAutoPlay(){
+    if(annTimer) clearInterval(annTimer);
+    if((currentAnn||[]).length <= 1) return;
+    annTimer = setInterval(()=> {
+      annIndex = (annIndex + 1) % currentAnn.length;
+      updateAnnTransform();
+    }, 4000);
+  }
   function stopAnnAutoPlay(){ if(annTimer) clearInterval(annTimer); annTimer = null; }
   function restartAnnAutoPlay(){ stopAnnAutoPlay(); startAnnAutoPlay(); }
 
+  // Simple swipe handler for desktop + mobile (touch + mouse drag)
   function setupSwipe(trackEl){
     if(!trackEl) return;
     let startX = 0, deltaX = 0, isDown = false, startTime = 0;
-    const threshold = 40;
-    const allowedTime = 500;
+    const threshold = 40; // px
+    const allowedTime = 500; // ms for flick
 
-    trackEl.ontouchstart = function(e){ stopAnnAutoPlay(); const t = e.touches[0]; startX = t.clientX; startTime = Date.now(); deltaX = 0; };
-    trackEl.ontouchmove = function(e){ const t = e.touches[0]; deltaX = t.clientX - startX; trackEl.style.transition = 'none'; trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`; };
-    trackEl.ontouchend = function(e){ const elapsed = Date.now() - startTime; trackEl.style.transition = ''; if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){ if(deltaX < 0) { annIndex = Math.min(currentAnn.length -1, annIndex + 1); } else { annIndex = Math.max(0, annIndex - 1); } } updateAnnTransform(); restartAnnAutoPlay(); };
+    // touch
+    trackEl.ontouchstart = function(e){
+      stopAnnAutoPlay();
+      const t = e.touches[0];
+      startX = t.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+    };
+    trackEl.ontouchmove = function(e){
+      const t = e.touches[0];
+      deltaX = t.clientX - startX;
+      // optionally add transform for drag feedback
+      trackEl.style.transition = 'none';
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    trackEl.ontouchend = function(e){
+      const elapsed = Date.now() - startTime;
+      trackEl.style.transition = '';
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) { // swipe left -> next
+          annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        } else { // swipe right -> prev
+          annIndex = Math.max(0, annIndex - 1);
+        }
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
 
-    trackEl.onmousedown = function(e){ stopAnnAutoPlay(); isDown = true; startX = e.clientX; startTime = Date.now(); deltaX = 0; document.body.style.userSelect = 'none'; trackEl.style.transition = 'none'; };
-    window.onmousemove = function(e){ if(!isDown) return; deltaX = e.clientX - startX; trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`; };
-    window.onmouseup = function(e){ if(!isDown) return; isDown = false; document.body.style.userSelect = ''; trackEl.style.transition = ''; const elapsed = Date.now() - startTime; if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){ if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1); else annIndex = Math.max(0, annIndex - 1); } updateAnnTransform(); restartAnnAutoPlay(); };
+    // mouse drag for desktops
+    trackEl.onmousedown = function(e){
+      stopAnnAutoPlay();
+      isDown = true;
+      startX = e.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+      document.body.style.userSelect = 'none';
+      trackEl.style.transition = 'none';
+    };
+    window.onmousemove = function(e){
+      if(!isDown) return;
+      deltaX = e.clientX - startX;
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    window.onmouseup = function(e){
+      if(!isDown) return;
+      isDown = false;
+      document.body.style.userSelect = '';
+      trackEl.style.transition = '';
+      const elapsed = Date.now() - startTime;
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        else annIndex = Math.max(0, annIndex - 1);
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
   }
 
+  // Main initializer: fetch announcements, render, and set polling
   async function initAnnouncementsInPromo(){
     try {
       const serverList = await fetchAnnouncementsFromServer();
@@ -646,6 +696,7 @@
 
       if(announcements && announcements.length > 0) renderAnnouncementsImages(announcements);
       else {
+        // show default promo
         document.getElementById('promoDefault').style.display = 'flex';
         document.getElementById('promoAnnouncements').style.display = 'none';
       }
@@ -658,22 +709,34 @@
       }
     }
 
+    // periodic refresh to reflect admin changes (deletions/creates)
     setInterval(async ()=>{
       try {
         const serverList = await fetchAnnouncementsFromServer();
         if(Array.isArray(serverList)){
+          // compare simple JSON to see if really changed
           const oldJson = JSON.stringify(currentAnn.map(a=>a.id || a.image_url));
           const newJson = JSON.stringify(serverList.map(a=>a.id || a.image_url));
           if(oldJson !== newJson){
+            // rerender & cache-bust images so updated deletions/changes reflect immediately
             renderAnnouncementsImages(serverList);
             try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
           } else {
+            // even if ids same, sometimes image resource changed (same filename). Force image reload by re-render with cache-bust
             renderAnnouncementsImages(serverList);
           }
         }
       } catch(e){}
     }, REFRESH_INTERVAL_MS);
   }
+
+  // Run on load
+  window.addEventListener('load', () => {
+    // init announcements in promo area
+    if (typeof initAnnouncementsInPromo === 'function') {
+      try { initAnnouncementsInPromo(); } catch(e){}
+    }
+  });
 </script>
 
 </body>
