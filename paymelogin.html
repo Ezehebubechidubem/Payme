@@ -98,6 +98,7 @@
     .nav-item.active, .nav-item.active i{color:#000}
     a{text-decoration:none;color:inherit}
     button{font:inherit}
+
     /* Announcement carousel styles (only for promo area) */
     .ann-carousel { width:100%; display:flex; align-items:center; gap:12px; overflow:hidden; position:relative; }
     .ann-track { display:flex; transition:transform .45s ease; width:100%; will-change:transform; }
@@ -106,8 +107,15 @@
     .ann-dots { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5; }
     .ann-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; border:1px solid rgba(0,0,0,0.05) }
     .ann-dot.active { background:#ffffff; box-shadow:0 0 0 3px rgba(0,0,0,0.06); }
+    /* small fallback text (hidden visually for user promo) */
     .sr-only { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
   </style>
+
+  <!-- DEFINE API_BASE early so no script runs into "API_BASE is not defined" -->
+  <script>
+    // Set your backend base URL here (used across all scripts)
+    const API_BASE = "https://payme-update.onrender.com";
+  </script>
 </head>
 <body>
   <div class="app">
@@ -270,16 +278,18 @@
     <a class="nav-item" href="profile.html"><i class="fa-solid fa-user"></i>Me</a>
   </nav>
 
+<!-- ===================== Hi-user + balance + logout logic ===================== -->
 <script>
-  // single API base used everywhere
-  const API_BASE = "https://payme-update.onrender.com";
-
-  // ---------- Hi-user and balance logic (left unchanged) ----------
+  // local helper: get stored user from either key
   function getStoredUser() {
     const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
-    try { return j ? JSON.parse(j) : null; } catch (e) { return null; }
+    try { return j ? JSON.parse(j) : null; } catch(e) { return null; }
   }
 
+  // small sanitizer for DOM insertion
+  function escapeText(s){ return String(s||''); }
+
+  // update visible elements with user object
   function updateUIWithUser(user) {
     if (!user) return;
     const hi = document.getElementById("hiUser");
@@ -291,16 +301,19 @@
     }
   }
 
-  // The ensureCurrentUser logic you had (keeps behaviour). Not touched elsewhere.
-  async function fetchJsonIfOk(url){
+  // fetch JSON helper
+  async function fetchJsonIfOk(url, opts={}) {
     try {
-      const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
-      if(!res.ok) return null;
+      const res = await fetch(url, opts);
+      if (!res.ok) return null;
       const j = await res.json().catch(()=>null);
       return j;
-    } catch(e){ return null; }
+    } catch(e) {
+      return null;
+    }
   }
 
+  // Try to fetch authoritative user from backend (by phone or by account)
   async function fetchUserFromServer(phone, account_number){
     const candidates = [];
     if (phone) {
@@ -311,62 +324,54 @@
       candidates.push(`${API_BASE}/user_by_account/${encodeURIComponent(account_number)}`);
       candidates.push(`${API_BASE}/api/user_by_account/${encodeURIComponent(account_number)}`);
     }
+    // generic fallbacks
     if (phone) {
       candidates.push(`${API_BASE}/api/user/${encodeURIComponent(phone)}/`);
       candidates.push(`${API_BASE}/user/${encodeURIComponent(phone)}/`);
     }
+
     for (const url of candidates) {
-      const json = await fetchJsonIfOk(url);
+      const json = await fetchJsonIfOk(url, { credentials: 'include', cache: 'no-store' });
       if (!json) continue;
-      if (json.status === 'success' && json.user && typeof json.user === 'object') {
-        return json.user;
-      }
+      // accept multiple shapes
+      if (json.status === 'success' && json.user && typeof json.user === 'object') return json.user;
       if (json.status === 'success' && json.username) {
-        return {
-          username: json.username,
-          phone: json.phone || phone,
-          account_number: account_number || null,
-          balance: json.balance || undefined
-        };
+        return { username: json.username, phone: json.phone || phone, account_number: json.account_number || account_number, balance: json.balance };
       }
       if (json.username || json.phone || json.account_number) {
-        return {
-          username: json.username || json.name || null,
-          phone: json.phone || phone,
-          account_number: json.account_number || account_number || null,
-          balance: json.balance || undefined
-        };
+        return { username: json.username || json.name, phone: json.phone || phone, account_number: json.account_number || account_number, balance: json.balance };
       }
       if (json.user && typeof json.user === 'object') return json.user;
     }
     return null;
   }
 
+  // fetch balance by phone
   async function fetchBalanceByPhone(phone){
     if (!phone) return null;
     const candidates = [
       `${API_BASE}/balance/${encodeURIComponent(phone)}`,
       `${API_BASE}/api/balance/${encodeURIComponent(phone)}`
     ];
-    for (const url of candidates){
-      try {
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) continue;
-        const j = await res.json().catch(()=>null);
-        if (j && (typeof j.balance === 'number' || !isNaN(Number(j.balance)))) return Number(j.balance);
-      } catch(e){}
+    for (const url of candidates) {
+      const j = await fetchJsonIfOk(url, { cache: 'no-store' });
+      if (j && (typeof j.balance === 'number' || !isNaN(Number(j.balance)))) return Number(j.balance);
     }
     return null;
   }
 
+  // Master: ensure the hi-user reflects currently logged in account (server-validated)
   async function ensureCurrentUser(){
     const stored = getStoredUser();
     if (!stored) return;
     const phone = stored.phone || null;
     const account_number = stored.account_number || stored.acc || null;
+    // show current stored data immediately
+    updateUIWithUser(stored);
     try {
       const serverUser = await fetchUserFromServer(phone, account_number);
       if (serverUser) {
+        // if server doesn't include balance, fetch it
         if (typeof serverUser.balance === 'undefined') {
           const bal = await fetchBalanceByPhone(serverUser.phone || phone);
           if (bal !== null) serverUser.balance = bal;
@@ -384,50 +389,63 @@
         updateUIWithUser(normalized);
         return;
       }
+      // fallback: leave stored UI in place
       updateUIWithUser(stored);
     } catch(e){
+      // on network error, keep stored
       updateUIWithUser(stored);
     }
   }
 
+  // run on load + focus + visibilitychange + storage
   window.addEventListener("load", () => {
-    const user = getStoredUser();
-    if (user) {
-      updateUIWithUser(user);
-      ensureCurrentUser();
-    }
-    // don't assume announcements already defined; we try to start them below too
+    const stored = getStoredUser();
+    if (stored) updateUIWithUser(stored);
+    ensureCurrentUser().catch(()=>{});
   });
-
-  window.addEventListener("focus", () => { ensureCurrentUser(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === 'visible') ensureCurrentUser(); });
+  window.addEventListener("focus", () => { ensureCurrentUser().catch(()=>{}); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === 'visible') ensureCurrentUser().catch(()=>{}); });
   window.addEventListener("storage", (e) => {
     if (!e) return;
-    if (e.key === "loggedInUser" || e.key === "user") {
-      setTimeout(ensureCurrentUser, 50);
+    if (e.key === "loggedInUser" || e.key === "user") setTimeout(()=>ensureCurrentUser().catch(()=>{}), 50);
+  });
+  setInterval(()=> { const u = getStoredUser(); if (u && (u.phone || u.account_number)) ensureCurrentUser().catch(()=>{}); }, 15000);
+
+  // Clear previous user's data on logout links (preserve redirect behavior)
+  document.addEventListener('click', function(e){
+    const a = e.target.closest && e.target.closest('a');
+    if (!a) return;
+    // if logout link (goes to paymeregister.html) or has logout class
+    if (a.getAttribute('href') && a.getAttribute('href').includes('paymeregister.html') || a.classList.contains('logout') || a.classList.contains('logout-link') ) {
+      // clear stored user session/keys
+      try {
+        localStorage.removeItem('loggedInUser');
+        localStorage.removeItem('user');
+        sessionStorage.removeItem('loggedInUser');
+        sessionStorage.removeItem('user');
+      } catch(e){}
+      // allow default navigation to continue (do not prevent)
+      // but to be safe: small debounce to allow clearing before navigation
+      // if link target is same page we still navigate.
+      // no further action.
     }
   });
-  setInterval(()=>{ const u = getStoredUser(); if (u && (u.phone || u.account_number)) ensureCurrentUser(); }, 15000);
-  // --------------------------------------------------------------------
 </script>
 
-<!-- ANNOUNCEMENTS SCRIPT: updated for robustness + logging -->
+<!-- ===================== ANNOUNCEMENTS SCRIPT (image-only carousel) ===================== -->
 <script>
-  // Announcement endpoints to try (keeps compatibility)
+  // Announcement endpoints (robust list)
   const ANNOUNCEMENTS_ENDPOINTS = [
     `${API_BASE}/api/announcements/active`,
     `${API_BASE}/announcements/active`,
     `${API_BASE}/admin/announcements/active`,
     `${API_BASE}/api/announcements`,
     `${API_BASE}/admin/announcements`,
-    // extra tries if the server uses different placement
     `${API_BASE}/api/announcements/`,
     `${API_BASE}/announcements`
   ];
 
-  const LOCAL_ANN_KEY = 'announcements_v1';
-  const REFRESH_INTERVAL_MS = 10000; // 10s
-
+  const REFRESH_INTERVAL_MS = 10000;
   let annIndex = 0;
   let annTimer = null;
   let currentAnn = [];
@@ -446,40 +464,37 @@
   }
 
   async function fetchAnnouncementsFromServer(){
-    console.debug("[announcements] trying endpoints:", ANNOUNCEMENTS_ENDPOINTS);
+    console.log('[announcements] initializer running');
+    console.log('[announcements] trying endpoints:', ANNOUNCEMENTS_ENDPOINTS);
     for(const url of ANNOUNCEMENTS_ENDPOINTS){
       try {
-        console.debug("[announcements] fetch", url);
+        console.log('[announcements] fetch', url);
         const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
         if(!r.ok){
-          console.warn("[announcements] non-ok response", url, r.status);
+          console.log('[announcements] non-ok response', url, r.status);
           continue;
         }
-        const json = await r.json().catch(err=>{
-          console.error("[announcements] json parse error for", url, err);
-          return null;
-        });
-        if(!json) continue;
-
-              // find an array with announcements
+        const json = await r.json().catch(()=>null);
+        if(!json){
+          console.log('[announcements] no json from', url);
+          continue;
+        }
+        // find an array in response
         let list = [];
         if(Array.isArray(json)) list = json;
-        else if(Array.isArray(json.announcements)) list = json.announcements;
         else if(Array.isArray(json.data)) list = json.data;
+        else if(Array.isArray(json.announcements)) list = json.announcements;
         else if(Array.isArray(json.results)) list = json.results;
-        else if(json.status === 'success' && Array.isArray(json.announcements)) list = json.announcements;
-        else if(json.status === 'success' && Array.isArray(json.data)) list = json.data;
         else {
           for(const k of Object.keys(json)){
             if(Array.isArray(json[k])) { list = json[k]; break; }
           }
         }
-
         if(!Array.isArray(list) || list.length === 0){
-          console.debug("[announcements] no array found at", url);
+          console.log('[announcements] no array found at', url);
           continue;
         }
-
+        // normalize
         const normalized = list.map(it=>{
           const id = it.id || it._id || it.announcement_id || it.ann_id || it.announcementId || (it.title? Math.random().toString(36).slice(2,9) : null);
           return {
@@ -493,26 +508,22 @@
             raw: it
           };
         }).filter(x=>x.id);
-
         const now = new Date();
         const active = normalized.filter(a => {
           if(!a.expiresAt) return true;
           const ex = new Date(a.expiresAt);
           return !isNaN(ex.getTime()) ? ex > now : true;
         });
-
-        console.debug("[announcements] got", active.length, "active items from", url);
+        // return limited list
         return active.slice(0, 10);
       } catch(e){
-        console.error("[announcements] fetch error for", url, e);
+        console.log('[announcements] fetch error for', url, e);
         continue;
       }
     }
-    console.warn("[announcements] all endpoints failed");
     return null;
   }
 
-  // Render only images (no title/body shown)
   function renderAnnouncementsImages(anns){
     currentAnn = anns || [];
     const track = document.getElementById('annTrack');
@@ -547,6 +558,7 @@
     updateAnnTransform();
     startAnnAutoPlay();
 
+    // dot clicks
     Array.from(dotsWrap.children).forEach(dot => {
       dot.addEventListener('click', ()=> {
         annIndex = Number(dot.getAttribute('data-index') || 0);
@@ -555,7 +567,8 @@
       });
     });
 
-    setupSwipe(track);
+    // enable swipe
+    setupSwipe(document.querySelector('.ann-track'));
   }
 
   function updateAnnTransform(){
@@ -639,60 +652,43 @@
   }
 
   async function initAnnouncementsInPromo(){
-    console.debug("[announcements] initializer running");
-    try {
-      const serverList = await fetchAnnouncementsFromServer();
-      let announcements = null;
-      if(Array.isArray(serverList)) {
-        announcements = serverList;
-        try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
-      } else {
-        try { announcements = JSON.parse(localStorage.getItem(LOCAL_ANN_KEY) || '[]'); } catch(e){ announcements = []; }
-      }
+    const serverList = await fetchAnnouncementsFromServer();
+    let announcements = null;
+    if(Array.isArray(serverList)) {
+      announcements = serverList;
+      try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
+    } else {
+      try { announcements = JSON.parse(localStorage.getItem('announcements_v1')||'[]'); } catch(e){ announcements = []; }
+    }
 
-      if(announcements && announcements.length > 0) renderAnnouncementsImages(announcements);
-      else {
-        document.getElementById('promoDefault').style.display = 'flex';
-        document.getElementById('promoAnnouncements').style.display = 'none';
-      }
-    } catch(e){
-      console.error("[announcements] initializer error", e);
-      const fallback = (function(){ try { return JSON.parse(localStorage.getItem(LOCAL_ANN_KEY)||'[]'); } catch(e){ return []; } })();
-      if(fallback && fallback.length) renderAnnouncementsImages(fallback);
-      else {
-        document.getElementById('promoDefault').style.display = 'flex';
-        document.getElementById('promoAnnouncements').style.display = 'none';
-      }
+    if(announcements && announcements.length > 0) renderAnnouncementsImages(announcements);
+    else {
+      document.getElementById('promoDefault').style.display = 'flex';
+      document.getElementById('promoAnnouncements').style.display = 'none';
     }
 
     // periodic refresh
     setInterval(async ()=>{
       try {
-        const serverList = await fetchAnnouncementsFromServer();
-        if(Array.isArray(serverList)){
+        const serverList2 = await fetchAnnouncementsFromServer();
+        if(Array.isArray(serverList2)){
           const oldJson = JSON.stringify(currentAnn.map(a=>a.id || a.image_url));
-          const newJson = JSON.stringify(serverList.map(a=>a.id || a.image_url));
+          const newJson = JSON.stringify(serverList2.map(a=>a.id || a.image_url));
           if(oldJson !== newJson){
-            console.debug("[announcements] change detected, re-rendering");
-            renderAnnouncementsImages(serverList);
-            try { localStorage.setItem(LOCAL_ANN_KEY, JSON.stringify(serverList)); } catch(e){}
+            renderAnnouncementsImages(serverList2);
+            try { localStorage.setItem('announcements_v1', JSON.stringify(serverList2)); } catch(e){}
           } else {
-            // still rerender to force cache-bust in case file replaced
-            renderAnnouncementsImages(serverList);
+            // re-render to force cache-bust if necessary
+            renderAnnouncementsImages(serverList2);
           }
         }
-      } catch(e){ console.error("[announcements] periodic refresh error", e); }
+      } catch(e){}
     }, REFRESH_INTERVAL_MS);
   }
 
-  // Ensure init is called after the script is loaded
-  // This explicit call ensures the carousel runs even if other listeners didn't call it
-  window.addEventListener('load', () => {
-    try {
-      initAnnouncementsInPromo();
-    } catch(e){
-      console.error("[announcements] init call failed on load", e);
-    }
+  // Kick off announcements after load
+  window.addEventListener('load', ()=>{
+    try { initAnnouncementsInPromo(); } catch(e){ console.warn('ann init failed', e); }
   });
 </script>
 
