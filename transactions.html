@@ -61,6 +61,15 @@
     .status.success{color:var(--success)}
     .status.pending{color:var(--pending)}
     .status.failed{color:var(--failed)}
+    /* new: direction badge (placed under status as requested) */
+    .direction-badge{
+      display:block;
+      font-weight:700;
+      font-size:12px;
+      margin-top:6px;
+      text-transform:capitalize;
+      color:var(--muted);
+    }
     .empty{padding:36px;text-align:center;color:var(--muted)}
     /* small screens tweak */
     @media (max-width:420px){
@@ -137,6 +146,54 @@
     if(t.includes('pend') || t.includes('pending')) return 'pending';
     // default
     return 'success';
+  }
+
+  // determine direction (IN / OUT) best-effort
+  function determineDirection(tx, parsed){
+    // priority: explicit fields from API
+    try{
+      if(tx.raw){
+        const r = tx.raw;
+        if(r.direction && typeof r.direction === 'string'){
+          const d = r.direction.toLowerCase();
+          if(d === 'in' || d === 'out') return d;
+          if(d.includes('credit')) return 'in';
+          if(d.includes('debit')) return 'out';
+        }
+        if(r.side && typeof r.side === 'string'){
+          const s = r.side.toLowerCase();
+          if(s === 'in' || s === 'out') return s;
+          if(s.includes('credit')) return 'in';
+          if(s.includes('debit')) return 'out';
+        }
+        // some APIs might provide boolean flags
+        if(r.credit === true) return 'in';
+        if(r.debit === true) return 'out';
+        // some raw types contain words
+        if(r.type && typeof r.type === 'string'){
+          const t = r.type.toLowerCase();
+          if(t.includes('credit') || t.includes('received') || t.includes('topup') || t.includes('deposit')) return 'in';
+          if(t.includes('debit') || t.includes('sent') || t.includes('send') || t.includes('withdraw') || t.includes('airtime') || t.includes('payment')) return 'out';
+        }
+      }
+    }catch(e){
+      // ignore
+    }
+
+    // fallback based on parsed.kind or tx.type string
+    const kind = (parsed && parsed.kind) ? parsed.kind.toLowerCase() : (String(tx.type || '').toLowerCase());
+    if(kind){
+      if(kind.includes('airtime') || kind.includes('send') || kind.includes('transfer') || kind.includes('pay') || kind.includes('withdraw')) return 'out';
+      if(kind.includes('receive') || kind.includes('credit') || kind.includes('deposit') || kind.includes('topup')) return 'in';
+    }
+
+    // If amount is present and there is a fee field, likely an outgoing payment
+    const amt = Number(tx.amount || 0);
+    const fee = (parsed && parsed.fee != null) ? Number(parsed.fee) : (tx.raw && tx.raw.fee != null ? Number(tx.raw.fee) : null);
+    if(amt > 0 && fee != null) return 'out';
+
+    // last resort: treat as 'out' for transfer-like and 'in' otherwise — default 'out' to be conservative
+    return 'out';
   }
 
   // friendly currency format (no locale surprises)
@@ -435,8 +492,16 @@
           statusEl.className = `status ${st}`;
           statusEl.textContent = st;
 
+          // direction badge (In / Out) - placed under status (as requested in the photo)
+          const dir = determineDirection(tx, parsed);
+          const dirText = dir === 'in' ? 'In' : 'Out';
+          const dirEl = document.createElement('div');
+          dirEl.className = 'direction-badge';
+          dirEl.textContent = dirText;
+
           right.appendChild(amountEl);
           right.appendChild(statusEl);
+          right.appendChild(dirEl); // <--- exact placement under status
 
           top.appendChild(right);
           mainDiv.appendChild(top);
