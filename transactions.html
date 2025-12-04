@@ -221,6 +221,73 @@
     return (parts[0].slice(0,1) + parts[1].slice(0,1)).toUpperCase();
   }
 
+  // --- New helper: parse type/details from string patterns like:
+  // "airtime|network:MTN|to:07042032134|fee:10|value:1000.0"
+  function parseTypeDetails(tx){
+    const out = { kind: '', network: null, to: null, fee: null, value: null, rawSegments: [] };
+    const t = String(tx.type || tx.raw?.type || tx.raw || '').trim();
+    if(!t) return out;
+    // normalize separators (both '|' and ' ' and ';' may be possible)
+    const segs = t.split('|').map(s=>s.trim()).filter(Boolean);
+    // if not pipe-separated, try splitting by spaces but keep the whole string as fallback
+    if(segs.length === 1 && segs[0].indexOf(':') === -1){
+      // might be a simple type string like "airtime" or "balance_send"
+      out.kind = segs[0].toLowerCase();
+      out.rawSegments = segs;
+      return out;
+    }
+    out.rawSegments = segs;
+    // first segment often contains kind
+    out.kind = segs[0].toLowerCase();
+    for(let i=1;i<segs.length;i++){
+      const s = segs[i];
+      const [k, ...rest] = s.split(':');
+      const val = rest.join(':'); // in case ":" appears in value
+      if(!k) continue;
+      const key = k.trim().toLowerCase();
+      const v = val ? val.trim() : '';
+      if(key === 'network') out.network = v;
+      else if(key === 'to' || key === 'recipient' || key === 'phone') out.to = v;
+      else if(key === 'fee') out.fee = isFinite(Number(v)) ? Number(v) : null;
+      else if(key === 'value' || key === 'amount') out.value = isFinite(Number(v)) ? Number(v) : null;
+      else {
+        // sometimes segments may be like "airtime" again or "MTN" — treat as fallback
+      }
+    }
+    return out;
+  }
+
+  // Compute the amount to show to user (exclude fee for balance send & similar)
+  function computeDisplayedAmount(tx, parsed){
+    // priority: parsed.value if present
+    if(parsed && parsed.value != null) return parsed.value;
+    // if raw object contains value/amount fields, prefer those (many APIs return "value" separate from "amount-with-fee")
+    if(tx.raw && (tx.raw.value != null || tx.raw.amount != null)){
+      // prefer raw.value
+      if(tx.raw.value != null) return Number(tx.raw.value);
+      return Number(tx.raw.amount);
+    }
+    // else if tx.amount exists and tx.raw.fee exists, attempt to subtract fee for "send"/"balance" operations
+    const amt = Number(tx.amount) || 0;
+    const feeFromRaw = tx.raw && (tx.raw.fee != null) ? Number(tx.raw.fee) : null;
+    // If parsed fee exists, use it
+    const parsedFee = parsed && parsed.fee != null ? Number(parsed.fee) : null;
+
+    // decide when to subtract fee: if tx type suggests send/transfer or parsed.kind includes 'send'/'transfer'/'balance'
+    const kind = (parsed && parsed.kind) ? parsed.kind.toLowerCase() : (String(tx.type || '').toLowerCase());
+    const isSendLike = kind.includes('send') || kind.includes('transfer') || kind.includes('balance') || kind.includes('p2p') || kind.includes('send-money');
+
+    if(isSendLike){
+      // prefer parsed fee, then raw fee
+      const feeToUse = parsedFee != null ? parsedFee : (feeFromRaw != null ? feeFromRaw : 0);
+      // Some APIs already give 'amount' as the value to user (no fee included) — but if amount includes fee and fee present, subtract.
+      return Math.max(0, amt - Number(feeToUse || 0));
+    }
+
+    // default: return tx.amount (as given)
+    return amt;
+  }
+
   // Render grouped transactions
   async function renderTransactions(){
     const main = document.getElementById('main');
@@ -253,7 +320,7 @@
         return {
           type: tx.type || '',
           amount: tx.amount || 0,
-          other_party: tx.other_party || '',
+          other_party: tx.other_party || tx.to || tx.account || '',
           date: tx.date || tx.createdAt || tx.created || new Date().toISOString(),
           status: tx.status || tx.state || tx.result || null,
           raw: tx
@@ -280,16 +347,49 @@
           const card = document.createElement('div');
           card.className = 'tx-card';
 
-          const lookup = await lookupNameForOther(tx.other_party); // get name (cached)
-          const displayName = lookup.name || tx.other_party || '—';
-          const avatarUrl = lookup.avatar || null;
-          const avatarText = avatarContent(displayName);
+          // Attempt to parse details embedded in type/raw string
+          const parsed = parseTypeDetails(tx);
 
+          // compute displayed amount (excludes fee for send-like operations)
+          const displayedAmount = computeDisplayedAmount(tx, parsed);
+
+          // Lookup human name for other party where appropriate (but for airtime we will prefer parsed network/to)
+          // If parsed indicates airtime we'll not show the long 'other_party' raw string
+          let lookup = null;
+          if(!(parsed.kind && parsed.kind.includes('airtime'))){
+            // not airtime -> try to get a friendly name (cached) for other_party
+            lookup = await lookupNameForOther(tx.other_party);
+          } else {
+            // airtime: we still attempt lookup for the phone if desired (not necessary)
+            lookup = { name: '' , avatar: null };
+          }
+
+          // decide display text
+          let displayName = '';
+          let metaHtml = '';
+          // Airtime display: show only network and number (clean)
+          if(parsed.kind && parsed.kind.includes('airtime')){
+            const networkLabel = parsed.network || (tx.raw && (tx.raw.network || tx.raw.provider)) || ''; // fallback
+            const targetNumber = parsed.to || tx.other_party || tx.raw?.to || tx.raw?.phone || '';
+            // Name area: show network then number (single-line)
+            displayName = (networkLabel ? networkLabel + ' ' : '') + (targetNumber || '').toString();
+            // meta: only show date/time (no extraneous pipe strings), and amount used for airtime = parsed.value || displayedAmount
+            metaHtml = `<small>${formatDateTime(tx.date)}</small>`;
+          } else {
+            // default behavior: show friendly name (from lookup) or other_party
+            displayName = (lookup && lookup.name) ? lookup.name : (tx.other_party || '—');
+            // meta shows phone/account under name and date
+            const acctText = tx.other_party || (parsed.to || '') || '—';
+            metaHtml = `${acctText}<br><small>${formatDateTime(tx.date)}</small>`;
+          }
+
+          // avatar
+          const avatarText = avatarContent(displayName || tx.other_party);
           const av = document.createElement('div');
           av.className = 'avatar';
-          if(avatarUrl){
+          if(lookup && lookup.avatar){
             const img = document.createElement('img');
-            img.src = avatarUrl;
+            img.src = lookup.avatar;
             img.alt = displayName;
             img.style.width = '100%';
             img.style.height = '100%';
@@ -312,13 +412,11 @@
           const nameEl = document.createElement('div');
           nameEl.className = 'other-name';
           nameEl.title = displayName;
-          nameEl.textContent = displayName;
+          nameEl.textContent = displayName || '—';
 
           const metaEl = document.createElement('div');
           metaEl.className = 'meta';
-          // Show account/phone under name (as small text)
-          const acctText = tx.other_party || '—';
-          metaEl.innerHTML = `${acctText} · ${formatCurrency(tx.amount)}<br><small>${formatDateTime(tx.date)}</small>`;
+          metaEl.innerHTML = metaHtml;
 
           left.appendChild(nameEl);
           left.appendChild(metaEl);
@@ -329,7 +427,7 @@
           right.style.textAlign = 'right';
           const amountEl = document.createElement('div');
           amountEl.className = 'tx-amount';
-          amountEl.textContent = formatCurrency(tx.amount);
+          amountEl.textContent = formatCurrency(displayedAmount);
 
           // status label (determine best-effort)
           const st = determineStatus(tx);
