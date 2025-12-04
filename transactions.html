@@ -9,432 +9,359 @@
     :root{
       --primary:#00c853;
       --success:#2e7d32;
-      --pending:#f0a500;
+      --pending:#f0ad4e;
       --failed:#d32f2f;
+      --muted:#777;
       --bg:#ffffff;
       --card:#ffffff;
-      --muted:#777;
-      --line:#eee;
+      --line:#e9ecef;
       --text:#111;
-      --avatar-bg:#eef8f0;
-      --avatar-color:#197a31;
+      --avatar-bg:#e8f5e9;
+      --avatar-color:#2e7d32;
+      --radius:12px;
     }
-    *{box-sizing:border-box;margin:0;padding:0}
+    *{box-sizing:border-box}
     body{
+      margin:0;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       background:var(--bg);
       color:var(--text);
       -webkit-font-smoothing:antialiased;
-      min-height:100vh; display:flex; flex-direction:column;
+      -moz-osx-font-smoothing:grayscale;
+      min-height:100vh;
+      display:flex;flex-direction:column;
     }
     header{
-      display:flex;align-items:center;gap:12px;
-      padding:12px 14px;border-bottom:1px solid var(--line);
-      background:#fff;position:sticky;top:0; z-index:10;
+      display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);background:#fff;
+      position:sticky;top:0;z-index:10;
     }
-    header a.back{color:var(--text); text-decoration:none; font-size:18px; width:36px; display:inline-flex; align-items:center; justify-content:center}
-    header h2{flex:1;text-align:center;font-size:16px;font-weight:700;margin-right:36px}
-    .container{padding:12px;flex:1;overflow:auto;}
+    header a.back{color:var(--text);text-decoration:none;margin-right:10px;font-size:18px}
+    header h2{flex:1;text-align:center;font-size:16px;margin:0;font-weight:700}
+    main{flex:1;overflow:auto;padding:12px}
     .month-group{margin-bottom:18px}
-    .month-title{font-size:18px;font-weight:700;color:#222;margin:8px 6px}
+    .month-title{font-size:18px;font-weight:700;margin:6px 4px 12px;color:#222}
     .tx-card{
-      display:flex;align-items:center;justify-content:space-between;
-      background:#fff;border-radius:10px;padding:12px;border:1px solid var(--line);
-      gap:12px;margin:10px 6px;
-      box-shadow: 0 1px 0 rgba(0,0,0,0.02) inset;
-    }
-    .left{
-      display:flex;align-items:center;gap:12px;min-width:0;
+      background:var(--card);border-radius:12px;padding:12px 14px;margin-bottom:12px;border:1px solid var(--line);
+      display:flex;align-items:center;gap:12px;
     }
     .avatar{
-      width:54px;height:54px;border-radius:10px;background:var(--avatar-bg);
-      display:grid;place-items:center;font-weight:700;color:var(--avatar-color);flex:0 0 54px;
-      overflow:hidden;
+      width:52px;height:52px;border-radius:10px;background:var(--avatar-bg);display:grid;place-items:center;
+      font-weight:700;color:var(--avatar-color);font-size:18px;flex:0 0 52px;
     }
-    .avatar img{width:100%;height:100%;object-fit:cover;display:block}
-    .info{min-width:0}
-    .name{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .tx-main{flex:1;min-width:0}
+    .tx-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .other-name{font-size:15px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .meta{font-size:13px;color:var(--muted);margin-top:6px}
-    .meta .acc{display:block}
-    .right{text-align:right;flex:0 0 120px}
-    .amount{font-weight:800;font-size:16px;color:#111}
-    .status{font-size:13px;margin-top:6px}
-    .status.success{color:var(--success);font-weight:700}
-    .status.pending{color:var(--pending);font-weight:700}
-    .status.failed{color:var(--failed);font-weight:700}
-    .tx-date{font-size:12px;color:var(--muted);margin-top:6px}
-    /* responsive */
-    @media (max-width:420px){
-      .right{flex:0 0 110px}
-      .avatar{width:48px;height:48px}
+    .meta small{display:block;color:var(--muted);font-size:12px;margin-top:6px}
+    .tx-amount{font-weight:800;font-size:16px;white-space:nowrap}
+    .status{
+      font-weight:700;font-size:13px;padding:6px 10px;border-radius:999px;text-transform:lowercase;
+      display:inline-block;margin-left:10px;
     }
-    .empty{padding:30px;text-align:center;color:var(--muted)}
+    .status.success{color:var(--success)}
+    .status.pending{color:var(--pending)}
+    .status.failed{color:var(--failed)}
+    .empty{padding:36px;text-align:center;color:var(--muted)}
+    /* small screens tweak */
+    @media (max-width:420px){
+      .avatar{width:48px;height:48px;font-size:16px}
+      .tx-amount{font-size:15px}
+    }
   </style>
 </head>
 <body>
   <header>
-    <a class="back" href="javascript:void(0)" onclick="goBack()" title="Back"><i class="fa-solid fa-arrow-left"></i></a>
+    <a class="back" href="javascript:void(0)" onclick="goBack()"><i class="fa-solid fa-arrow-left"></i></a>
     <h2>Recent Transactions</h2>
-    <div style="width:36px"></div>
+    <div style="width:26px"></div>
   </header>
 
-  <div class="container" id="container">
-    <div class="empty">Loading transactions…</div>
-  </div>
+  <main id="main">
+    <div id="loading" class="empty">Loading transactions…</div>
+    <div id="content"></div>
+  </main>
 
 <script>
-  // ---- CONFIG ----
-  // Keep same API_BASE you use across the app
-  const API_BASE = "https://payme-update.onrender.com";
+  // === CONFIG ===
+  const API_BASE = "https://payme-update.onrender.com"; // keep as your backend base
+  // === END CONFIG ===
 
-  // ---- Helpers ----
+  // get logged user (from your app's storage keys)
+  function getStoredUser(){
+    try{
+      const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+      return j ? JSON.parse(j) : null;
+    }catch(e){ return null; }
+  }
+
   function goBack(){
-    if (document.referrer && document.referrer !== "") window.history.back();
+    if(document.referrer && document.referrer!=='') window.history.back();
     else window.location.href = "paymelogin.html";
   }
 
-  function fmtDateTime(isoOrTs){
-    const d = (typeof isoOrTs === 'number') ? new Date(isoOrTs) : new Date(String(isoOrTs));
-    if (isNaN(d.getTime())) return '';
-    const day = String(d.getDate()).padStart(2,'0');
-    const month = String(d.getMonth()+1).padStart(2,'0');
-    const year = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2,'0');
-    const mm = String(d.getMinutes()).padStart(2,'0');
-    const ss = String(d.getSeconds()).padStart(2,'0');
-    return `${day}/${month}/${year} , ${hh}:${mm}:${ss}`;
+  // parse and format date to "DD/MM/YYYY , HH:MM:SS"
+  function formatDateTime(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return iso;
+    const pad = v => String(v).padStart(2,'0');
+    const dd = pad(d.getDate()), mm = pad(d.getMonth()+1), yy = d.getFullYear();
+    const hh = pad(d.getHours()), min = pad(d.getMinutes()), ss = pad(d.getSeconds());
+    return `${dd}/${mm}/${yy} , ${hh}:${min}:${ss}`;
   }
 
-  function monthKeyFromDate(isoOrTs){
-    const d = new Date(String(isoOrTs));
-    if (isNaN(d.getTime())) return 'Unknown';
-    const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    return `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-  }
-
-  function currencyN(amount){
-    // format with thousands separators
-    const n = Number(amount) || 0;
-    return '₦' + n.toLocaleString();
-  }
-
-  function statusClass(status){
-    if(!status) return 'pending';
-    const s = String(status).toLowerCase();
-    if (s.includes('success') || s.includes('successful') || s === 'ok') return 'success';
-    if (s.includes('fail') || s.includes('failed') || s.includes('error')) return 'failed';
-    return 'pending';
-  }
-
-  // attempt to derive counterparty phone/account from a transaction object
-  function guessCounterparty(tx, currentUser){
-    // common field names
-    const keys = ['other_party','other','counterparty','counter_party','to','from','receiver','sender','phone','account','account_number','to_phone','from_phone','recipient','payer','payee'];
-    for (const k of keys){
-      if (tx[k]) return tx[k];
+  // group transactions array by month-year key
+  function groupByMonth(transactions){
+    const map = new Map();
+    for(const tx of transactions){
+      let dt = new Date(tx.date);
+      if(isNaN(dt.getTime())) dt = new Date(); // fallback
+      const key = dt.toLocaleString('en-US', { month: 'long', year: 'numeric' }); // e.g. "December 2025"
+      if(!map.has(key)) map.set(key, []);
+      map.get(key).push(tx);
     }
-    // sometimes nested
-    if (tx.data && typeof tx.data === 'object'){
-      for (const k of keys){
-        if (tx.data[k]) return tx.data[k];
-      }
-    }
-    // if tx has "to_account" or "from_account"
-    if (tx.to_account) return tx.to_account;
-    if (tx.from_account) return tx.from_account;
-    // fallback to null
-    return null;
+    // maintain order by latest month first
+    return Array.from(map.entries()).sort((a,b)=>{
+      const pa = new Date(a[0]); const pb = new Date(b[0]);
+      return pb - pa;
+    });
   }
 
-  // fetch JSON helper
-  async function fetchJson(url, opts = {}){
+  // determine status (best-effort): prefer tx.status, else look for keywords in type
+  function determineStatus(tx){
+    if(tx.status) {
+      return String(tx.status).toLowerCase();
+    }
+    const t = (tx.type||'').toLowerCase();
+    if(t.includes('fail') || t.includes('failed') || t.includes('error')) return 'failed';
+    if(t.includes('pend') || t.includes('pending')) return 'pending';
+    // default
+    return 'success';
+  }
+
+  // friendly currency format (no locale surprises)
+  function formatCurrency(n){
+    const num = Number(n) || 0;
+    // show thousands separators
+    return '₦' + num.toLocaleString('en-NG');
+  }
+
+  // Caching for lookups to avoid repeated network calls
+  const nameCache = new Map(); // key -> {name, avatarUrl?}
+  async function lookupNameForOther(other){
+    if(!other) return { name: other || '', avatar: null };
+
+    // If cached
+    if(nameCache.has(other)) return nameCache.get(other);
+
+    // heuristics: account numbers are 10-digit and start 7/8/9 (per your instruction)
+    const digitsOnly = String(other).replace(/\D/g,'');
     try {
-      const res = await fetch(url, opts);
-      if (!res.ok) return null;
-      const j = await res.json().catch(()=>null);
-      return j;
-    } catch(e){ return null; }
-  }
-
-  // fetch user info by phone or account, robust to shapes returned by backend
-  async function fetchUserByPhoneOrAccount(identifier){
-    if (!identifier) return null;
-    // normalize: remove spaces
-    const id = String(identifier).trim();
-    // if looks like phone (all digits length 11 or 10), try /user/<phone>
-    const digits = id.replace(/\D/g,'');
-    let tries = [];
-
-    if (digits.length >= 10 && digits.length <= 13){
-      // try phone variations
-      tries.push(`${API_BASE}/user/${encodeURIComponent(digits)}`);
-      tries.push(`${API_BASE}/api/user/${encodeURIComponent(digits)}`);
-    }
-
-    // if length 10 and starts with 7/8/9 (agent account numbers per your spec), try by account
-    if (digits.length === 10 && /^[789]\d{9}$/.test(digits)){
-      tries.push(`${API_BASE}/user_by_account/${encodeURIComponent(digits)}`);
-      tries.push(`${API_BASE}/api/user_by_account/${encodeURIComponent(digits)}`);
-    }
-
-    // also try raw identifier as-is (some tx fields include "0907..." with non-digit chars)
-    tries.push(`${API_BASE}/user/${encodeURIComponent(id)}`);
-    tries.push(`${API_BASE}/api/user/${encodeURIComponent(id)}`);
-    tries.push(`${API_BASE}/user_by_account/${encodeURIComponent(id)}`);
-    tries.push(`${API_BASE}/api/user_by_account/${encodeURIComponent(id)}`);
-
-    for (const url of tries){
-      const json = await fetchJson(url, { cache: 'no-store' });
-      if (!json) continue;
-      // accept multiple shapes:
-      // {status:'success', user: {...}}
-      if (json.status === 'success' && json.user && typeof json.user === 'object') return json.user;
-      // {status:'success', username:.., phone:..}
-      if (json.status === 'success' && json.username) {
-        return { username: json.username, phone: json.phone, account_number: json.account_number, balance: json.balance, picture: json.picture || json.avatar || json.image };
-      }
-      // raw user object
-      if (json.username || json.name || json.phone || json.account_number) {
-        return { username: json.username || json.name, phone: json.phone, account_number: json.account_number, picture: json.picture || json.avatar || json.image };
-      }
-      // sometimes backend returns {user: {...}} nested
-      if (json.user && typeof json.user === 'object') return json.user;
-    }
-    return null;
-  }
-
-  // create element for a txn
-  function makeTxElement(tx, userCache, defaultAcc){
-    const left = document.createElement('div');
-    left.className = 'left';
-
-    // avatar
-    const avatar = document.createElement('div');
-    avatar.className = 'avatar';
-
-    // info block
-    const info = document.createElement('div');
-    info.className = 'info';
-
-    // right block
-    const right = document.createElement('div');
-    right.className = 'right';
-
-    // determine counterparty identifier and resolved user
-    const counterId = tx._counterparty || tx.counterparty || tx.other_party || tx.other || tx.to || tx.from || tx.receiver || tx.sender || tx.phone || tx.account || tx.account_number || tx.recipient || null;
-
-    // create name (use userCache if available)
-    let displayName = '';
-    let displayAcc = '';
-    let avatarImg = null;
-
-    if (counterId && userCache[counterId]){
-      const u = userCache[counterId];
-      displayName = u.username || u.name || u.displayName || '';
-      avatarImg = u.picture || u.avatar || u.photo || u.image || null;
-      displayAcc = u.phone || u.account_number || '';
-    } else if (tx._resolved && tx._resolved.username){
-      displayName = tx._resolved.username;
-      avatarImg = tx._resolved.picture || tx._resolved.avatar || null;
-      displayAcc = tx._resolved.phone || tx._resolved.account_number || '';
-    } else {
-      // fallback: show counterId directly
-      displayName = (counterId && String(counterId).length>0) ? String(counterId) : (tx.note || tx.description || '—');
-      displayAcc = tx.account || tx.phone || '';
-    }
-
-    // avatar image or initials
-    if (avatarImg){
-      const img = document.createElement('img');
-      img.src = avatarImg;
-      img.alt = displayName;
-      avatar.appendChild(img);
-    } else {
-      // initials from displayName (first letters)
-      let initials = '?';
-      if (displayName && displayName.trim().length){
-        const parts = displayName.trim().split(/\s+/);
-        initials = parts.length === 1 ? (parts[0][0] || '?').toUpperCase() : ((parts[0][0]||'') + (parts[1][0]||'')).toUpperCase();
-      } else if (displayAcc && displayAcc.length){
-        initials = displayAcc.slice(-2);
-      }
-      avatar.textContent = initials;
-    }
-
-    // name line
-    const nameEl = document.createElement('div');
-    nameEl.className = 'name';
-    nameEl.textContent = displayName || 'Unknown';
-
-    // meta line (account/phone and amount descriptor)
-    const metaEl = document.createElement('div');
-    metaEl.className = 'meta';
-    const accText = displayAcc ? displayAcc : (tx.phone || tx.account || '—');
-    const smallAmount = currencyN(tx.amount || tx.value || tx.amt || tx.amount_value || 0);
-    metaEl.innerHTML = `<span class="acc">${accText} • ${smallAmount}</span><span class="tx-date">${fmtDateTime(tx.date || tx.createdAt || tx.timestamp || tx.time || tx.tx_time || tx.txDate || tx.created || tx.datetime || Date.now())}</span>`;
-
-    info.appendChild(nameEl);
-    info.appendChild(metaEl);
-
-    left.appendChild(avatar);
-    left.appendChild(info);
-
-    // right side
-    const amountRight = document.createElement('div');
-    amountRight.className = 'amount';
-    amountRight.textContent = currencyN(tx.amount || tx.value || tx.amt || tx.amount_value || 0);
-
-    const statusText = (tx.status || tx.state || tx.result || tx.condition || 'pending');
-    const stClass = statusClass(statusText);
-
-    const statusEl = document.createElement('div');
-    statusEl.className = 'status ' + stClass;
-    statusEl.textContent = String(statusText).toLowerCase();
-
-    right.appendChild(amountRight);
-    right.appendChild(statusEl);
-
-    // assemble card
-    const card = document.createElement('div');
-    card.className = 'tx-card';
-    card.appendChild(left);
-    card.appendChild(right);
-
-    return card;
-  }
-
-  // ---- Main rendering flow ----
-  (async function loadAndRender(){
-    const container = document.getElementById('container');
-    container.innerHTML = '<div class="empty">Loading transactions…</div>';
-
-    // get currently logged user to know which transactions to request
-    const stored = (function(){ try { return JSON.parse(localStorage.getItem('loggedInUser') || localStorage.getItem('user') || 'null'); } catch(e){ return null; } })();
-    if (!stored || (!stored.phone && !stored.account_number && !stored.acc)) {
-      container.innerHTML = '<div class="empty">Please log in to view transactions.</div>';
-      return;
-    }
-
-    // Request transactions from backend.
-    // We'll try a few common endpoint shapes.
-    let transactions = null;
-    const phone = stored.phone || null;
-    const acc = stored.account_number || stored.acc || null;
-    const txEndpoints = [];
-    if (phone) {
-      txEndpoints.push(`${API_BASE}/transactions/${encodeURIComponent(phone)}`);
-      txEndpoints.push(`${API_BASE}/api/transactions/${encodeURIComponent(phone)}`);
-      txEndpoints.push(`${API_BASE}/transactions?phone=${encodeURIComponent(phone)}`);
-    }
-    if (acc) {
-      txEndpoints.push(`${API_BASE}/transactions/account/${encodeURIComponent(acc)}`);
-      txEndpoints.push(`${API_BASE}/transactions?account=${encodeURIComponent(acc)}`);
-    }
-    // generic fallback
-    txEndpoints.push(`${API_BASE}/transactions/${encodeURIComponent(phone || acc)}`);
-    txEndpoints.push(`${API_BASE}/api/transactions/${encodeURIComponent(phone || acc)}`);
-
-    for (const url of txEndpoints){
-      try {
-        const res = await fetch(url, { cache: 'no-store', credentials: 'include' });
-        if (!res.ok) continue;
-        const j = await res.json().catch(()=>null);
-        if (!j) continue;
-        // Accept multiple shapes: raw array, {transactions: []}, {data: []}
-        if (Array.isArray(j)) { transactions = j; break; }
-        if (Array.isArray(j.transactions)) { transactions = j.transactions; break; }
-        if (Array.isArray(j.data)) { transactions = j.data; break; }
-        // sometimes response is {status:'success', results: [...]}
-        if (Array.isArray(j.results)) { transactions = j.results; break; }
-        // else try to find any array property
-        for (const k of Object.keys(j || {})){
-          if (Array.isArray(j[k])) { transactions = j[k]; break; }
+      // account number (10 digits starting with 7/8/9)
+      if(/^[789]\d{9}$/.test(digitsOnly)){
+        const acc = digitsOnly.slice(0,10);
+        const url = `${API_BASE}/user_by_account/${encodeURIComponent(acc)}`;
+        const res = await fetch(url, { cache:'no-store' });
+        if(res.ok){
+          const json = await res.json().catch(()=>null);
+          if(json && json.status === 'success' && json.username){
+            const out = { name: json.username, avatar: null, phone: json.phone || null };
+            nameCache.set(other, out);
+            return out;
+          }
         }
-        if (Array.isArray(transactions)) break;
-      } catch(e){
-        // continue
       }
+
+      // else maybe it's a phone (11 digits)
+      if(/^\d{11}$/.test(digitsOnly)){
+        const phone = digitsOnly;
+        const url = `${API_BASE}/user/${encodeURIComponent(phone)}`;
+        const res = await fetch(url, { cache:'no-store' });
+        if(res.ok){
+          const json = await res.json().catch(()=>null);
+          // endpoints may return {status:"success", user: {...}}
+          if(json && json.status === 'success' && json.user){
+            const u = json.user;
+            const out = { name: u.username || u.name || phone, avatar: u.avatar || u.picture || null, phone: u.phone || phone };
+            nameCache.set(other, out);
+            return out;
+          }
+          // or raw object
+          if(json && (json.username || json.name)){
+            const out = { name: json.username || json.name, avatar: json.avatar || json.picture || null, phone: json.phone || phone };
+            nameCache.set(other, out);
+            return out;
+          }
+        }
+      }
+    } catch(e){
+      // ignore network issues, fallthrough to fallback name
     }
 
-    if (!Array.isArray(transactions) || transactions.length === 0){
-      container.innerHTML = '<div class="empty">No transactions found.</div>';
+    // fallback: return original string as name
+    const fallback = { name: String(other), avatar: null };
+    nameCache.set(other, fallback);
+    return fallback;
+  }
+
+  // Build a visual avatar content (initials or digit)
+  function avatarContent(nameOrOther){
+    if(!nameOrOther) return '';
+    const s = String(nameOrOther).trim();
+    // if starts with digit show that digit (like screenshot)
+    const m = s.match(/[A-Za-z]/);
+    if(!m){
+      // show first digit char
+      const d = s.match(/\d/);
+      return d ? d[0] : s.slice(0,1).toUpperCase();
+    }
+    // create initials (two letters)
+    const parts = s.split(/\s+/).filter(Boolean);
+    if(parts.length === 1) return parts[0].slice(0,1).toUpperCase();
+    return (parts[0].slice(0,1) + parts[1].slice(0,1)).toUpperCase();
+  }
+
+  // Render grouped transactions
+  async function renderTransactions(){
+    const main = document.getElementById('main');
+    const loading = document.getElementById('loading');
+    const content = document.getElementById('content');
+
+    const user = getStoredUser();
+    if(!user || !user.phone){
+      loading.innerText = 'Please login first (no logged user found).';
       return;
     }
 
-    // Sort descending by date (newest first). Try to read common date fields.
-    transactions.sort((a,b)=>{
-      const da = new Date(a.date || a.createdAt || a.timestamp || a.time || a.tx_time || a.created || a.datetime || 0).getTime() || 0;
-      const db = new Date(b.date || b.createdAt || b.timestamp || b.time || b.tx_time || b.created || b.datetime || 0).getTime() || 0;
-      return db - da;
-    });
+    loading.innerText = 'Loading transactions…';
+    content.innerHTML = '';
 
-    // Cache for user lookups: key -> user object
-    const userCache = {};
-    // We'll attempt to resolve counterparty names for each transaction (deduped)
-    const counterpartyIds = new Set();
-    const txs = transactions.map(tx=>{
-      // Normalize: pick ISO-like date or timestamp into tx._date
-      tx._date = tx.date || tx.createdAt || tx.timestamp || tx.time || tx.created || tx.datetime || tx.tx_time || null;
-      // derive candidate id
-      const cand = guessCounterparty(tx, stored) || null;
-      tx._counterparty = cand;
-      if (cand) counterpartyIds.add(String(cand));
-      return tx;
-    });
-
-    // Perform user fetches in parallel but with caching and throttling a bit
-    const idArray = Array.from(counterpartyIds).slice(0, 200); // guard
-    const fetchUserPromises = idArray.map(async id => {
-      const u = await fetchUserByPhoneOrAccount(id);
-      if (u) userCache[id] = u;
-    });
-    try { await Promise.all(fetchUserPromises); } catch(e){ /* ignore errors */ }
-
-    // Render grouped by month
-    const groups = {}; // monthKey -> [txs]
-    for (const tx of txs){
-      const mk = monthKeyFromDate(tx._date || Date.now());
-      if (!groups[mk]) groups[mk] = [];
-      groups[mk].push(tx);
-    }
-
-    // Build DOM
-    container.innerHTML = '';
-    // ensure months are sorted newest-first
-    const monthKeys = Object.keys(groups).sort((a,b)=>{
-      // parse month strings like "December 2025"
-      const parseMonth = s => {
-        const parts = s.split(' ');
-        const monthNames = {January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
-        const month = monthNames[parts[0]] ?? 0;
-        const year = Number(parts[1]) || 0;
-        return new Date(year, month, 1).getTime();
-      };
-      return parseMonth(b) - parseMonth(a);
-    });
-
-    for (const mk of monthKeys){
-      const divGroup = document.createElement('div');
-      divGroup.className = 'month-group';
-      const title = document.createElement('div');
-      title.className = 'month-title';
-      title.textContent = mk;
-      divGroup.appendChild(title);
-
-      const arr = groups[mk];
-      for (const tx of arr){
-        // try to attach resolved user object into tx._resolved if available (to be used by makeTxElement)
-        const id = tx._counterparty ? String(tx._counterparty) : null;
-        if (id && userCache[id]) tx._resolved = userCache[id];
-        // create element
-        const el = makeTxElement(tx, userCache, stored.account_number || stored.phone || '');
-        divGroup.appendChild(el);
+    try {
+      const res = await fetch(`${API_BASE}/transactions/${encodeURIComponent(user.phone)}`, { cache:'no-store' });
+      if(!res.ok){
+        loading.innerText = 'Failed to load transactions (server returned ' + res.status + ')';
+        return;
       }
-      container.appendChild(divGroup);
+      const arr = await res.json();
+      if(!Array.isArray(arr) || arr.length === 0){
+        loading.innerText = 'No transactions yet';
+        return;
+      }
+
+      // Convert raw items to normalized objects and sort descending by date
+      const normalized = arr.map(tx => {
+        return {
+          type: tx.type || '',
+          amount: tx.amount || 0,
+          other_party: tx.other_party || '',
+          date: tx.date || tx.createdAt || tx.created || new Date().toISOString(),
+          status: tx.status || tx.state || tx.result || null,
+          raw: tx
+        };
+      }).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+      const grouped = groupByMonth(normalized);
+
+      // Clear loading
+      loading.style.display = 'none';
+
+      // For each month group render header and each tx
+      for(const [month, txs] of grouped){
+        const mg = document.createElement('section');
+        mg.className = 'month-group';
+
+        const mt = document.createElement('div');
+        mt.className = 'month-title';
+        mt.textContent = month;
+        mg.appendChild(mt);
+
+        // render each tx
+        for(const tx of txs){
+          const card = document.createElement('div');
+          card.className = 'tx-card';
+
+          const lookup = await lookupNameForOther(tx.other_party); // get name (cached)
+          const displayName = lookup.name || tx.other_party || '—';
+          const avatarUrl = lookup.avatar || null;
+          const avatarText = avatarContent(displayName);
+
+          const av = document.createElement('div');
+          av.className = 'avatar';
+          if(avatarUrl){
+            const img = document.createElement('img');
+            img.src = avatarUrl;
+            img.alt = displayName;
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.objectFit = 'cover';
+            img.style.borderRadius = '10px';
+            av.appendChild(img);
+          } else {
+            av.textContent = avatarText;
+          }
+
+          const mainDiv = document.createElement('div');
+          mainDiv.className = 'tx-main';
+
+          const top = document.createElement('div');
+          top.className = 'tx-top';
+
+          const left = document.createElement('div');
+          left.style.minWidth = '0';
+
+          const nameEl = document.createElement('div');
+          nameEl.className = 'other-name';
+          nameEl.title = displayName;
+          nameEl.textContent = displayName;
+
+          const metaEl = document.createElement('div');
+          metaEl.className = 'meta';
+          // Show account/phone under name (as small text)
+          const acctText = tx.other_party || '—';
+          metaEl.innerHTML = `${acctText} · ${formatCurrency(tx.amount)}<br><small>${formatDateTime(tx.date)}</small>`;
+
+          left.appendChild(nameEl);
+          left.appendChild(metaEl);
+
+          top.appendChild(left);
+
+          const right = document.createElement('div');
+          right.style.textAlign = 'right';
+          const amountEl = document.createElement('div');
+          amountEl.className = 'tx-amount';
+          amountEl.textContent = formatCurrency(tx.amount);
+
+          // status label (determine best-effort)
+          const st = determineStatus(tx);
+          const statusEl = document.createElement('div');
+          statusEl.className = `status ${st}`;
+          statusEl.textContent = st;
+
+          right.appendChild(amountEl);
+          right.appendChild(statusEl);
+
+          top.appendChild(right);
+          mainDiv.appendChild(top);
+
+          card.appendChild(av);
+          card.appendChild(mainDiv);
+
+          mg.appendChild(card);
+        }
+
+        content.appendChild(mg);
+      }
+
+    } catch (err) {
+      console.error(err);
+      loading.innerText = '⚠️ Failed to load transactions (network or server error).';
     }
+  }
 
-  })();
-
+  // kick off
+  window.addEventListener('load', () => {
+    renderTransactions();
+  });
 </script>
 </body>
 </html>
