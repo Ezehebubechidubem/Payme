@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>PAYME — Agent</title>
 
-  <!-- Font Awesome (icons) -->
+  <!-- Font Awesome -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
 
   <style>
@@ -19,7 +19,9 @@
       --line:#e0e0e0;
       --badge:#ff3b30;
       --text:#1b1b1b;
-      --toast-bg: rgba(0,0,0,0.75);
+      --success:#2e7d32;
+      --pending:#f59e0b;
+      --failed:#d32f2f;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%}
@@ -36,7 +38,7 @@
       padding:14px 16px 12px;
       display:flex;align-items:center;gap:12px;
       border-bottom:1px solid var(--line);
-      position:sticky;top:0;z-index:10;
+      position:sticky;top:0;z-index:30;
     }
     .avatar{width:34px;height:34px;border-radius:50%;
       background:linear-gradient(135deg,#222,#666);flex:0 0 auto;}
@@ -59,14 +61,8 @@
     .btn{background:var(--primary);color:#fff;border:0;cursor:pointer;
       padding:10px 16px;border-radius:22px;font-weight:700;font-size:13px}
     .btn:hover{background:var(--primary-dark)}
-    .inline-promo{margin-top:12px;background:#fff;border-radius:10px;
-      padding:10px 12px;display:flex;align-items:center;gap:10px}
-    .inline-promo .dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;
-      background:#c8e6c9;display:grid;place-items:center;color:var(--primary);font-size:11px}
-    .inline-promo .text{font-size:13px;color:#333}
-    .inline-promo .link{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--primary);font-weight:700}
     .quick{background:var(--card);margin:0 12px;border-radius:14px;padding:14px 8px;
-      display:grid;grid-template-columns:repeat(4,1fr);text-align:center;gap:10px}
+      display:grid;grid-template-columns:repeat(4,1fr);text-align:center;align-items:center}
     .qa{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:#333}
     .qa i{font-size:20px;color:var(--primary)}
     .promo-card{margin:12px;background:var(--card);border-radius:14px;padding:14px;
@@ -84,7 +80,7 @@
     .big-banner{margin:12px;background:linear-gradient(135deg,#00c853,#43a047);
       color:#fff;border-radius:14px;padding:16px;text-align:center}
     .big-banner h2{font-size:18px;font-weight:900;letter-spacing:.2px}
-    .tag{display:inline-block;background:#ffec66;color:#2e2e2e;border-radius:16px;padding:7px 12px;font-weight:800;margin-top:10px}
+    .big-banner .cta{display:inline-block;background:#fff;padding:8px 18px;border-radius:22px;color:#000;font-weight:800;margin-top:8px}
     .refer{margin:12px;background:var(--card);border-radius:14px;padding:14px;
       display:flex;align-items:center;justify-content:space-between}
     .refer h4{font-size:15px}
@@ -98,54 +94,51 @@
     a{text-decoration:none;color:inherit}
     button{font:inherit}
 
-    /* agent-specific account block inside promo area */
-    .agent-account {
-      display:flex;
-      gap:12px;
-      align-items:center;
-      width:100%;
-      justify-content:space-between;
-    }
-    .acct-left {
-      display:flex;
-      gap:12px;
-      align-items:center;
-      flex:1;
-      min-width:0;
-    }
-    .acct-badge {
-      width:68px;height:68px;border-radius:10px;background:linear-gradient(135deg,#e8f5e9,#c8e6c9);
-      display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--primary-dark);
-      font-size:18px;flex:0 0 68px;
-    }
-    .acct-info { min-width:0; }
-    .acct-label { font-size:12px;color:#666; }
-    .acct-number { font-weight:900;font-size:18px;color:var(--primary-dark); overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-    .acct-owner { font-size:12px;color:#666;margin-top:4px; }
+    /* Announcement carousel styles (only for promo area) */
+    .ann-carousel { width:100%; display:flex; align-items:center; gap:12px; overflow:hidden; position:relative; }
+    .ann-track { display:flex; transition:transform .45s ease; width:100%; will-change:transform; }
+    .ann-slide { min-width:100%; box-sizing:border-box; padding:0; display:flex; align-items:center; justify-content:center; }
+    .ann-slide img{width:100%; height:140px; object-fit:cover; border-radius:10px;}
+    .ann-dots { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5; }
+    .ann-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; border:1px solid rgba(0,0,0,0.05) }
+    .ann-dot.active { background:#ffffff; box-shadow:0 0 0 3px rgba(0,0,0,0.06); }
 
-    .acct-actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; }
-    .copy-btn { background:var(--primary); color:#fff; border-radius:10px; padding:8px 10px; font-weight:700; cursor:pointer; border:0; }
-    .small-ghost { border:1px solid var(--line); padding:8px 10px; border-radius:10px; background:#fff; cursor:pointer; }
+    /* Account card */
+    .account-card{margin:12px;background:#fff;border-radius:12px;padding:12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+    .account-left{display:flex;gap:12px;align-items:center}
+    .account-avatar{width:56px;height:56px;border-radius:10px;background:linear-gradient(180deg,#e8f5e9,#f1f8f2);display:grid;place-items:center;font-weight:800;color:var(--primary)}
+    .account-meta .label{font-size:12px;color:#666}
+    .acc-number{font-weight:800;font-size:18px;margin-top:2px}
+    .account-actions{display:flex;gap:8px;align-items:center}
+    .copy-btn{background:var(--primary);color:#fff;border:none;padding:8px 12px;border-radius:10px;cursor:pointer}
+    .refresh-btn{border:1px solid #eee;background:#fff;padding:8px;border-radius:10px;cursor:pointer}
+
+    /* Recent transactions */
+    .trans-list{margin:12px;background:#fff;border-radius:12px;padding:8px 12px;box-shadow:0 1px 0 rgba(0,0,0,.02)}
+    .trans-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f0f0f0}
+    .trans-item:last-child{border-bottom:none}
+    .trans-avatar{width:44px;height:44px;border-radius:10px;background:#f3f8f5;display:grid;place-items:center;font-weight:800;color:#1b5e20}
+    .trans-meta{flex:1}
+    .trans-name{font-weight:700}
+    .trans-sub{font-size:12px;color:#666;margin-top:4px}
+    .trans-status{font-weight:700}
+    .status-success{color:var(--success);font-weight:700}
+    .status-pending{color:var(--pending);font-weight:700}
+    .status-failed{color:var(--failed);font-weight:700}
+    .show-more{display:flex;justify-content:center;padding:12px 0}
+    .btn-muted{background:#f3f4f6;border:0;padding:8px 16px;border-radius:20px;cursor:pointer}
 
     /* modal */
-    .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:center; justify-content:center; z-index:60; }
-    .modal { width:92%; max-width:420px; background:#fff; border-radius:12px; padding:16px; box-shadow:0 12px 30px rgba(0,0,0,0.15); }
-    .modal h3{ margin-bottom:8px; font-size:18px; }
-    .modal .acc-card { background:#f7fdf7; border:1px solid #e6f4e7; padding:12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; }
-    .modal .acc-card .left { overflow:hidden; min-width:0; }
-    .modal .acc-card .acc-num { font-weight:900; color:var(--primary-dark); font-size:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .modal .acc-card .acc-name { font-size:13px; color:#666; margin-top:4px; }
-    .modal .modal-actions { display:flex; gap:10px; margin-top:12px; justify-content:flex-end; }
+    .modal-backdrop{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;z-index:60}
+    .modal{background:#fff;padding:18px;border-radius:12px;max-width:360px;width:90%}
+    .modal .modal-header{font-weight:800;margin-bottom:8px}
+    .modal .modal-row{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
 
-    /* toast */
-    .toast { position:fixed; left:50%; transform:translateX(-50%); bottom:94px; background:var(--toast-bg); color:#fff; padding:8px 12px; border-radius:10px; font-size:13px; display:none; z-index:80; }
-
-    /* for responsive icon sizes */
-    .qa i { font-size:22px; }
-    .qa span{ font-size:12px; display:block; margin-top:4px; }
+    .sr-only{position:absolute;left:-9999px}
   </style>
+
+  <!-- API_BASE (defined early to avoid undefined errors in scripts) -->
   <script>
-    // define API_BASE early so scripts can use it (adjust if needed)
     const API_BASE = "https://payme-update.onrender.com";
   </script>
 </head>
@@ -156,7 +149,7 @@
       <div class="avatar" aria-hidden="true"></div>
       <div class="hello">
         <div class="hi"><a href="profile.html" id="hiUser">Hi, User</a></div>
-        <div class="sub">Agent Dashboard — Serve customers & POS</div>
+        <div class="sub" id="hiSub">Agent Dashboard — Serve customers &amp; POS</div>
       </div>
       <div class="topbar-actions">
         <div class="icon-btn" title="Help"><i class="fa-solid fa-headset"></i></div>
@@ -168,7 +161,7 @@
     </header>
 
     <!-- Balance card -->
-    <section class="card">
+    <section class="card" id="balanceCard">
       <div class="row">
         <div>
           <div class="label"><i class="fa-regular fa-circle-question"></i> Available Balance</div>
@@ -182,68 +175,64 @@
         </div>
       </div>
 
-      <div class="inline-promo">
-        <div class="dot"><i class="fa-solid fa-arrow-trend-up"></i></div>
-        <div class="text">Agent earnings? Track daily float & commissions</div>
-        <a href="#" class="link">Agent Tools <i class="fa-solid fa-angle-right"></i></a>
-      </div>
+      <!-- *** Inline promo removed as requested (No.1 removed) *** -->
     </section>
 
-    <!-- Quick actions (agent) -->
-    <section class="quick" aria-label="Agent quick actions">
-      <!-- Cash Out (external) -->
-      <a href="toWallet.html" style="text-decoration: none; color: inherit;">
-        <div class="qa" title="Cash Out">
-          <i class="fa-solid fa-money-bill-transfer"></i>
-          <span>Cash Out</span>
+    <!-- Quick actions: Cash Out | Transfer | POS | Cash In -->
+    <section class="quick" aria-label="quick-actions">
+      <a href="toWallet.html" style="text-decoration:none;color:inherit;">
+        <div class="qa">
+          <i class="fa-solid fa-money-bill"></i>
+          <div>Cash Out</div>
         </div>
       </a>
 
-      <!-- Transfer (to bank) -->
-      <a href="tobank.html" style="text-decoration: none; color: inherit;">
-        <div class="qa" title="Transfer to bank">
+      <a href="tobank.html" style="text-decoration:none;color:inherit;">
+        <div class="qa">
           <i class="fa-solid fa-arrow-right-arrow-left"></i>
-          <span>Transfer</span>
+          <div>Transfer</div>
         </div>
       </a>
 
-      <!-- POS (Agent) -->
-      <a href="pos.html" style="text-decoration: none; color: inherit;">
-        <div class="qa" title="POS / Transactions">
-          <i class="fa-solid fa-square-terminal"></i>
-          <span>POS</span>
-        </div>
-      </a>
+      <div class="qa" onclick="window.location.href='pos.html'" style="cursor:pointer">
+        <i class="fa-solid fa-credit-card"></i>
+        <div>POS</div>
+      </div>
 
-      <!-- Cash In (open modal showing account number to receive funds) -->
-      <button class="qa" id="cashInBtn" style="background:none;border:0;cursor:pointer">
+      <div class="qa" style="cursor:pointer" id="cashInBtn">
         <i class="fa-solid fa-wallet"></i>
-        <span>Cash In</span>
-      </button>
-    </section>
-
-    <!-- Promo / Agent account area (replaces announcement promo for agent) -->
-    <section class="promo-card" id="promoCard">
-      <div id="agentAccountBlock" class="agent-account" aria-live="polite">
-        <div class="acct-left">
-          <div class="acct-badge" aria-hidden="true">AG</div>
-          <div class="acct-info">
-            <div class="acct-label">Agent Receive Account</div>
-            <div class="acct-number" id="agentAccountNumber">—</div>
-            <div class="acct-owner" id="agentAccountName">No name</div>
-          </div>
-        </div>
-
-        <div class="acct-actions">
-          <button class="copy-btn" id="copyAcctBtn" title="Copy account number">
-            <i class="fa-regular fa-copy"></i> Copy
-          </button>
-          <button class="small-ghost" id="refreshAcctBtn" title="Refresh from server">
-            <i class="fa-solid fa-rotate-right"></i>
-          </button>
-        </div>
+        <div>Cash In</div>
       </div>
     </section>
+
+    <!-- Announcement / promo area (announcement carousel) -->
+    <section class="promo-card" id="promoCard" aria-label="promo">
+      <!-- Announcement carousel (shows images fetched from server) -->
+      <div id="promoAnnouncements" style="width:100%;">
+        <div class="ann-carousel" id="annCarouselWrap" aria-live="polite">
+          <div class="ann-track" id="annTrack" role="list"></div>
+        </div>
+        <div class="ann-dots" id="annDots" style="display:none"></div>
+        <div class="sr-only" id="annA11yLabel">Promotional announcements carousel</div>
+      </div>
+    </section>
+
+    <!-- Account card (No.3 moved to here and shows hardcoded account number starting with 7) -->
+    <div class="account-card" id="agentAccountCard">
+      <div class="account-left">
+        <div class="account-avatar">AG</div>
+        <div class="account-meta">
+          <div class="label">Agent Receive Account</div>
+          <!-- hardcoded 10-digit number starting with 7 as requested -->
+          <div class="acc-number" id="agentAccNumber">7123456789</div>
+          <div class="label" id="agentAccName">No name</div>
+        </div>
+      </div>
+      <div class="account-actions">
+        <button class="copy-btn" id="copyAccBtn"><i class="fa-regular fa-copy"></i>&nbsp;Copy</button>
+        <button class="refresh-btn" id="refreshAccBtn" title="Refresh"><i class="fa-solid fa-arrows-rotate"></i></button>
+      </div>
+    </div>
 
     <!-- Services -->
     <section class="services">
@@ -254,110 +243,113 @@
           <i class="fa-solid fa-angle-right"></i>
         </div>
       </div>
+
+      <div class="grid">
+        <div class="svc"><a href="airtime.html"><i class="fa-solid fa-phone"></i><div>Airtime</div></a></div>
+        <div class="svc"><a href="Data.html"><i class="fa-solid fa-signal"></i><div>Data</div></a></div>
+        <div class="svc"><a href="refer.html"><i class="fa-solid fa-gift"></i><div>Refer &amp; Earn</div></a></div>
+        <div class="svc"><a href="withdraw.html"><i class="fa-solid fa-wallet"></i><div>Withdraw</div></a></div>
+
+        <div class="svc"><a href="cashbox.html"><i class="fa-solid fa-box"></i><div>CashBox</div></a></div>
+        <div class="svc"><a href="savings.html"><i class="fa-solid fa-lightbulb"></i><div>SmartEarn</div></a></div>
+        <div class="svc"><a href="business.html"><i class="fa-solid fa-store"></i><div>My Business Hub</div></a></div>
+        <div class="svc"></div>
+      </div>
     </section>
 
-    <div class="grid" aria-hidden="false">
-      <div class="svc"><a href="airtime.html"><i class="fa-solid fa-phone"></i>Airtime</a></div>
-      <div class="svc"><a href="Data.html"><i class="fa-solid fa-signal"></i>Data</a></div>
-      <div class="svc"><div onclick="window.location.href='betting.html'"><i class="fa-solid fa-dice"></i>Betting</div></div>
-      <div class="svc"><i class="fa-solid fa-bolt"></i>Electricity</div>
-      <div class="svc"><i class="fa-solid fa-shield-halved"></i>Insurance</div>
-      <div class="svc"><i class="fa-solid fa-coins"></i>Loan</div>
-      <div class="svc"><i class="fa-solid fa-tv"></i>TV</div>
-      <div class="svc"><i class="fa-solid fa-gift"></i>Refer & Earn</div>
-      <div class="svc"><i class="fa-solid fa-money-bill"></i>Withdraw</div>
-      <div class="svc"><i class="fa-solid fa-box"></i>CashBox</div>
-      <div class="svc"><a href="savings.html"><i class="fa-solid fa-lightbulb"></i>SmartEarn</a></div>
-      <div class="svc"><i class="fa-solid fa-store"></i>My Business Hub</div>
-    </div>
-
-    <!-- Big banner -->
-    <section class="big-banner">
+    <!-- Big banner changed to Agent Float Management with Agent Tools -->
+    <section class="big-banner" aria-label="agent-tools-banner">
       <h2>Agent Float Management</h2>
-      <div class="tag">Track POS & Agent Earnings</div>
+      <div style="margin-top:10px;">
+        <button class="cta" style="background:#fff;color:#000;padding:8px 18px;border-radius:28px;border:none;font-weight:800;cursor:pointer">Agent Tools</button>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn" onclick="window.location.href='agent-tools.html'">Track POS & Agent Earnings</button>
+      </div>
     </section>
 
+    <!-- Recent Transactions (No.8) -->
+    <section style="margin:12px;">
+      <h3 style="margin-bottom:8px">Recent Transactions</h3>
+      <div class="trans-list" id="transList" aria-live="polite"></div>
+      <div class="show-more">
+        <button id="toggleMoreBtn" class="btn-muted">Show more</button>
+      </div>
+    </section>
   </div>
 
   <!-- Bottom navigation -->
-  <nav class="bottom">
-    <a class="nav-item active" href="#"><i class="fa-solid fa-house"></i>Home</a>
-    <a class="nav-item" href="#"><i class="fa-solid fa-credit-card"></i>Loan</a>
-    <a class="nav-item" href="#"><i class="fa-solid fa-chart-line"></i>Wealth</a>
-    <a class="nav-item" href="#"><i class="fa-solid fa-gift"></i>Reward</a>
-    <a class="nav-item" href="profile.html"><i class="fa-solid fa-user"></i>Me</a>
+  <nav class="bottom" role="navigation" aria-label="main">
+    <a class="nav-item active" href="#"><i class="fa-solid fa-house"></i><div>Home</div></a>
+    <a class="nav-item" href="#"><i class="fa-solid fa-credit-card"></i><div>Loan</div></a>
+    <a class="nav-item" href="#"><i class="fa-solid fa-chart-line"></i><div>Wealth</div></a>
+    <a class="nav-item" href="#"><i class="fa-solid fa-gift"></i><div>Reward</div></a>
+    <a class="nav-item" href="profile.html"><i class="fa-solid fa-user"></i><div>Me</div></a>
   </nav>
 
-  <!-- Cash-In Modal -->
-  <div class="modal-backdrop" id="cashInModal" role="dialog" aria-modal="true" aria-hidden="true">
-    <div class="modal" role="document">
-      <h3>Receive Cash (Account details)</h3>
-      <div class="acc-card">
-        <div class="left">
-          <div class="acc-num" id="modalAcctNumber">—</div>
-          <div class="acc-name" id="modalAcctName">—</div>
+  <!-- Cash In modal -->
+  <div class="modal-backdrop" id="cashInModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cashInTitle">
+      <div class="modal-header" id="cashInTitle">Deposit to Agent Account</div>
+      <div>
+        <div class="label">Account name</div>
+        <div style="font-weight:800;margin-top:6px" id="modalAccName">No name</div>
+
+        <div style="margin-top:10px" class="label">Account number</div>
+        <div style="font-weight:800;margin-top:6px" id="modalAccNumber">7123456789</div>
+
+        <div class="modal-row">
+          <button class="btn" id="modalCopyBtn">Copy account number</button>
+          <button class="outline" id="modalCloseBtn">Close</button>
         </div>
-        <div>
-          <button class="copy-btn" id="modalCopyBtn"><i class="fa-regular fa-copy"></i></button>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button class="small-ghost" id="modalCloseBtn">Close</button>
-        <button class="btn" id="modalGotItBtn">Done</button>
       </div>
     </div>
   </div>
 
-  <!-- Toast -->
-  <div class="toast" id="toast">Copied</div>
-
 <script>
-  // ---------- Session & hi-user (minimal authoritative fetch, uses your backend routes) ----------
+  /* =========================
+     Utilities & config
+     ========================= */
+  function safeParse(s){ try { return JSON.parse(s); } catch(e){ return null; } }
+  function esc(s){ return String(s||''); }
+  function el(id){ return document.getElementById(id); }
+
+  /* ==============
+     USER & BALANCE (hi-user)
+     ============== */
   function getStoredUser() {
     const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
-    try { return j ? JSON.parse(j) : null; } catch(e) { return null; }
+    try { return j ? JSON.parse(j) : null; } catch (e) { return null; }
   }
 
-  function updateUIWithUser(user){
-    if(!user) return;
-    const hi = document.getElementById("hiUser");
+  function updateUIWithUser(user) {
+    if (!user) return;
+    const hi = el("hiUser");
     if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
-    const balEl = document.getElementById("balance");
+    const balEl = el("balance");
     if (balEl) {
       const b = typeof user.balance !== "undefined" ? Number(user.balance) : (user.balance ? Number(user.balance) : 0);
       balEl.innerText = "₦" + (isNaN(b) ? "0.00" : b.toFixed(2));
     }
-    // agent account info: prefer account_number, else try last 10 digits of phone
-    const acctEl = document.getElementById("agentAccountNumber");
-    const ownerEl = document.getElementById("agentAccountName");
-    let acc = user.account_number || user.acc || null;
-    if(!acc && user.phone) {
-      // if phone is 11 digits (e.g. 080...) take last 10 digits; but agent acc must start with 7/8/9 - we won't fabricate start digit; prefer account_number from backend
-      const digits = String(user.phone).replace(/\D/g,'');
-      if(digits.length >= 10) acc = digits.slice(-10);
+    // update agent account name if present in user
+    if (user.account_number && el("agentAccNumber")) {
+      // if you prefer server account number over hardcoded, uncomment:
+      // el("agentAccNumber").innerText = user.account_number;
     }
-    if(!acc) {
-      acctEl.innerText = 'No account number';
-    } else {
-      acctEl.innerText = acc;
-    }
-    ownerEl.innerText = user.username || user.name || 'No name';
-    // modal elements
-    const modalNum = document.getElementById('modalAcctNumber');
-    const modalName = document.getElementById('modalAcctName');
-    if(modalNum) modalNum.innerText = acc || '—';
-    if(modalName) modalName.innerText = user.username || user.name || '—';
+    if (user.username && el("agentAccName")) el("agentAccName").innerText = user.username;
+    if (user.username && el("modalAccName")) el("modalAccName").innerText = user.username;
   }
 
-  async function fetchJsonIfOk(url){
+  async function fetchJsonIfOk(url, opts={}) {
     try {
-      const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
-      if(!res.ok) return null;
+      const res = await fetch(url, opts);
+      if (!res.ok) return null;
       return await res.json().catch(()=>null);
-    } catch(e){ return null; }
+    } catch (e) { return null; }
   }
 
-  async function fetchUserFromServer(phone, account_number){
+  // fetch user from server by phone/account (uses your Flask routes)
+  async function fetchUserFromServer(phone, account_number) {
     const candidates = [];
     if (phone) {
       candidates.push(`${API_BASE}/user/${encodeURIComponent(phone)}`);
@@ -367,144 +359,479 @@
       candidates.push(`${API_BASE}/user_by_account/${encodeURIComponent(account_number)}`);
       candidates.push(`${API_BASE}/api/user_by_account/${encodeURIComponent(account_number)}`);
     }
-    for(const url of candidates){
-      const j = await fetchJsonIfOk(url);
-      if(!j) continue;
-      if (j.status === 'success' && j.user) return j.user;
-      if (j.status === 'success' && j.username) return { username: j.username, phone: j.phone, account_number: j.account_number, balance: j.balance };
-      if (j.username || j.phone || j.account_number) return j;
-      if (j.user) return j.user;
+    for (const url of candidates) {
+      const json = await fetchJsonIfOk(url, { credentials: 'include', cache: 'no-store' });
+      if (!json) continue;
+      if (json.status === 'success' && json.user) return json.user;
+      if (json.status === 'success' && json.username) return { username: json.username, phone: json.phone };
+      if (json.username || json.phone || json.account_number) return json;
+      if (json.user && typeof json.user === 'object') return json.user;
     }
     return null;
   }
 
-  async function fetchBalanceByPhone(phone){
-    if(!phone) return null;
-    const urls = [`${API_BASE}/balance/${encodeURIComponent(phone)}`, `${API_BASE}/api/balance/${encodeURIComponent(phone)}`];
-    for(const u of urls){
-      try {
-        const j = await fetchJsonIfOk(u);
-        if(j && (typeof j.balance === 'number' || !isNaN(Number(j.balance)))) return Number(j.balance);
-      } catch(e){}
+  // fetch balance by phone
+  async function fetchBalanceByPhone(phone) {
+    if (!phone) return null;
+    const candidates = [
+      `${API_BASE}/balance/${encodeURIComponent(phone)}`,
+      `${API_BASE}/api/balance/${encodeURIComponent(phone)}`
+    ];
+    for (const url of candidates) {
+      const j = await fetchJsonIfOk(url, { cache: 'no-store' });
+      if (j && (typeof j.balance === 'number' || !isNaN(Number(j.balance)))) return Number(j.balance);
     }
     return null;
   }
 
-  async function ensureCurrentUser(){
+  // ensure authoritative current user
+  async function ensureCurrentUser() {
     const stored = getStoredUser();
-    if(!stored) return;
-    updateUIWithUser(stored); // quick show
+    if (!stored) return;
+    updateUIWithUser(stored);
     try {
-      const serv = await fetchUserFromServer(stored.phone, stored.account_number || stored.acc);
-      if(serv){
-        if(typeof serv.balance === 'undefined'){
-          const b = await fetchBalanceByPhone(serv.phone || stored.phone);
-          if(b !== null) serv.balance = b;
+      const serverUser = await fetchUserFromServer(stored.phone, stored.account_number);
+      if (serverUser) {
+        if (typeof serverUser.balance === 'undefined') {
+          const bal = await fetchBalanceByPhone(serverUser.phone || stored.phone);
+          if (bal !== null) serverUser.balance = bal;
         }
         const normalized = {
-          username: serv.username || serv.name || stored.username || stored.name,
-          phone: serv.phone || stored.phone || stored.phone,
-          account_number: serv.account_number || serv.acc || stored.account_number || stored.acc,
-          balance: typeof serv.balance !== 'undefined' ? Number(serv.balance) : (stored.balance !== undefined ? stored.balance : undefined)
+          username: serverUser.username || serverUser.name || stored.username || stored.name,
+          phone: serverUser.phone || stored.phone,
+          account_number: serverUser.account_number || stored.account_number || stored.acc,
+          balance: typeof serverUser.balance !== 'undefined' ? Number(serverUser.balance) : (stored.balance !== undefined ? stored.balance : undefined)
         };
-        try { localStorage.setItem('loggedInUser', JSON.stringify(normalized)); localStorage.setItem('user', JSON.stringify(normalized)); } catch(e){}
+        try {
+          localStorage.setItem("loggedInUser", JSON.stringify(normalized));
+          localStorage.setItem("user", JSON.stringify(normalized));
+        } catch(e){}
         updateUIWithUser(normalized);
         return;
       }
-      // fallback to stored
       updateUIWithUser(stored);
-    } catch(e){
+    } catch(e) {
       updateUIWithUser(stored);
     }
   }
 
-  // run on start + focus + storage changes
-  window.addEventListener('load', ()=>{ const s = getStoredUser(); if(s) updateUIWithUser(s); ensureCurrentUser().catch(()=>{}); });
-  window.addEventListener('focus', ()=>ensureCurrentUser().catch(()=>{}));
-  window.addEventListener('storage', (e)=>{ if(!e) return; if(e.key==='loggedInUser' || e.key==='user') setTimeout(()=>ensureCurrentUser().catch(()=>{}),50); });
-  setInterval(()=>{ const u=getStoredUser(); if(u && (u.phone||u.account_number)) ensureCurrentUser().catch(()=>{}); },15000);
+    /* ==============
+     ANNOUNCEMENTS (carousel)
+     ============== */
+  const ANNOUNCEMENTS_ENDPOINTS = [
+    `${API_BASE}/api/announcements/active`,
+    `${API_BASE}/announcements/active`,
+    `${API_BASE}/admin/announcements/active`,
+    `${API_BASE}/api/announcements`,
+    `${API_BASE}/admin/announcements`,
+    `${API_BASE}/api/announcements/`,
+    `${API_BASE}/announcements`
+  ];
+  const REFRESH_INTERVAL_MS = 10000;
+  let annIndex = 0, annTimer = null, currentAnn = [];
 
-  // ---------- copy helpers & modal ----------
-  const toast = document.getElementById('toast');
-  function showToast(msg='Copied', ms=1600){
-    if(!toast) return;
-    toast.innerText = msg;
-    toast.style.display = 'block';
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(()=> toast.style.display='none', ms);
+  function buildImageUrlFromItem(it){
+    let candidate = it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null;
+    if(!candidate) return null;
+    candidate = String(candidate);
+    if(/^https?:\/\//i.test(candidate)) return candidate;
+    const siteBase = API_BASE.replace(/\/api\/?$/i, '');
+    if(candidate.startsWith('/')) return siteBase + candidate;
+    if(candidate.toLowerCase().startsWith('admin/')) return siteBase + '/' + candidate;
+    return `${siteBase}/admin/uploads/announcements/${candidate}`;
   }
 
-  async function copyText(text){
-    if(!text) return showToast('Nothing to copy');
-    try{
-      await navigator.clipboard.writeText(String(text));
-      showToast('Copied to clipboard');
-    }catch(e){
-      // fallback for older browsers
+  async function fetchAnnouncementsFromServer(){
+    for(const url of ANNOUNCEMENTS_ENDPOINTS){
+      try {
+        const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
+        if(!r.ok) continue;
+        const json = await r.json().catch(()=>null);
+        if(!json) continue;
+        let list = [];
+        if(Array.isArray(json)) list = json;
+        else if(Array.isArray(json.data)) list = json.data;
+        else if(Array.isArray(json.announcements)) list = json.announcements;
+        else {
+          for(const k of Object.keys(json)){
+            if(Array.isArray(json[k])) { list = json[k]; break; }
+          }
+        }
+        if(!Array.isArray(list) || list.length === 0) continue;
+        const normalized = list.map(it=>{
+          const id = it.id || it._id || it.announcement_id || it.ann_id || it.announcementId || (it.title? Math.random().toString(36).slice(2,9) : null);
+          return {
+            id,
+            title: it.title || it.heading || '',
+            body: it.body || it.message || '',
+            image_url: it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null,
+            createdAt: it.createdAt || it.created_at || it.created || null,
+            expiresAt: it.expiresAt || it.expires_at || it.expires || null,
+            raw: it
+          };
+        }).filter(x=>x.id);
+        const now = new Date();
+        const active = normalized.filter(a => {
+          if(!a.expiresAt) return true;
+          const ex = new Date(a.expiresAt);
+          return !isNaN(ex.getTime()) ? ex > now : true;
+        });
+        return active.slice(0, 10);
+      } catch(e){
+        continue;
+      }
+    }
+    return null;
+  }
+
+  function renderAnnouncementsImages(anns){
+    currentAnn = anns || [];
+    const track = el("annTrack");
+    const dotsWrap = el("annDots");
+    const promoAnnouncements = el("promoAnnouncements");
+    if(!anns || anns.length === 0){
+      promoAnnouncements.style.display = 'none';
+      return;
+    }
+    const slidesHtml = anns.map((a)=>{
+      const candidateUrl = buildImageUrlFromItem(a) || a.image_url || a.raw?.image_url || null;
+      const finalUrl = candidateUrl ? (candidateUrl + (candidateUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now()) : null;
+      if(finalUrl){
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><img src="${esc(finalUrl)}" alt="${esc(a.title||'promo')}"></div>`;
+      } else {
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><div style="width:100%;height:140px;background:#f3f4f6;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div></div>`;
+      }
+    }).join('');
+    track.innerHTML = slidesHtml;
+    dotsWrap.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
+    promoAnnouncements.style.display = 'block';
+    dotsWrap.style.display = 'flex';
+    annIndex = 0;
+    updateAnnTransform();
+    startAnnAutoPlay();
+    Array.from(dotsWrap.children).forEach(dot => {
+      dot.addEventListener('click', ()=> {
+        annIndex = Number(dot.getAttribute('data-index') || 0);
+        updateAnnTransform();
+        restartAnnAutoPlay();
+      });
+    });
+    setupSwipe(track);
+  }
+
+  function updateAnnTransform(){
+    const track = el('annTrack');
+    const len = currentAnn.length || 1;
+    if(annIndex < 0) annIndex = 0;
+    if(annIndex >= len) annIndex = len - 1;
+    track.style.transform = `translateX(-${annIndex * 100}%)`;
+    const dots = document.querySelectorAll('#annDots .ann-dot');
+    dots.forEach((d,i)=> d.classList.toggle('active', i===annIndex));
+  }
+
+  function startAnnAutoPlay(){
+    if(annTimer) clearInterval(annTimer);
+    if((currentAnn||[]).length <= 1) return;
+    annTimer = setInterval(()=> {
+      annIndex = (annIndex + 1) % currentAnn.length;
+      updateAnnTransform();
+    }, 4000);
+  }
+  function stopAnnAutoPlay(){ if(annTimer) clearInterval(annTimer); annTimer = null; }
+  function restartAnnAutoPlay(){ stopAnnAutoPlay(); startAnnAutoPlay(); }
+
+  function setupSwipe(trackEl){
+    if(!trackEl) return;
+    let startX = 0, deltaX = 0, isDown = false, startTime = 0;
+    const threshold = 40;
+    const allowedTime = 500;
+    trackEl.ontouchstart = function(e){
+      stopAnnAutoPlay();
+      const t = e.touches[0];
+      startX = t.clientX; startTime = Date.now(); deltaX = 0;
+    };
+    trackEl.ontouchmove = function(e){
+      const t = e.touches[0];
+      deltaX = t.clientX - startX;
+      trackEl.style.transition = 'none';
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    trackEl.ontouchend = function(e){
+      const elapsed = Date.now() - startTime;
+      trackEl.style.transition = '';
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        else annIndex = Math.max(0, annIndex - 1);
+      }
+      updateAnnTransform(); restartAnnAutoPlay();
+    };
+    trackEl.onmousedown = function(e){
+      stopAnnAutoPlay();
+      isDown = true; startX = e.clientX; startTime = Date.now(); deltaX = 0;
+      document.body.style.userSelect = 'none'; trackEl.style.transition = 'none';
+    };
+    window.onmousemove = function(e){
+      if(!isDown) return;
+      deltaX = e.clientX - startX;
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    window.onmouseup = function(e){
+      if(!isDown) return;
+      isDown = false; document.body.style.userSelect = '';
+      trackEl.style.transition = '';
+      const elapsed = Date.now() - startTime;
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        else annIndex = Math.max(0, annIndex - 1);
+      }
+      updateAnnTransform(); restartAnnAutoPlay();
+    };
+  }
+
+  /* ==============
+     ACCOUNT copy/refresh & Cash In modal
+     ============== */
+  const AGENT_HARDCODED_ACC = "7123456789"; // 10 digits starting with 7 as requested
+
+  function copyToClipboard(text){
+    if (!navigator.clipboard) {
       const ta = document.createElement('textarea');
-      ta.value = String(text);
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); showToast('Copied'); } catch(err){ showToast('Copy failed'); }
-      ta.remove();
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand('copy'); } catch(e) {}
+      document.body.removeChild(ta);
+      return;
     }
+    navigator.clipboard.writeText(text).catch(()=>{});
   }
 
-  document.getElementById('copyAcctBtn').addEventListener('click', ()=>{
-    const acc = document.getElementById('agentAccountNumber').innerText || '';
-    copyText(acc);
+  el("copyAccBtn").addEventListener("click", ()=>{
+    const num = el("agentAccNumber").innerText.trim();
+    copyToClipboard(num);
+    el("copyAccBtn").innerText = "Copied";
+    setTimeout(()=> el("copyAccBtn").innerHTML = '<i class="fa-regular fa-copy"></i>&nbsp;Copy', 1200);
   });
 
-  document.getElementById('refreshAcctBtn').addEventListener('click', ()=>{
-    ensureCurrentUser().catch(()=>{});
-    showToast('Refreshed');
+  el("refreshAccBtn").addEventListener("click", ()=>{
+    // For now refresh simply re-reads stored user name and account configuration
+    const user = getStoredUser();
+    if (user && user.account_number) {
+      el("agentAccNumber").innerText = user.account_number;
+    } else {
+      el("agentAccNumber").innerText = AGENT_HARDCODED_ACC;
+    }
+    // update name
+    if (user && user.username) el("agentAccName").innerText = user.username;
+    el("refreshAccBtn").classList.add('pulse');
+    setTimeout(()=> el("refreshAccBtn").classList.remove('pulse'), 600);
   });
 
-  // Cash In modal handlers
-  const cashInBtn = document.getElementById('cashInBtn');
-  const cashInModal = document.getElementById('cashInModal');
-  const modalCloseBtn = document.getElementById('modalCloseBtn');
-  const modalGotItBtn = document.getElementById('modalGotItBtn');
-  const modalCopyBtn = document.getElementById('modalCopyBtn');
-
-  function openCashInModal(){
-    // fill modal with current data
-    const acc = document.getElementById('agentAccountNumber').innerText || '';
-    const name = document.getElementById('agentAccountName').innerText || '';
-    document.getElementById('modalAcctNumber').innerText = acc;
-    document.getElementById('modalAcctName').innerText = name;
-    cashInModal.style.display = 'flex';
-    cashInModal.setAttribute('aria-hidden','false');
-  }
-  function closeCashInModal(){
-    cashInModal.style.display = 'none';
-    cashInModal.setAttribute('aria-hidden','true');
-  }
-  cashInBtn.addEventListener('click', openCashInModal);
-  modalCloseBtn.addEventListener('click', closeCashInModal);
-  modalGotItBtn.addEventListener('click', closeCashInModal);
-  modalCopyBtn.addEventListener('click', ()=> {
-    const acc = document.getElementById('modalAcctNumber').innerText || '';
-    copyText(acc);
+  // Cash In modal behavior
+  el("cashInBtn").addEventListener("click", ()=>{
+    el("modalAccNumber").innerText = el("agentAccNumber").innerText;
+    el("cashInModal").style.display = "flex";
   });
-  // close modal when clicking backdrop
-  cashInModal.addEventListener('click', (e)=>{
-    if(e.target === cashInModal) closeCashInModal();
+  el("modalCloseBtn").addEventListener("click", ()=> el("cashInModal").style.display = "none");
+  el("modalCopyBtn").addEventListener("click", ()=>{
+    const num = el("modalAccNumber").innerText.trim();
+    copyToClipboard(num);
+    el("modalCopyBtn").innerText = "Copied";
+    setTimeout(()=> el("modalCopyBtn").innerText = "Copy account number", 1200);
   });
 
-  // ---------- logout clearing (captures links to paymeregister.html) ----------
+  // Clicking logout-style link clears user keys (we added generic handler below too)
   document.addEventListener('click', function(e){
     const a = e.target.closest && e.target.closest('a');
-    if(!a) return;
-    const href = a.getAttribute('href') || '';
-    if(href.includes('paymeregister.html') || a.classList.contains('logout')){
+    if (!a) return;
+    if (a.getAttribute('href') && a.getAttribute('href').includes('paymeregister.html')) {
       try {
-        localStorage.removeItem('loggedInUser'); localStorage.removeItem('user');
-        sessionStorage.removeItem('loggedInUser'); sessionStorage.removeItem('user');
+        localStorage.removeItem('loggedInUser');
+        localStorage.removeItem('user');
+        sessionStorage.removeItem('loggedInUser');
+        sessionStorage.removeItem('user');
       } catch(e){}
-      // allow navigation
-      // small delay not required — navigation will happen
     }
+  });
+
+  /* ==============
+     RECENT TRANSACTIONS UI
+     ============== */
+  // sample fallback transactions (will be used if backend not reachable)
+  const SAMPLE_TRANSACTIONS = [
+    // newest first
+    { id: 't1', name:'Aisha', acc:'7123456789', amount:2000, status:'success', dt:'2025-12-04T16:11:59' },
+    { id: 't2', name:'Chidi', acc:'7123456789', amount:500, status:'pending', dt:'2025-12-03T16:11:59' },
+    { id: 't3', name:'Emeka', acc:'7123456789', amount:1500, status:'failed', dt:'2025-12-01T16:11:59' },
+    // older entries for show more
+    { id: 't4', name:'Bola', acc:'7123456789', amount:1000, status:'success', dt:'2025-11-28T12:20:14' },
+    { id: 't5', name:'Tunde', acc:'7123456789', amount:2500, status:'success', dt:'2025-11-03T09:10:05' },
+    { id: 't6', name:'Ngozi', acc:'7123456789', amount:700, status:'pending', dt:'2025-10-15T08:40:20' },
+  ];
+
+  // fetch recent transactions (if you have a real endpoint replace this URL)
+  async function fetchRecentTransactions(){
+    // example endpoints - if your backend has a proper endpoint change this to the right one
+    const candidates = [
+      `${API_BASE}/transactions/recent`, // custom
+      `${API_BASE}/api/transactions/recent`
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
+        if (!res.ok) continue;
+        const j = await res.json().catch(()=>null);
+        if (!j) continue;
+        // try to find array in response
+        if (Array.isArray(j)) return j;
+        if (Array.isArray(j.data)) return j.data;
+        if (Array.isArray(j.transactions)) return j.transactions;
+      } catch(e){}
+    }
+    // fallback to sample
+    return SAMPLE_TRANSACTIONS;
+  }
+
+  // group by month-year label
+  function groupByMonth(items){
+    const groups = {};
+    items.forEach(it=>{
+      const d = new Date(it.dt);
+      const key = d.toLocaleString(undefined, { month:'long', year:'numeric' });
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(it);
+    });
+    return groups;
+  }
+
+  // render list: default shows last 3, show more toggles full
+  let showAll = false;
+  let allTransactions = [];
+
+  function renderTransactions(){
+    const container = el("transList");
+    container.innerHTML = '';
+    if (!allTransactions || allTransactions.length === 0) {
+      container.innerHTML = '<div style="padding:12px;color:#666">No transactions yet</div>';
+      return;
+    }
+    const toShow = showAll ? allTransactions : allTransactions.slice(0,3);
+    const grouped = groupByMonth(toShow);
+    // render each month group in chronological order (newest first)
+    const monthKeys = Object.keys(grouped).sort((a,b)=>{
+      const da = new Date(grouped[a][0].dt), db = new Date(grouped[b][0].dt);
+      return db - da;
+    });
+    monthKeys.forEach(month=>{
+      const header = document.createElement('div');
+      header.style.padding = '8px 0';
+      header.style.fontWeight = '800';
+      header.style.color = '#333';
+      header.textContent = month;
+      container.appendChild(header);
+      grouped[month].forEach(it=>{
+        const item = document.createElement('div');
+        item.className = 'trans-item';
+        const avatar = document.createElement('div'); avatar.className = 'trans-avatar';
+        avatar.innerText = (it.name||'--').split(' ').map(s=>s.charAt(0)).slice(0,2).join('').toUpperCase();
+        const meta = document.createElement('div'); meta.className='trans-meta';
+        const name = document.createElement('div'); name.className='trans-name'; name.innerText = it.name || 'Unknown';
+        const sub = document.createElement('div'); sub.className='trans-sub';
+        const d = new Date(it.dt);
+        sub.innerText = `${it.acc || ''} • ₦${Number(it.amount||0).toLocaleString()} \n ${d.toLocaleDateString()} , ${d.toLocaleTimeString()}`;
+        const status = document.createElement('div'); status.className='trans-status';
+        status.innerText = it.status;
+        if (it.status === 'success') status.classList.add('status-success');
+        else if (it.status === 'pending') status.classList.add('status-pending');
+        else status.classList.add('status-failed');
+
+        meta.appendChild(name);
+        meta.appendChild(sub);
+        item.appendChild(avatar);
+        item.appendChild(meta);
+        item.appendChild(status);
+        container.appendChild(item);
+      });
+    });
+  }
+
+  el("toggleMoreBtn").addEventListener("click", ()=>{
+    showAll = !showAll;
+    el("toggleMoreBtn").innerText = showAll ? 'Show less' : 'Show more';
+    if (showAll) {
+      // if we have more items to fetch from backend we can fetch them here
+      // For now we assume allTransactions already contains full list
+    }
+    renderTransactions();
+  });
+
+  /* ==============
+     Page initialisation
+     ============== */
+  async function initPage(){
+    // display hardcoded agent account by default
+    el("agentAccNumber").innerText = AGENT_HARDCODED_ACC;
+    el("modalAccNumber").innerText = AGENT_HARDCODED_ACC;
+
+    // load stored user and then consult server for authoritative user
+    const stored = getStoredUser();
+    if (stored) updateUIWithUser(stored);
+    ensureCurrentUser().catch(()=>{});
+
+    // init announcements
+    try {
+      const anns = await fetchAnnouncementsFromServer();
+      if (Array.isArray(anns) && anns.length) {
+        try { localStorage.setItem('announcements_v1', JSON.stringify(anns)); } catch(e){}
+        renderAnnouncementsImages(anns);
+      } else {
+        // fallback to local cache
+        try {
+          const cached = JSON.parse(localStorage.getItem('announcements_v1')||'[]');
+          if (cached && cached.length) renderAnnouncementsImages(cached);
+        } catch(e){}
+      }
+    } catch(e){}
+
+    // load recent transactions
+    try {
+      const tx = await fetchRecentTransactions();
+      if (Array.isArray(tx) && tx.length) {
+        // normalize dt and status keys if necessary
+        allTransactions = tx.map(t => ({
+          id: t.id || t.txid || Math.random().toString(36).slice(2,9),
+          name: t.name || t.username || t.customer || 'Unknown',
+          acc: t.acc || t.account || t.account_number || (getStoredUser()? getStoredUser().account_number : AGENT_HARDCODED_ACC),
+          amount: t.amount || t.value || 0,
+          status: (t.status || t.state || 'success').toString().toLowerCase(),
+          dt: t.dt || t.createdAt || t.created_at || new Date().toISOString()
+        }));
+      } else {
+        allTransactions = SAMPLE_TRANSACTIONS;
+      }
+    } catch(e){
+      allTransactions = SAMPLE_TRANSACTIONS;
+    }
+    renderTransactions();
+
+    // refresh announcements periodically
+    setInterval(async ()=>{
+      const anns = await fetchAnnouncementsFromServer();
+      if (Array.isArray(anns) && JSON.stringify(anns) !== JSON.stringify(currentAnn)) {
+        renderAnnouncementsImages(anns);
+        try { localStorage.setItem('announcements_v1', JSON.stringify(anns)); } catch(e){}
+      }
+    }, REFRESH_INTERVAL_MS);
+  }
+
+  // ensureCurrentUser on focus/storage changes
+  window.addEventListener("focus", () => { ensureCurrentUser().catch(()=>{}); });
+  window.addEventListener("storage", (e) => { if (e && (e.key==='loggedInUser' || e.key==='user')) setTimeout(()=>ensureCurrentUser().catch(()=>{}),50); });
+
+  // run init after load
+  window.addEventListener("load", ()=>{ initPage().catch(()=>{}); });
+
+  // Small safety: ensure clicking outside modal closes it
+  document.getElementById('cashInModal').addEventListener('click', (ev)=>{
+    if (ev.target === document.getElementById('cashInModal')) document.getElementById('cashInModal').style.display = 'none';
   });
 </script>
 </body>
