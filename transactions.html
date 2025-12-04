@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Transaction History</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
   <style>
@@ -11,96 +11,406 @@
       --primary-dark:#009624;
       --bg:#ffffff;
       --card:#ffffff;
-      --line:#e0e0e0;
-      --text:#1b1b1b;
+      --line:#e9ecef;
+      --muted:#6b7280;
+      --text:#111827;
+      --success:#2e7d32;
+      --pending:#f59e0b;
+      --failed:#d32f2f;
+      --avatar-bg:#f1f7f2;
     }
     *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
     body{
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       background:var(--bg);
       color:var(--text);
       -webkit-font-smoothing:antialiased;
-      height:100vh;display:flex;flex-direction:column;
+      display:flex;
+      flex-direction:column;
+      min-height:100vh;
     }
+
     header{
-      display:flex;align-items:center;gap:10px;
-      padding:14px;border-bottom:1px solid var(--line);
-      background:#fff;position:sticky;top:0;
+      display:flex;align-items:center;gap:12px;
+      padding:12px 14px;border-bottom:1px solid var(--line);
+      background:#fff;position:sticky;top:0;z-index:10;
     }
-    header h2{flex:1;text-align:center;font-size:16px;font-weight:700}
-    .tx-list{flex:1;overflow-y:auto;padding:12px}
-    .tx{display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #eee}
-    .tx .info{font-size:13px}
-    .tx .amount{font-weight:700}
-    .Deposit,.Transfer\ In{color:green}
-    .Transfer\ Out{color:red}
-    .empty{text-align:center;color:#777;margin-top:30px;font-size:14px}
+    header a.back{color:var(--text); text-decoration:none; font-size:18px; width:36px; display:inline-flex; align-items:center; justify-content:center}
+    header h2{flex:1;text-align:center;font-size:16px;font-weight:700;margin-right:36px}
+    .tx-list{flex:1;overflow-y:auto;padding:14px; background: #fff;}
+
+    .month-group{margin-bottom:18px}
+    .month-title{font-weight:800;font-size:18px;color:var(--text);margin:8px 4px 12px}
+    .tx-card{
+      background: #fff;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      padding:12px 14px;
+      border-radius:10px;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+      border:1px solid #f3f4f6;
+      margin-bottom:10px;
+    }
+    .avatar{
+      width:48px;height:48px;border-radius:10px;flex:0 0 48px;display:grid;place-items:center;
+      background:var(--avatar-bg); color:var(--primary-dark); font-weight:700; font-size:18px;
+      overflow:hidden;
+    }
+    .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+
+    .tx-main{flex:1;min-width:0}
+    .tx-main .name{font-weight:700;font-size:15px;color:var(--text)}
+    .tx-main .meta{font-size:13px;color:var(--muted);margin-top:6px}
+    .tx-right{text-align:right;flex:0 0 110px}
+    .tx-amount{font-weight:800;font-size:15px;color:var(--text)}
+    .tx-status{display:block;margin-top:6px;font-weight:700;font-size:13px}
+    .status-success{color:var(--success)}
+    .status-pending{color:var(--pending)}
+    .status-failed{color:var(--failed)}
+
+    .tx-sep{height:1px;background:#f3f4f6;margin:10px 0;border-radius:2px}
+
+    .empty{padding:40px 10px;text-align:center;color:var(--muted)}
+    .controls{display:flex;justify-content:center;margin:14px 0}
+    .btn{
+      background:#fff;border:1px solid #e6e6e6;padding:8px 18px;border-radius:22px;font-weight:700;cursor:pointer;
+      box-shadow:0 1px 0 rgba(0,0,0,0.02);
+    }
+    .btn:active{transform:translateY(1px)}
+
+    /* responsive */
+    @media (max-width:420px){
+      .tx-right{flex:0 0 100px}
+      .avatar{width:44px;height:44px}
+    }
   </style>
 </head>
 <body>
   <header>
-    <a href="javascript:void(0);" onclick="goBack()"><i class="fa-solid fa-arrow-left"></i></a>
-    <h2>Transaction History</h2>
-    <span style="width:20px"></span>
+    <a class="back" href="javascript:void(0);" onclick="goBack()" title="Back"><i class="fa-solid fa-arrow-left"></i></a>
+    <h2>Recent Transactions</h2>
+    <span style="width:36px;display:inline-block"></span>
   </header>
 
-  <div class="tx-list" id="txList"></div>
+  <div class="tx-list" id="txList">
+    <div class="empty">Loading transactions…</div>
+  </div>
 
   <script>
+    // keep same API_BASE as your app
     const API_BASE = "https://payme-update.onrender.com";
 
-    async function renderTransactions() {
-      const user = JSON.parse(localStorage.getItem("loggedInUser"));
-      if (!user) {
-        alert("⚠️ Please login first.");
-        window.location.href = "paymelogin.html";
-        return;
-      }
-
-      const container = document.getElementById("txList");
-      container.innerHTML = "<p class='empty'>Loading...</p>";
-
+    // helpers for fetching JSON with multiple fallback endpoints
+    async function fetchJsonIfOk(url, opts = {}) {
       try {
-        const res = await fetch(`${API_BASE}/transactions/${user.phone}`);
-        const data = await res.json();
-
-        if (res.ok && data.length > 0) {
-          container.innerHTML = "";
-          data.forEach(tx => {
-            const div = document.createElement("div");
-            div.className = "tx";
-            const sign = (tx.type === "Deposit" || tx.type === "Transfer In") ? "+" : "-";
-            const formattedDate = new Date(tx.date).toLocaleString();
-
-            div.innerHTML = `
-              <div class="info">
-                <div>${tx.type} (${tx.other_party})</div>
-                <div style="font-size:12px;color:#777">${formattedDate}</div>
-              </div>
-              <div class="amount ${tx.type.replace(" ", "\\ ")}">
-                ${sign}₦${tx.amount}
-              </div>
-            `;
-            container.appendChild(div);
-          });
-        } else {
-          container.innerHTML = "<p class='empty'>No transactions yet</p>";
-        }
-      } catch (err) {
-        console.error(err);
-        container.innerHTML = "<p class='empty'>⚠️ Failed to load transactions.</p>";
+        const res = await fetch(url, opts);
+        if (!res.ok) return null;
+        return await res.json().catch(()=>null);
+      } catch (e) {
+        return null;
       }
     }
 
-    renderTransactions();
+    // try multiple endpoints for transactions
+    async function fetchTransactionsForPhone(phone) {
+      if (!phone) return null;
+      const candidates = [
+        `${API_BASE}/transactions/${encodeURIComponent(phone)}`,
+        `${API_BASE}/api/transactions/${encodeURIComponent(phone)}`,
+        `${API_BASE}/transactions?phone=${encodeURIComponent(phone)}`,
+        `${API_BASE}/api/transactions?phone=${encodeURIComponent(phone)}`
+      ];
+      for (const url of candidates) {
+        const json = await fetchJsonIfOk(url, { cache: 'no-store' });
+        if (!json) continue;
+        // if server returns object wrapper: try to find an array
+        if (Array.isArray(json)) return json;
+        if (Array.isArray(json.data)) return json.data;
+        if (Array.isArray(json.transactions)) return json.transactions;
+        if (Array.isArray(json.results)) return json.results;
+        // maybe server returns {status:'success', transactions: [...]}
+        for (const k of Object.keys(json || {})) {
+          if (Array.isArray(json[k])) return json[k];
+        }
+      }
+      return null;
+    }
 
-function goBack() {
-  if (document.referrer && document.referrer !== "") {
-    window.history.back(); // go to previous page in history
-  } else {
-    window.location.replace("paymelogin.html"); // fallback if no history
-  }
-}
+    // normalize a single transaction record (support many shapes)
+    function normalizeTx(raw) {
+      // raw may include many different keys. We'll try to extract best-known ones.
+      const tx = raw || {};
+      // potential date fields:
+      const date = tx.date || tx.createdAt || tx.created_at || tx.timestamp || tx.time || tx.dt || tx.transaction_date || tx.created;
+      let parsedDate = null;
+      if (date) {
+        parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) {
+          // try parsing numeric timestamp
+          const maybeNum = Number(date);
+          if (!isNaN(maybeNum)) parsedDate = new Date(maybeNum);
+        }
+      }
+      if (!parsedDate) parsedDate = new Date(); // fallback to now
+
+      // determine name: sender or receiver name fields
+      const name = tx.name || tx.fullname || tx.username || tx.receiver_name || tx.to_name || tx.to || tx.beneficiary || tx.sender_name || tx.from_name || tx.other_party || tx.otherName || tx.counterparty || tx.display_name || null;
+
+      // determine account number fields
+      const account = tx.account || tx.account_number || tx.to_account || tx.to_account_number || tx.to_accountno || tx.from_account || tx.from_account_number || tx.other_account || tx.acc || tx.acc_no || null;
+
+      // amount
+      const amount = (tx.amount !== undefined) ? Number(tx.amount) : (tx.value !== undefined ? Number(tx.value) : null);
+
+      // status: normalize to 'success', 'pending', 'failed'
+      const rawStatus = (tx.status || tx.state || tx.result || tx.condition || tx.tx_status || tx.transaction_status || '').toString().toLowerCase();
+      let status = 'success';
+      if (/fail|failed|error|declined/.test(rawStatus)) status = 'failed';
+      else if (/pend|in_progress|processing|pending/.test(rawStatus)) status = 'pending';
+      else if (/success|ok|completed|complete|done/.test(rawStatus)) status = 'success';
+      // if there is numeric code, try map e.g., 0,1 etc (common shapes)
+      if (tx.status_code !== undefined && (tx.status_code === 0 || tx.status_code === '0')) status = 'failed';
+      if (tx.code !== undefined && (tx.code === 'PENDING' || tx.code === 'pending')) status = 'pending';
+
+      // picture (if any)
+      const picture = tx.picture || tx.avatar || tx.photo || tx.profile_pic || tx.user_picture || tx.image || tx.image_url || null;
+
+      // type or direction
+      const type = tx.type || tx.tx_type || tx.transaction_type || null;
+
+      // other party account/name fields we might want to display
+      const otherName = name;
+      const otherAccount = account;
+
+      return {
+        id: tx.id || tx._id || tx.tx_id || tx.transaction_id || tx.reference || Math.random().toString(36).slice(2,9),
+        date: parsedDate,
+        amount: isNaN(amount) ? null : amount,
+        status: status,
+        name: otherName,
+        account: otherAccount,
+        picture: picture,
+        raw
+      };
+    }
+
+    // group transactions by Month Year key: "December 2025"
+    function groupByMonth(txList) {
+      const groups = {};
+      for (const t of txList) {
+        const d = t.date instanceof Date ? t.date : new Date(t.date);
+        const monthKey = d.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+        if (!groups[monthKey]) groups[monthKey] = [];
+        groups[monthKey].push(t);
+      }
+      // sort months descending (most recent first)
+      const orderedKeys = Object.keys(groups).sort((a,b)=>{
+        const da = new Date(groups[a][0].date);
+        const db = new Date(groups[b][0].date);
+        return db - da;
+      });
+      const ordered = orderedKeys.map(k => ({ month:k, items: groups[k].sort((x,y)=> y.date - x.date) }));
+      return ordered;
+    }
+
+    // UI helpers
+    function createAvatarElement(picture, name) {
+      const div = document.createElement('div');
+      div.className = 'avatar';
+      if (picture) {
+        const img = document.createElement('img');
+        img.src = picture;
+        img.alt = name || '';
+        img.onerror = function(){ // fallback to initials if image fails
+          div.innerHTML = initialsFallback(name);
+        };
+        div.appendChild(img);
+      } else {
+        div.innerHTML = initialsFallback(name);
+      }
+      return div;
+    }
+    function initialsFallback(name) {
+      if (!name) return `<span style="font-weight:800;color:var(--primary-dark)">--</span>`;
+      const parts = name.trim().split(/\s+/);
+      const initials = (parts[0] ? parts[0].slice(0,1) : '') + (parts[1] ? parts[1].slice(0,1) : '');
+      return `<span style="font-weight:800;color:var(--primary-dark)">${initials.toUpperCase()}</span>`;
+    }
+
+    // render grouped transactions to container. supports truncation by showing only first N overall items initially
+    function renderGroupedTransactions(groups, initialShowCount = 3) {
+      const container = document.getElementById('txList');
+      container.innerHTML = '';
+      // flatten to measure the number of items and enable show more
+      const allItems = groups.flatMap(g => g.items);
+      let showingAll = false;
+
+      function draw() {
+        container.innerHTML = '';
+        let shownCount = 0;
+        for (const grp of groups) {
+          // filter group's items based on showingAll / initialShowCount
+          const displayItems = grp.items.filter(item => {
+            if (showingAll) return true;
+            if (shownCount < initialShowCount) { shownCount++; return true; }
+            return false;
+          });
+          if (displayItems.length === 0) continue; // skip whole group if none shown
+          // month header
+          const monthWrap = document.createElement('div');
+          monthWrap.className = 'month-group';
+
+          const title = document.createElement('div');
+          title.className = 'month-title';
+          title.textContent = grp.month;
+          monthWrap.appendChild(title);
+
+          // items
+          for (const tx of displayItems) {
+            const card = document.createElement('div');
+            card.className = 'tx-card';
+
+            const avatarEl = createAvatarElement(tx.picture, tx.name);
+            card.appendChild(avatarEl);
+
+            const main = document.createElement('div');
+            main.className = 'tx-main';
+            const nameEl = document.createElement('div');
+            nameEl.className = 'name';
+            nameEl.textContent = tx.name || 'No name';
+
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            const acct = tx.account ? tx.account : '—';
+            const amtText = tx.amount !== null ? `• ₦${Number(tx.amount).toLocaleString()}` : '';
+            const dateStr = tx.date instanceof Date ? formatDateTime(tx.date) : formatDateTime(new Date(tx.date));
+            meta.innerHTML = `${acct} ${amtText}<br><span style="font-size:12px;color:var(--muted)">${dateStr}</span>`;
+
+            main.appendChild(nameEl);
+            main.appendChild(meta);
+            card.appendChild(main);
+
+            const right = document.createElement('div');
+            right.className = 'tx-right';
+            const amountEl = document.createElement('div');
+            amountEl.className = 'tx-amount';
+            amountEl.textContent = tx.amount !== null ? `₦${Number(tx.amount).toLocaleString()}` : '₦0';
+
+            const statusEl = document.createElement('div');
+            statusEl.className = 'tx-status';
+            if (tx.status === 'success') { statusEl.textContent = 'success'; statusEl.classList.add('status-success'); }
+            else if (tx.status === 'pending') { statusEl.textContent = 'pending'; statusEl.classList.add('status-pending'); }
+            else { statusEl.textContent = 'failed'; statusEl.classList.add('status-failed'); }
+
+            right.appendChild(amountEl);
+            right.appendChild(statusEl);
+            card.appendChild(right);
+
+            monthWrap.appendChild(card);
+          }
+
+          container.appendChild(monthWrap);
+        }
+
+        // show more / show less button if necessary
+        const controls = document.createElement('div');
+        controls.className = 'controls';
+        if (!showingAll && allItems.length > initialShowCount) {
+          const btn = document.createElement('button');
+          btn.className = 'btn';
+          btn.textContent = 'Show more';
+          btn.onclick = () => { showingAll = true; draw(); container.scrollIntoView({behavior:'smooth'}); };
+          controls.appendChild(btn);
+        } else if (showingAll && allItems.length > initialShowCount) {
+          const btn = document.createElement('button');
+          btn.className = 'btn';
+          btn.textContent = 'Show less';
+          btn.onclick = () => { showingAll = false; draw(); container.scrollIntoView({behavior:'smooth'}); };
+          controls.appendChild(btn);
+        }
+
+        if (controls.childElementCount) container.appendChild(controls);
+        if (container.children.length === 0) container.innerHTML = `<div class="empty">No transactions found</div>`;
+      }
+
+      draw();
+    }
+
+    function formatDateTime(d) {
+      try {
+        const dd = new Date(d);
+        const datePart = dd.toLocaleDateString(undefined, { day:'2-digit', month:'2-digit', year:'numeric' });
+        const timePart = dd.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+        return `${datePart} , ${timePart}`;
+      } catch(e) {
+        return String(d);
+      }
+    }
+
+    async function init() {
+      const stored = (function(){
+        try { return JSON.parse(localStorage.getItem('loggedInUser') || localStorage.getItem('user') || 'null'); } catch(e) { return null; }
+      })();
+      if (!stored || (!stored.phone && !stored.account_number && !stored.acc)) {
+        // require login
+        document.getElementById('txList').innerHTML = `<div class="empty">Please login to view transactions.</div>`;
+        return;
+      }
+
+      // show quick loading placeholder
+      const container = document.getElementById('txList');
+      container.innerHTML = `<div class="empty">Loading transactions…</div>`;
+
+      // prefer phone but if not present use account_number
+      const phone = stored.phone || null;
+      const account_number = stored.account_number || stored.acc || null;
+
+      // fetch transactions (by phone primarily)
+      let rawList = null;
+      if (phone) rawList = await fetchTransactionsForPhone(phone);
+      if (!Array.isArray(rawList) && account_number) {
+        // try searching by account (some backends may provide)
+        rawList = await fetchTransactionsForPhone(account_number);
+      }
+      // fallback attempt: try /api/transactions or /transactions without param (maybe server returns user's session)
+      if (!Array.isArray(rawList)) {
+        const fallbackCandidates = [
+          `${API_BASE}/transactions`,
+          `${API_BASE}/api/transactions`
+        ];
+        for (const u of fallbackCandidates) {
+          const j = await fetchJsonIfOk(u, { cache: 'no-store' });
+          if (Array.isArray(j)) { rawList = j; break; }
+          if (Array.isArray(j?.data)) { rawList = j.data; break; }
+        }
+      }
+
+      if (!Array.isArray(rawList) || rawList.length === 0) {
+        container.innerHTML = `<div class="empty">No transactions yet</div>`;
+        return;
+      }
+
+      // normalize list (map to our schema)
+      const normalized = rawList.map(normalizeTx).sort((a,b)=> b.date - a.date);
+      // group by month
+      const groups = groupByMonth(normalized);
+
+      // render grouped list with initial 3 visible items
+      renderGroupedTransactions(groups, 3);
+    }
+
+    function goBack() {
+      if (document.referrer && document.referrer !== "") {
+        window.history.back(); // go to previous page in history
+      } else {
+        window.location.replace("paymelogin.html"); // fallback if no history
+      }
+    }
+
+    // run
+    init();
   </script>
 </body>
 </html>
