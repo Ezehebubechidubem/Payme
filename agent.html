@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PAYME</title>
+
+  <!-- Font Awesome (icons) -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+
+  <style>
+    :root{
+      --primary:#00c853;
+      --primary-dark:#009624;
+      --bg:#ffffff;
+      --card:#ffffff;
+      --muted:#777;
+      --soft:#e8f5e9;
+      --line:#e0e0e0;
+      --badge:#ff3b30;
+      --text:#1b1b1b;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      padding-bottom:84px;
+    }
+    .app{max-width:440px;margin:0 auto}
+    .topbar{
+      background:var(--card);
+      padding:14px 16px 12px;
+      display:flex;align-items:center;gap:12px;
+      border-bottom:1px solid var(--line);
+      position:sticky;top:0;z-index:10;
+    }
+    .avatar{width:34px;height:34px;border-radius:50%;
+      background:linear-gradient(135deg,#222,#666);flex:0 0 auto;}
+    .hello{line-height:1.1}
+    .hello .hi{font-weight:700;font-size:15px}
+    .hello .sub{font-size:12px;color:var(--muted);margin-top:2px}
+    .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:14px}
+    .icon-btn{position:relative;font-size:18px;color:var(--muted);cursor:pointer}
+    .badge{position:absolute;top:-6px;right:-8px;background:var(--badge);color:#fff;
+      font-size:10px;font-weight:700;line-height:1;padding:3px 5px;border-radius:10px;}
+    .card{background:var(--soft);margin:12px; padding:14px; border-radius:14px;
+      box-shadow:0 1px 0 rgba(0,0,0,.02) inset;}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .label{font-size:12px;color:#555;display:flex;align-items:center;gap:6px}
+    .label i{font-size:12px}
+    .amount{margin-top:4px;font-weight:800;font-size:26px;color:var(--primary-dark);
+      display:flex;align-items:center;gap:6px}
+    .chip-link{font-size:12px;color:#555;display:flex;align-items:center;gap:6px}
+    .ghost-link{font-weight:600;color:var(--primary-dark)}
+    .btn{background:var(--primary);color:#fff;border:0;cursor:pointer;
+      padding:10px 16px;border-radius:22px;font-weight:700;font-size:13px}
+    .btn:hover{background:var(--primary-dark)}
+    .inline-promo{margin-top:12px;background:#fff;border-radius:10px;
+      padding:10px 12px;display:flex;align-items:center;gap:10px}
+    .inline-promo .dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;
+      background:#c8e6c9;display:grid;place-items:center;color:var(--primary);font-size:11px}
+    .inline-promo .text{font-size:13px;color:#333}
+    .inline-promo .link{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--primary);font-weight:700}
+    .quick{background:var(--card);margin:0 12px;border-radius:14px;padding:14px 8px;
+      display:grid;grid-template-columns:repeat(3,1fr);text-align:center}
+    .qa{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:#333}
+    .qa i{font-size:20px;color:var(--primary)}
+    .fee{font-size:10px;background:#fff3cd;color:#8a6d3b;border:1px solid #ffe49d;padding:1px 5px;border-radius:7px;margin-left:4px}
+    .qr{font-size:11px;background:#c8e6c9;color:#2e7d32;padding:2px 6px;border-radius:7px;margin-left:6px}
+    .promo-card{margin:12px;background:var(--card);border-radius:14px;padding:14px;
+      display:flex;align-items:center;justify-content:space-between;gap:10px; position:relative; overflow:hidden}
+    .promo-card .title{font-weight:800;color:#2e7d32}
+    .promo-card .sub{font-size:12px;color:#666;margin-top:2px}
+    .outline{border:1px solid var(--primary);background:#fff;color:var(--primary);padding:8px 14px;border-radius:18px;font-weight:700;cursor:pointer}
+    .services{margin:12px;background:var(--card);border-radius:14px;padding:14px}
+    .services .head{display:flex;align-items:center;justify-content:space-between}
+    .services .head h3{font-size:16px}
+    .services .more{color:#666;display:flex;align-items:center;gap:6px;font-size:13px}
+    .grid{margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:18px 12px}
+    .svc{text-align:center;font-size:12.5px;color:#333;cursor:pointer}
+    .svc i{display:block;margin:0 auto 6px;font-size:20px;color:var(--primary)}
+    .big-banner{margin:12px;background:linear-gradient(135deg,#00c853,#43a047);
+      color:#fff;border-radius:14px;padding:16px;text-align:center}
+    .big-banner h2{font-size:18px;font-weight:900;letter-spacing:.2px}
+    .tag{display:inline-block;background:#ffec66;color:#2e2e2e;border-radius:16px;padding:7px 12px;font-weight:800;margin-top:10px}
+    .refer{margin:12px;background:var(--card);border-radius:14px;padding:14px;
+      display:flex;align-items:center;justify-content:space-between}
+    .refer h4{font-size:15px}
+    .refer p{font-size:13px;color:#666;margin-top:3px}
+    .refer .go{background:var(--primary);color:#fff;border:0;border-radius:18px;padding:8px 16px;font-weight:700}
+    .bottom{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+      display:grid;grid-template-columns:repeat(5,1fr);padding:8px 0;z-index:20}
+    .nav-item{text-align:center;font-size:11px;color:#666}
+    .nav-item i{display:block;font-size:18px;margin-bottom:2px;color:#666}
+    .nav-item.active, .nav-item.active i{color:#000}
+    a{text-decoration:none;color:inherit}
+    button{font:inherit}
+
+    /* Announcement carousel styles (only for promo area) */
+    .ann-carousel { width:100%; display:flex; align-items:center; gap:12px; overflow:hidden; position:relative; }
+    .ann-track { display:flex; transition:transform .45s ease; width:100%; will-change:transform; }
+    .ann-slide { min-width:100%; box-sizing:border-box; padding:0; display:flex; align-items:center; justify-content:center; }
+    .ann-slide img{width:100%; height:140px; object-fit:cover; border-radius:10px;}
+    .ann-dots { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5; }
+    .ann-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; border:1px solid rgba(0,0,0,0.05) }
+    .ann-dot.active { background:#ffffff; box-shadow:0 0 0 3px rgba(0,0,0,0.06); }
+    /* small fallback text (hidden visually for user promo) */
+    .sr-only { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
+  </style>
+
+  <!-- DEFINE API_BASE early so no script runs into "API_BASE is not defined" -->
+  <script>
+    // Set your backend base URL here (used across all scripts)
+    const API_BASE = "https://payme-update.onrender.com";
+  </script>
+</head>
+<body>
+  <div class="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="avatar" aria-hidden="true"></div>
+      <div class="hello">
+        <div class="hi"><a href="profile.html" id="hiUser">Hi, User</a></div>
+        <div class="sub">Welcome, let's make payments!</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="icon-btn" title="Help"><i class="fa-solid fa-headset"></i></div>
+        <div class="icon-btn" title="Notifications">
+          <i class="fa-solid fa-bell"></i>
+          <span class="badge">99+</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Balance card (unchanged) -->
+    <section class="card">
+      <div class="row">
+        <div>
+          <div class="label"><i class="fa-regular fa-circle-question"></i> Available Balance</div>
+          <div class="amount" id="balance">₦0.00</div>
+        </div>
+        <div style="text-align:right">
+          <a iclass="chip-link" href="transactions.html"><span>Transaction History</span> <i class="fa-solid fa-angle-right"></i></a>
+          <div style="margin-top:8px">
+            <a href="addmoney.html"class="btn">Add Money</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="inline-promo">
+        <div class="dot"><i class="fa-solid fa-arrow-trend-up"></i></div>
+        <div class="text">Higher return? Increase deposit with <strong>20% p.a.</strong></div>
+        <a href="#" class="link">Go <i class="fa-solid fa-angle-right"></i></a>
+      </div>
+    </section>
+
+    <!-- Quick actions -->
+    <section class="quick">
+      <a href="toWallet.html" style="text-decoration: none; color: inherit;">
+        <div class="qa">
+            <i class="fa-solid fa-building-columns"></i>
+            <div>To Bank <span class="fee">0 Fee</span></div>
+        </div>
+      </a>
+
+      <a href="toBank.html" style="text-decoration: none; color: inherit;">
+        <div class="qa">
+            <i class="fa-solid fa-user"></i>
+            <div>To Wallet</div>
+        </div>
+      </a>
+
+      <a href="PaymeCrypto.html" style="text-decoration: none; color: inherit;">
+        <div class="qa">
+          <i class="fa-brands fa-btc"></i>
+          <div>To Crypto Wallet</div>
+        </div>
+      </a>
+    </section>
+
+    <!-- Promo (announcement image carousel placed exactly here) -->
+    <section class="promo-card" id="promoCard">
+      <!-- fallback / default promo (when no announcements active) -->
+      <div id="promoDefault" style="display:flex; align-items:center; gap:10px; width:100%;">
+        <div>
+          <div class="title">Verve Virtual Card 50% Off today</div>
+          <div class="sub">One-Click Instant Access and Use it at Google Play, Netflix …</div>
+        </div>
+        <button class="outline" id="promoDefaultBtn">View</button>
+      </div>
+
+      <!-- announcement image-only carousel (hidden until announcements exist) -->
+      <div id="promoAnnouncements" style="display:none; width:100%;">
+        <div class="ann-carousel" id="annCarouselWrap" aria-live="polite">
+          <div class="ann-track" id="annTrack" role="list"></div>
+        </div>
+        <div class="ann-dots" id="annDots" aria-hidden="false" style="display:none"></div>
+        <!-- small accessible label for screen readers -->
+        <div class="sr-only" id="annA11yLabel">Promotional announcements carousel</div>
+      </div>
+    </section>
+
+    <!-- Services (unchanged) -->
+    <section class="services">
+      <div class="head">
+        <h3>Services</h3>
+        <div class="more">
+          <a href="services.html">More</a>
+          <i class="fa-solid fa-angle-right"></i>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <div class="svc">
+        <a href="airtime.html"><i class="fa-solid fa-phone"></i> Airtime</a>
+      </div>
+      <div class="svc">
+        <a href="Data.html"><i class="fa-solid fa-signal"></i>Data</a>
+      </div>
+      <div class="svc" onclick="window.location.href='betting.html'">
+        <i class="fa-solid fa-dice"></i> Betting
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-bolt"></i> Electricity
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-shield-halved"></i> Insurance
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-coins"></i> Loan
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-tv"></i> TV
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-gift"></i> Refer &amp; Earn
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-money-bill"></i> Withdraw
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-box"></i> CashBox
+      </div>
+      <div class="svc">
+        <a href="savings.html"><i class="fa-solid fa-lightbulb"></i> SmartEarn</a>
+      </div>
+      <div class="svc">
+        <i class="fa-solid fa-store"></i> My Business Hub
+      </div>
+    </div>
+
+    <!-- Big banner -->
+    <section class="big-banner">
+      <h2>FREE ₦500K HEALTH COVERAGE</h2>
+      <div class="tag">Claim Now</div>
+    </section>
+
+    <!-- Refer & Earn -->
+    <section class="refer">
+      <div>
+        <h4>Refer &amp; Earn</h4>
+        <p>Win up to ₦10,000 Cash — Invite new users now</p>
+      </div>
+      <button class="go">Go Now</button>
+    </section>
+  </div>
+
+  <!-- Bottom navigation -->
+  <nav class="bottom">
+    <a class="nav-item active" href="#"><i class="fa-solid fa-house"></i>Home</a>
+    <a class="nav-item" href="#"><i class="fa-solid fa-credit-card"></i>Loan</a>
+    <a class="nav-item" href="#"><i class="fa-solid fa-chart-line"></i>Wealth</a>
+    <a class="nav-item" href="#"><i class="fa-solid fa-gift"></i>Reward</a>
+    <a class="nav-item" href="profile.html"><i class="fa-solid fa-user"></i>Me</a>
+  </nav>
+
+<!-- ===================== Hi-user + balance + logout logic ===================== -->
+<script>
+  // local helper: get stored user from either key
+  function getStoredUser() {
+    const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
+    try { return j ? JSON.parse(j) : null; } catch(e) { return null; }
+  }
+
+  // small sanitizer for DOM insertion
+  function escapeText(s){ return String(s||''); }
+
+  // update visible elements with user object
+  function updateUIWithUser(user) {
+    if (!user) return;
+    const hi = document.getElementById("hiUser");
+    if (hi) hi.innerText = "Hi, " + (user.username || user.name || "User");
+    const balEl = document.getElementById("balance");
+    if (balEl) {
+      const b = typeof user.balance !== "undefined" ? Number(user.balance) : (user.balance ? Number(user.balance) : 0);
+      balEl.innerText = "₦" + (isNaN(b) ? "0.00" : b.toFixed(2));
+    }
+  }
+
+  // fetch JSON helper
+  async function fetchJsonIfOk(url, opts={}) {
+    try {
+      const res = await fetch(url, opts);
+      if (!res.ok) return null;
+      const j = await res.json().catch(()=>null);
+      return j;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  // Use your backend routes:
+  // GET /user/<phone> -> { status: "success", user: { username, phone, account_number, balance } } OR {status:"error"}
+  // GET /user_by_account/<account_number> -> { status: "success", username, phone }
+  async function fetchUserFromServer(phone, account_number){
+    const candidates = [];
+    if (phone) {
+      candidates.push(`${API_BASE}/user/${encodeURIComponent(phone)}`);
+      candidates.push(`${API_BASE}/api/user/${encodeURIComponent(phone)}`);
+    }
+    if (account_number) {
+      candidates.push(`${API_BASE}/user_by_account/${encodeURIComponent(account_number)}`);
+      candidates.push(`${API_BASE}/api/user_by_account/${encodeURIComponent(account_number)}`);
+    }
+    // fallback permutations
+    if (phone) {
+      candidates.push(`${API_BASE}/api/user/${encodeURIComponent(phone)}/`);
+      candidates.push(`${API_BASE}/user/${encodeURIComponent(phone)}/`);
+    }
+
+    for (const url of candidates) {
+      const json = await fetchJsonIfOk(url, { credentials: 'include', cache: 'no-store' });
+      if (!json) continue;
+      // Accept shapes returned by your backend
+      if (json.status === 'success' && json.user && typeof json.user === 'object') return json.user;
+      if (json.status === 'success' && json.username && (json.phone || phone)) {
+        return {
+          username: json.username,
+          phone: json.phone || phone,
+          account_number: json.account_number || account_number || null,
+          balance: json.balance
+        };
+      }
+      // user_by_account returns username & phone per your example
+      if (json.username && (json.phone || phone)) {
+        return {
+          username: json.username,
+          phone: json.phone || phone,
+          account_number: account_number || null,
+          balance: json.balance
+        };
+      }
+      // direct shape
+      if (json.username || json.phone || json.account_number || json.user) {
+        return json.user || {
+          username: json.username || json.name,
+          phone: json.phone || phone,
+          account_number: json.account_number || account_number,
+          balance: json.balance
+        };
+      }
+    }
+    return null;
+  }
+
+  // fetch balance by phone (fallback)
+  async function fetchBalanceByPhone(phone){
+    if (!phone) return null;
+    const candidates = [
+      `${API_BASE}/balance/${encodeURIComponent(phone)}`,
+      `${API_BASE}/api/balance/${encodeURIComponent(phone)}`
+    ];
+    for (const url of candidates) {
+      const j = await fetchJsonIfOk(url, { cache: 'no-store' });
+      if (j && (typeof j.balance === 'number' || !isNaN(Number(j.balance)))) return Number(j.balance);
+    }
+    return null;
+  }
+
+  // Master: ensure the hi-user reflects currently logged in account (server-validated)
+  async function ensureCurrentUser(){
+    const stored = getStoredUser();
+    if (!stored) return;
+    const phone = stored.phone || null;
+    const account_number = stored.account_number || stored.acc || null;
+
+    // show stored data immediately
+    updateUIWithUser(stored);
+
+    try {
+      const serverUser = await fetchUserFromServer(phone, account_number);
+      if (serverUser) {
+        // if server doesn't include balance, try to fetch
+        if (typeof serverUser.balance === 'undefined') {
+          const bal = await fetchBalanceByPhone(serverUser.phone || phone);
+          if (bal !== null) serverUser.balance = bal;
+        }
+        const normalized = {
+          username: serverUser.username || serverUser.name || stored.username || stored.name,
+          phone: serverUser.phone || phone || stored.phone,
+          account_number: serverUser.account_number || account_number || stored.account_number || stored.acc,
+          balance: typeof serverUser.balance !== 'undefined' ? Number(serverUser.balance) : (stored.balance !== undefined ? stored.balance : undefined)
+        };
+        try {
+          localStorage.setItem("loggedInUser", JSON.stringify(normalized));
+          localStorage.setItem("user", JSON.stringify(normalized));
+        } catch(e){}
+        updateUIWithUser(normalized);
+        return;
+      }
+      // fallback: leave stored UI in place
+      updateUIWithUser(stored);
+    } catch(e){
+      updateUIWithUser(stored);
+    }
+  }
+
+  // run on load + focus + visibilitychange + storage
+  window.addEventListener("load", () => {
+    const stored = getStoredUser();
+    if (stored) updateUIWithUser(stored);
+    ensureCurrentUser().catch(()=>{});
+  });
+  window.addEventListener("focus", () => { ensureCurrentUser().catch(()=>{}); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === 'visible') ensureCurrentUser().catch(()=>{}); });
+  window.addEventListener("storage", (e) => {
+    if (!e) return;
+    if (e.key === "loggedInUser" || e.key === "user") setTimeout(()=>ensureCurrentUser().catch(()=>{}), 50);
+  });
+  setInterval(()=> { const u = getStoredUser(); if (u && (u.phone || u.account_number)) ensureCurrentUser().catch(()=>{}); }, 15000);
+
+  // Clear previous user's data on logout links (preserve redirect behavior)
+  document.addEventListener('click', function(e){
+    const a = e.target.closest && e.target.closest('a');
+    if (!a) return;
+    const href = a.getAttribute('href') || '';
+    if (href.includes('paymeregister.html') || a.classList.contains('logout') || a.classList.contains('logout-link') ) {
+      try {
+        localStorage.removeItem('loggedInUser');
+        localStorage.removeItem('user');
+        sessionStorage.removeItem('loggedInUser');
+        sessionStorage.removeItem('user');
+      } catch(e){}
+      // allow navigation to continue
+    }
+  });
+</script>
+
+<!-- ===================== ANNOUNCEMENTS SCRIPT (image-only carousel) ===================== -->
+<script>
+  // Announcement endpoints (robust list)
+  const ANNOUNCEMENTS_ENDPOINTS = [
+    `${API_BASE}/api/announcements/active`,
+    `${API_BASE}/announcements/active`,
+    `${API_BASE}/admin/announcements/active`,
+    `${API_BASE}/api/announcements`,
+    `${API_BASE}/admin/announcements`,
+    `${API_BASE}/api/announcements/`,
+    `${API_BASE}/announcements`
+  ];
+
+  const REFRESH_INTERVAL_MS = 10000;
+  let annIndex = 0;
+  let annTimer = null;
+  let currentAnn = [];
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+
+  function buildImageUrlFromItem(it){
+    let candidate = it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null;
+    if(!candidate) return null;
+    candidate = String(candidate);
+    if(/^https?:\/\//i.test(candidate)) return candidate;
+    const siteBase = API_BASE.replace(/\/api\/?$/i, '');
+    if(candidate.startsWith('/')) return siteBase + candidate;
+    if(candidate.toLowerCase().startsWith('admin/')) return siteBase + '/' + candidate;
+    return `${siteBase}/admin/uploads/announcements/${candidate}`;
+  }
+
+  async function fetchAnnouncementsFromServer(){
+    for(const url of ANNOUNCEMENTS_ENDPOINTS){
+      try {
+        const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
+        if(!r.ok) continue;
+        const json = await r.json().catch(()=>null);
+        if(!json) continue;
+        let list = [];
+        if(Array.isArray(json)) list = json;
+        else if(Array.isArray(json.data)) list = json.data;
+        else if(Array.isArray(json.announcements)) list = json.announcements;
+        else if(Array.isArray(json.results)) list = json.results;
+        else {
+          for(const k of Object.keys(json)){
+            if(Array.isArray(json[k])) { list = json[k]; break; }
+          }
+        }
+        if(!Array.isArray(list) || list.length === 0) continue;
+        const normalized = list.map(it=>{
+          const id = it.id || it._id || it.announcement_id || it.ann_id || it.announcementId || (it.title? Math.random().toString(36).slice(2,9) : null);
+          return {
+            id,
+            title: it.title || it.heading || '',
+            body: it.body || it.message || '',
+            target: it.target || 'all',
+            createdAt: it.createdAt || it.created_at || it.created || null,
+            expiresAt: it.expiresAt || it.expires_at || it.expires || null,
+            image_url: it.image_url || it.imageUrl || it.image || it.image_path || it.imagePath || null,
+            raw: it
+          };
+        }).filter(x=>x.id);
+        const now = new Date();
+        const active = normalized.filter(a => {
+          if(!a.expiresAt) return true;
+          const ex = new Date(a.expiresAt);
+          return !isNaN(ex.getTime()) ? ex > now : true;
+        });
+        return active.slice(0, 10);
+      } catch(e){
+        continue;
+      }
+    }
+    return null;
+  }
+
+  function renderAnnouncementsImages(anns){
+    currentAnn = anns || [];
+    const track = document.getElementById('annTrack');
+    const dotsWrap = document.getElementById('annDots');
+    const promoDefault = document.getElementById('promoDefault');
+    const promoAnnouncements = document.getElementById('promoAnnouncements');
+
+    if(!anns || anns.length === 0){
+      promoDefault.style.display = 'flex';
+      promoAnnouncements.style.display = 'none';
+      return;
+    }
+
+    const slidesHtml = anns.map((a)=>{
+      const candidateUrl = buildImageUrlFromItem(a) || a.image_url || a.raw?.image_url || null;
+      const finalUrl = candidateUrl ? (candidateUrl + (candidateUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now()) : null;
+      if(finalUrl){
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><img src="${esc(finalUrl)}" alt=""></div>`;
+      } else {
+        return `<div class="ann-slide" role="listitem" data-id="${esc(a.id)}"><div style="width:100%;height:140px;background:#f3f4f6;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#9ca3af">No image</div></div>`;
+      }
+    }).join('');
+
+    track.innerHTML = slidesHtml;
+    dotsWrap.innerHTML = anns.map((_,i)=>`<div class="ann-dot ${i===0? 'active':''}" data-index="${i}"></div>`).join('');
+
+    promoDefault.style.display = 'none';
+    promoAnnouncements.style.display = 'block';
+    dotsWrap.style.display = 'flex';
+
+    annIndex = 0;
+    updateAnnTransform();
+    startAnnAutoPlay();
+
+    // dot clicks
+    Array.from(dotsWrap.children).forEach(dot => {
+      dot.addEventListener('click', ()=> {
+        annIndex = Number(dot.getAttribute('data-index') || 0);
+        updateAnnTransform();
+        restartAnnAutoPlay();
+      });
+    });
+
+    // enable swipe
+    setupSwipe(document.querySelector('.ann-track'));
+  }
+
+  function updateAnnTransform(){
+    const track = document.getElementById('annTrack');
+    const len = currentAnn.length || 1;
+    if(annIndex < 0) annIndex = 0;
+    if(annIndex >= len) annIndex = len - 1;
+    track.style.transform = `translateX(-${annIndex * 100}%)`;
+    const dots = document.querySelectorAll('#annDots .ann-dot');
+    dots.forEach((d,i)=> d.classList.toggle('active', i===annIndex));
+  }
+
+  function startAnnAutoPlay(){
+    if(annTimer) clearInterval(annTimer);
+    if((currentAnn||[]).length <= 1) return;
+    annTimer = setInterval(()=> {
+      annIndex = (annIndex + 1) % currentAnn.length;
+      updateAnnTransform();
+    }, 4000);
+  }
+  function stopAnnAutoPlay(){ if(annTimer) clearInterval(annTimer); annTimer = null; }
+  function restartAnnAutoPlay(){ stopAnnAutoPlay(); startAnnAutoPlay(); }
+
+  function setupSwipe(trackEl){
+    if(!trackEl) return;
+    let startX = 0, deltaX = 0, isDown = false, startTime = 0;
+    const threshold = 40;
+    const allowedTime = 500;
+
+    trackEl.ontouchstart = function(e){
+      stopAnnAutoPlay();
+      const t = e.touches[0];
+      startX = t.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+    };
+    trackEl.ontouchmove = function(e){
+      const t = e.touches[0];
+      deltaX = t.clientX - startX;
+      trackEl.style.transition = 'none';
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    trackEl.ontouchend = function(e){
+      const elapsed = Date.now() - startTime;
+      trackEl.style.transition = '';
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        else annIndex = Math.max(0, annIndex - 1);
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
+
+    trackEl.onmousedown = function(e){
+      stopAnnAutoPlay();
+      isDown = true;
+      startX = e.clientX;
+      startTime = Date.now();
+      deltaX = 0;
+      document.body.style.userSelect = 'none';
+      trackEl.style.transition = 'none';
+    };
+    window.onmousemove = function(e){
+      if(!isDown) return;
+      deltaX = e.clientX - startX;
+      trackEl.style.transform = `translateX(${ -annIndex*100 + (deltaX / trackEl.clientWidth*100) }%)`;
+    };
+    window.onmouseup = function(e){
+      if(!isDown) return;
+      isDown = false;
+      document.body.style.userSelect = '';
+      trackEl.style.transition = '';
+      const elapsed = Date.now() - startTime;
+      if(Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 10 && elapsed < allowedTime)){
+        if(deltaX < 0) annIndex = Math.min(currentAnn.length -1, annIndex + 1);
+        else annIndex = Math.max(0, annIndex - 1);
+      }
+      updateAnnTransform();
+      restartAnnAutoPlay();
+    };
+  }
+
+  async function initAnnouncementsInPromo(){
+    const serverList = await fetchAnnouncementsFromServer();
+    let announcements = null;
+    if(Array.isArray(serverList)) {
+      announcements = serverList;
+      try { localStorage.setItem('announcements_v1', JSON.stringify(serverList)); } catch(e){}
+    } else {
+      try { announcements = JSON.parse(localStorage.getItem('announcements_v1')||'[]'); } catch(e){ announcements = []; }
+    }
+
+    if(announcements && announcements.length > 0) renderAnnouncementsImages(announcements);
+    else {
+      document.getElementById('promoDefault').style.display = 'flex';
+      document.getElementById('promoAnnouncements').style.display = 'none';
+    }
+
+    // periodic refresh
+    setInterval(async ()=>{
+      try {
+        const serverList2 = await fetchAnnouncementsFromServer();
+        if(Array.isArray(serverList2)){
+          const oldJson = JSON.stringify(currentAnn.map(a=>a.id || a.image_url));
+          const newJson = JSON.stringify(serverList2.map(a=>a.id || a.image_url));
+          if(oldJson !== newJson){
+            renderAnnouncementsImages(serverList2);
+            try { localStorage.setItem('announcements_v1', JSON.stringify(serverList2)); } catch(e){}
+          } else {
+            renderAnnouncementsImages(serverList2);
+          }
+        }
+      } catch(e){}
+    }, REFRESH_INTERVAL_MS);
+  }
+
+  // Kick off announcements after load
+  window.addEventListener('load', ()=>{
+    try { initAnnouncementsInPromo(); } catch(e){ console.warn('ann init failed', e); }
+  });
+</script>
+
+</body>
+</html>
