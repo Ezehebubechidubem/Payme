@@ -164,8 +164,10 @@ def init_db():
     if DATABASE_URL:
         with get_conn() as conn:
             cur = conn.cursor()
+
+            # USERS
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS users(
+                CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
                     username TEXT UNIQUE,
                     phone TEXT UNIQUE,
@@ -174,35 +176,53 @@ def init_db():
                     balance NUMERIC DEFAULT 0
                 )
             """)
+
+            # TRANSACTIONS
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS transactions(
+                CREATE TABLE IF NOT EXISTS transactions (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                     type TEXT,
                     amount NUMERIC,
                     other_party TEXT,
-                    date TEXT,
-                    FOREIGN KEY(user_id) REFERENCES users(id)
+                    date TEXT
                 )
             """)
+
+            # SAVINGS
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS savings(
+                CREATE TABLE IF NOT EXISTS savings (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                     amount NUMERIC,
                     type TEXT CHECK(type IN ('flexible','fixed')),
                     start_date TEXT,
                     duration_days INTEGER,
                     end_date TEXT,
-                    status TEXT DEFAULT 'active',
-                    FOREIGN KEY(user_id) REFERENCES users(id)
+                    status TEXT DEFAULT 'active'
                 )
             """)
+
+            # STAFF
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS staff (
+                    id UUID PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    role TEXT NOT NULL,
+                    password TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            conn.commit()
+
     else:
         with get_conn() as conn:
             cur = conn.cursor()
+
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS users(
+                CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE,
                     phone TEXT UNIQUE,
@@ -211,8 +231,9 @@ def init_db():
                     balance REAL DEFAULT 0
                 )
             """)
+
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS transactions(
+                CREATE TABLE IF NOT EXISTS transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
                     type TEXT,
@@ -222,8 +243,9 @@ def init_db():
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
             """)
+
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS savings(
+                CREATE TABLE IF NOT EXISTS savings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
                     amount REAL,
@@ -236,36 +258,18 @@ def init_db():
                 )
             """)
 
-def init_db():
-    if DATABASE_URL:
-        with get_conn() as conn:
-            cur = conn.cursor()
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS staff (
-                id UUID PRIMARY KEY,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                role TEXT NOT NULL,
-                password TEXT NOT NULL,
-                created_at TIMESTAMP
-            )
+                CREATE TABLE IF NOT EXISTS staff (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    role TEXT NOT NULL,
+                    password TEXT NOT NULL,
+                    created_at TEXT
+                )
             """)
-            conn.commit()
-    else:
-        with get_conn() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS staff (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                role TEXT NOT NULL,
-                password TEXT NOT NULL,
-                created_at TEXT
-            )
-            """)
-            conn.commit()
 
+            conn.commit()
 # -------------------------------------------------
 # Utilities
 # -------------------------------------------------
