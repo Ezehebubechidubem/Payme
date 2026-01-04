@@ -57,7 +57,7 @@
 
 <script>
 /* ==== Config ==== */
-const API_BASE = 'https://payme-update.onrender.com'; // your backend (as requested)
+const API_BASE = 'https://payme-update.onrender.com'; // backend base
 const PIN_PAGE_REDIRECT = 'paymelogin.html';          // after successful PIN setup
 
 /* ==== UI refs ==== */
@@ -164,12 +164,11 @@ function handleKey(k){
   try {
     const res = await fetch(`${API_BASE}/api/pin/status`, {
       method: 'GET',
-      credentials: 'include', // IMPORTANT: include session cookie if any
+      credentials: 'include', // include session cookie if any
       headers: { 'Accept': 'application/json' }
     });
 
     if (res.status === 401) {
-      // not logged in — inform user that saving will require login unless registration supplied a token
       setNote('Not authenticated. If you registered from another tab, return there and finish PIN creation. Otherwise, log in to save the PIN.');
       return;
     }
@@ -179,7 +178,6 @@ function handleKey(k){
       return;
     }
 
-    // session ok, hide any note
     setNote('');
   } catch(err){
     setNote('Network issue while checking session. Saving might fail.');
@@ -219,12 +217,50 @@ confirmBtn.addEventListener('click', async ()=>{
   } else if (pending && pending.phone) {
     payload.phone = pending.phone;
   }
-  // If we have a token/identifier we still include credentials: 'include' — backend may accept either.
 
   try {
+    // If we have a registration-provided account number and no pinToken,
+    // use request-code -> associate flow (works with your existing backend)
+    if (!pinToken && pending && pending.account_number) {
+      // 1) Request a dev 6-digit code for this account (your existing endpoint)
+      const rc = await fetch(`${API_BASE}/api/pin/request-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ account_number: pending.account_number })
+      });
+      const rcj = await rc.json().catch(()=>null);
+      if (!rc.ok || !rcj || !rcj.code) {
+        showError(rcj && rcj.message ? rcj.message : 'Failed to request verification code');
+        confirmBtn.disabled = false;
+        message.textContent = 'Confirm PIN';
+        return;
+      }
+      const code = rcj.code; // DEV: server returns code for testing
+
+      // 2) Call associate endpoint to attach the PIN to account using the code
+      const assoc = await fetch(`${API_BASE}/api/pin/associate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ account_number: pending.account_number, code: code, pin: current })
+      });
+      const assocJ = await assoc.json().catch(()=>null);
+      if (assoc.ok && assocJ && assocJ.success) {
+        try { sessionStorage.removeItem('payme_pending_user'); sessionStorage.removeItem('payme_pin_token'); } catch(e){}
+        message.textContent = 'PIN created successfully. Redirecting...';
+        setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 700);
+        return;
+      } else {
+        showError(assocJ && assocJ.message ? assocJ.message : `Failed to attach PIN (HTTP ${assoc.status})`);
+        confirmBtn.disabled = false;
+        message.textContent = 'Confirm PIN';
+        return;
+      }
+    }
+
+    // Fallback: existing authenticated setup behavior (session or pinToken path)
     const res = await fetch(`${API_BASE}/api/pin/setup`, {
       method: 'POST',
-      credentials: 'include', // include session cookie in case backend wants it; safe to include
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload)
     });
@@ -242,7 +278,6 @@ confirmBtn.addEventListener('click', async ()=>{
 
     // If server rejects and we attempted with a token, show clear message
     if (res.status === 401) {
-      // Unauthorized — maybe server requires login and token was not accepted
       if (usingToken) {
         showError('Registration token was not accepted by server. Please log in and set PIN from your profile.');
       } else {
@@ -263,10 +298,9 @@ confirmBtn.addEventListener('click', async ()=>{
     confirmBtn.disabled = false;
     message.textContent = 'Confirm PIN';
   } finally {
-    // clear current PINs after attempt for safety
+    // clear current PINs after attempt for safety and reset UI so user restarts flow if needed
     current = '';
     firstPin = null;
-    // re-render dots as empty so user restarts flow if needed
     mode = 'create';
     headerTitle.textContent='Create your 4-digit payment PIN';
     headerDesc.textContent='You will use this PIN to confirm payments and transactions.';
