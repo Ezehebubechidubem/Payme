@@ -47,10 +47,10 @@
       <input id="password" name="password" type="password" minlength="10" maxlength="75" placeholder="Enter password" required autocomplete="new-password">
 
       <button type="submit" id="submitBtn">Register</button>
-     
+
     </form>
 
-    <div class="switch">Already have an account? <a href="index.html">Login</a></div>
+    <div class="switch">Already have an account? <a href="paymelogin.html">Login</a></div>
   </div>
 
   <!-- Success modal -->
@@ -60,7 +60,7 @@
       <h3 id="successTitle">Registration successful</h3>
       <p id="successMessage">Your account was created.</p>
       <div class="actions">
-        <button id="successOk" class="btn btn-primary">OK</button>
+        <button id="successOk" class="btn btn-primary">Continue</button>
       </div>
     </div>
   </div>
@@ -80,7 +80,9 @@
   <script>
   (function(){
     const REGISTER_URL = 'https://payme-update.onrender.com/register';
-    const LOGIN_AFTER_REGISTER = true; // keep behavior simple: after register, we redirect to login page
+    // After register -> go to create_pin.html (user will set their 4-digit transaction PIN)
+    const CREATE_PIN_PAGE = 'Loginauthentication.html';
+    const LOGIN_PAGE = 'paymelogin.html';
 
     const form = document.getElementById('registerForm');
     const usernameEl = document.getElementById('username');
@@ -154,21 +156,32 @@
         const res = await fetch(REGISTER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', // IMPORTANT: allow server to set session cookie
+          credentials: 'include', // allow server to set cookie if it chooses (but PIN creation should not depend on a session)
           body: JSON.stringify({ username, phone, password })
         });
 
         const data = await res.json().catch(()=>({ status:'error', message: 'Invalid server response' }));
 
         if (data && data.status === 'success') {
-          // Save safe user info locally (no password)
-          const user = { username, phone, accountNumber: data.account_number };
-          localStorage.setItem('user', JSON.stringify(user));
-          localStorage.setItem('loggedInUser', JSON.stringify(user));
+          // Save safe user info locally (no password). Use sessionStorage for short-lived registration data.
+          const user = {
+            username,
+            phone,
+            account_number: data.account_number || null,
+            user_id: data.user_id || null
+          };
 
-          showSuccess('✅ Registration successful. Your account number: ' + data.account_number, function(){
-            // After register we keep original behavior — go to login page
-            window.location.href = 'paymelogin.html';
+          try {
+            // sessionStorage is cleared on browser/tab close — this is suitable for carrying registration -> pin flow
+            sessionStorage.setItem('payme_pending_user', JSON.stringify(user));
+
+            // If the server provided a one-time pin token (recommended), save it too
+            if (data.pin_token) sessionStorage.setItem('payme_pin_token', data.pin_token);
+          } catch(e){ /* ignore storage errors */ }
+
+          // Show success and then redirect to create pin page
+          showSuccess('✅ Registration successful. Proceed to create your 4-digit transaction PIN.', function(){
+            window.location.href = CREATE_PIN_PAGE;
           });
         } else {
           showError('❌ ' + (data && data.message ? data.message : 'Registration failed'), 'Registration failed');
