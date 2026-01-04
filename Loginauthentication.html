@@ -99,6 +99,20 @@ function setNote(t){
   serverNote.setAttribute('aria-hidden', t ? 'false' : 'true');
 }
 
+/* ==== Read registration-carried data from sessionStorage ==== */
+let pending = null;
+let pinToken = null;
+try {
+  pending = JSON.parse(sessionStorage.getItem('payme_pending_user') || 'null');
+} catch (e) {
+  pending = null;
+}
+try {
+  pinToken = sessionStorage.getItem('payme_pin_token') || null;
+} catch (e) {
+  pinToken = null;
+}
+
 /* ==== Keyboard handling (click & keyboard accessibility) ==== */
 keypad.addEventListener('click', ev=>{
   const k = ev.target;
@@ -132,31 +146,42 @@ function handleKey(k){
   }
 }
 
-/* ==== Session check using cookies (do not redirect on failure) ==== */
+/* ==== Session / Token check ==== */
 (async function checkSession(){
+  // If we have a pin token from registration, prefer that and inform user
+  if (pinToken) {
+    setNote('Using registration token — no need to log in. Your PIN will be saved using the registration token.');
+    return;
+  }
+
+  // If we have pending user identifiers (user_id/account_number/phone), inform user we will use them
+  if (pending && (pending.user_id || pending.account_number || pending.phone)) {
+    setNote('Using registration data to identify account. You do not need to be logged in in this tab.');
+    return;
+  }
+
+  // Otherwise, perform server-side session check (non-blocking)
   try {
     const res = await fetch(`${API_BASE}/api/pin/status`, {
       method: 'GET',
-      credentials: 'include', // IMPORTANT: include session cookie
+      credentials: 'include', // IMPORTANT: include session cookie if any
       headers: { 'Accept': 'application/json' }
     });
 
     if (res.status === 401) {
-      // not logged in — don't redirect, just inform user saving will fail unless they login
-      setNote('Not authenticated. Please log in if you want to save the PIN. (You may continue to type the PIN but saving will fail until you are logged in.)');
+      // not logged in — inform user that saving will require login unless registration supplied a token
+      setNote('Not authenticated. If you registered from another tab, return there and finish PIN creation. Otherwise, log in to save the PIN.');
       return;
     }
 
     if (!res.ok) {
-      // server error or network issue — show a subtle non-blocking note
-      setNote('Could not verify session (server unavailable). You can still try to save the PIN.');
+      setNote('Could not verify session (server unavailable). You can still try to save the PIN with registration data.');
       return;
     }
 
     // session ok, hide any note
     setNote('');
   } catch(err){
-    // network issue — allow user to continue
     setNote('Network issue while checking session. Saving might fail.');
     console.warn('Session check failed:', err);
   }
@@ -181,33 +206,54 @@ confirmBtn.addEventListener('click', async ()=>{
   confirmBtn.disabled = true;
   setNote(''); // clear any previous notes
 
+  // Build payload: prefer pin_token, then user_id/account_number/phone, else rely on session
+  const payload = { pin: current };
+  let usingToken = false;
+  if (pinToken) {
+    payload.pin_token = pinToken;
+    usingToken = true;
+  } else if (pending && pending.user_id) {
+    payload.user_id = pending.user_id;
+  } else if (pending && pending.account_number) {
+    payload.account_number = pending.account_number;
+  } else if (pending && pending.phone) {
+    payload.phone = pending.phone;
+  }
+  // If we have a token/identifier we still include credentials: 'include' — backend may accept either.
+
   try {
     const res = await fetch(`${API_BASE}/api/pin/setup`, {
       method: 'POST',
-      credentials: 'include', // <-- SEND SESSION COOKIE so backend can check session
+      credentials: 'include', // include session cookie in case backend wants it; safe to include
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ pin: current })
+      body: JSON.stringify(payload)
     });
 
     const j = await res.json().catch(()=>({ success:false }));
 
-    if (res.ok && j.success) {
-      // success — stay or redirect to the success page
+    // If success, clear registration temp storage and redirect
+    if (res.ok && (j.success || j.status === 'success')) {
+      try { sessionStorage.removeItem('payme_pending_user'); sessionStorage.removeItem('payme_pin_token'); } catch(e){}
       message.textContent = 'PIN created successfully. Redirecting...';
       clearError();
       setTimeout(()=> window.location.href = PIN_PAGE_REDIRECT, 700);
       return;
     }
 
-    // If not authorized, show clear message but do NOT redirect
+    // If server rejects and we attempted with a token, show clear message
     if (res.status === 401) {
-      showError('You must be logged in before setting a PIN. Please log in and try again.');
+      // Unauthorized — maybe server requires login and token was not accepted
+      if (usingToken) {
+        showError('Registration token was not accepted by server. Please log in and set PIN from your profile.');
+      } else {
+        showError('You must be logged in before setting a PIN. Please log in and try again.');
+      }
       confirmBtn.disabled = false;
       message.textContent = 'Confirm PIN';
       return;
     }
 
-    // Other server errors: show returned message or generic
+    // Show server-provided message if any
     showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
     confirmBtn.disabled = false;
     message.textContent = 'Confirm PIN';
@@ -216,6 +262,16 @@ confirmBtn.addEventListener('click', async ()=>{
     showError('Network error. Please try again.');
     confirmBtn.disabled = false;
     message.textContent = 'Confirm PIN';
+  } finally {
+    // clear current PINs after attempt for safety
+    current = '';
+    firstPin = null;
+    // re-render dots as empty so user restarts flow if needed
+    mode = 'create';
+    headerTitle.textContent='Create your 4-digit payment PIN';
+    headerDesc.textContent='You will use this PIN to confirm payments and transactions.';
+    message.textContent='Type a 4-digit PIN';
+    refreshDots();
   }
 });
 
