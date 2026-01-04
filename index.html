@@ -188,8 +188,33 @@ button:hover { background: var(--primary-dark); }
 
         // Regular user -> go to user landing
         if(normalizedRole === "user" || normalizedRole === "customer" || normalizedRole === ""){
-          showSuccess("Login successful", ()=>window.location.href="paymelogin.html");
-          return;
+          // NEW: check if user already has a transaction PIN before deciding where to redirect.
+          // We'll call GET /api/pin/status using the same server origin as API (session cookie included).
+          const apiOrigin = (function(){
+            try { return new URL(API).origin; } catch(e){ return API.replace(/\/login\/?$/,''); }
+          })();
+          const pinStatusUrl = apiOrigin + '/api/pin/status';
+
+          try {
+            // fetch pin status (session cookie will be sent because credentials: 'include' was used on login)
+            const statusRes = await fetch(pinStatusUrl, { method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' } });
+            const statusJson = await statusRes.json().catch(()=>null);
+
+            // if server says hasPin === false -> go to create PIN flow
+            if (statusRes.ok && statusJson && statusJson.hasPin === false) {
+              showSuccess("Login successful", ()=>window.location.href="create_pin.html");
+              return;
+            } else {
+              // otherwise proceed to your existing landing (no PIN creation required)
+              showSuccess("Login successful", ()=>window.location.href="paymelogin.html");
+              return;
+            }
+          } catch (statusErr) {
+            // If the status check fails for any reason, fallback to original behavior
+            console.error('PIN status check failed', statusErr);
+            showSuccess("Login successful", ()=>window.location.href="paymelogin.html");
+            return;
+          }
         }
 
         // Unknown role
