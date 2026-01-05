@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Create Account</title>
   <style>
@@ -23,7 +23,7 @@
     .modal .badge.success { background:linear-gradient(135deg,#00c853,#43a047); }
     .modal .badge.error   { background:linear-gradient(135deg,#f44336,#e53935); }
     .modal h3 { margin:6px 0 6px; font-size:18px; }
-    .modal p { margin:0 0 12px; color:#555; }
+    .modal p { margin:0 0 12px; color:#555; white-space:pre-wrap; }
     .modal .actions { display:flex; gap:10px; justify-content:center; margin-top:12px; }
     .modal .btn { padding:10px 14px; border-radius:8px; cursor:pointer; border:0; font-weight:700; }
     .modal .btn-primary { background:#00c853; color:#fff; }
@@ -39,6 +39,9 @@
     <form id="registerForm" autocomplete="on" novalidate>
       <label for="username">Username</label>
       <input id="username" name="username" type="text" placeholder="Enter username" required autocomplete="username">
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" placeholder="Enter email address" required autocomplete="email">
 
       <label for="phone">Phone Number</label>
       <input id="phone" name="phone" type="text" inputmode="numeric" placeholder="Enter phone number (11 digits)" maxlength="11" minlength="11" required>
@@ -80,10 +83,14 @@
   <script>
   (function(){
     const REGISTER_URL = 'https://payme-update.onrender.com/register';
-    const LOGIN_AFTER_REGISTER = true; // keep behavior simple: after register, we redirect to login page
+    // OTP endpoints (adjust these paths if your backend uses different routes)
+    const ORIGIN = (function(){ try { return new URL(REGISTER_URL).origin; } catch(e){ return REGISTER_URL.replace(/\/register\/?$/, ''); } })();
+    const OTP_EMAIL_PATH = '/api/otp/send-email'; // expects { email, reason } -> { success: true }
+    const OTP_SMS_PATH   = '/api/otp/send-sms';   // expects { phone, reason } -> { success: true }
 
     const form = document.getElementById('registerForm');
     const usernameEl = document.getElementById('username');
+    const emailEl = document.getElementById('email');
     const phoneEl = document.getElementById('phone');
     const passwordEl = document.getElementById('password');
     const submitBtn = document.getElementById('submitBtn');
@@ -138,14 +145,51 @@
     }
 
     function validPhone(p){ return /^\d{11}$/.test(p); }
+    function validEmail(e){ return /^\S+@\S+\.\S+$/.test(e); }
+
+    // helper: send OTP to email
+    async function sendEmailOtp(email) {
+      const url = ORIGIN + OTP_EMAIL_PATH;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ email: String(email).trim(), reason: 'registration' })
+        });
+        const j = await res.json().catch(()=>null);
+        return { ok: res.ok && j && (j.success === true || j.status === 'success'), detail: j };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    }
+
+    // helper: send OTP to phone (sms)
+    async function sendSmsOtp(phone) {
+      const url = ORIGIN + OTP_SMS_PATH;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ phone: String(phone).trim(), reason: 'registration' })
+        });
+        const j = await res.json().catch(()=>null);
+        return { ok: res.ok && j && (j.success === true || j.status === 'success'), detail: j };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    }
 
     form.addEventListener('submit', async function(e){
       e.preventDefault();
       const username = (usernameEl.value || '').trim();
+      const email = (emailEl.value || '').trim();
       const phone = (phoneEl.value || '').trim();
       const password = passwordEl.value || '';
 
       if (!username) { showError('Please enter a username', 'Invalid input'); return; }
+      if (!email || !validEmail(email)) { showError('Please enter a valid email address', 'Invalid email'); return; }
       if (!validPhone(phone)) { showError('Phone number must be exactly 11 digits', 'Invalid phone'); return; }
       if (!password || password.length < 10) { showError('Password must be at least 10 characters', 'Invalid password'); return; }
 
@@ -155,21 +199,35 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include', // IMPORTANT: allow server to set session cookie
-          body: JSON.stringify({ username, phone, password })
+          body: JSON.stringify({ username, email, phone, password })
         });
 
         const data = await res.json().catch(()=>({ status:'error', message: 'Invalid server response' }));
 
         if (data && data.status === 'success') {
           // Save safe user info locally (no password)
-          const user = { username, phone, accountNumber: data.account_number };
-          localStorage.setItem('user', JSON.stringify(user));
-          localStorage.setItem('loggedInUser', JSON.stringify(user));
+          const user = { username, email, phone, accountNumber: data.account_number };
+          try { localStorage.setItem('user', JSON.stringify(user)); } catch(e){}
+          try { localStorage.setItem('loggedInUser', JSON.stringify(user)); } catch(e){}
 
-          showSuccess('✅ Registration successful. Your account number: ' + data.account_number, function(){
+          // After registration, send OTP to both email and phone (wait for both)
+          const [emailRes, smsRes] = await Promise.all([ sendEmailOtp(email), sendSmsOtp(phone) ]);
+
+          // Build message for the success modal
+          let successMsg = '✅ Registration successful. Your account number: ' + data.account_number + '\n\n';
+          const parts = [];
+          if (emailRes.ok) parts.push('Email OTP sent to ' + email);
+          else parts.push('Email OTP failed to send' + (emailRes.error ? (': '+emailRes.error) : (emailRes.detail && emailRes.detail.message ? ': '+emailRes.detail.message : '')));
+          if (smsRes.ok) parts.push('SMS OTP sent to ' + phone);
+          else parts.push('SMS OTP failed to send' + (smsRes.error ? (': '+smsRes.error) : (smsRes.detail && smsRes.detail.message ? ': '+smsRes.detail.message : '')));
+
+          successMsg += parts.join('\n');
+
+          showSuccess(successMsg, function(){
             // After register we keep original behavior — go to login page
             window.location.href = 'index.html';
           });
+
         } else {
           showError('❌ ' + (data && data.message ? data.message : 'Registration failed'), 'Registration failed');
         }
