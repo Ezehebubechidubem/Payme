@@ -15,6 +15,10 @@ bp = Blueprint("pin_routes", __name__, url_prefix="/api/pin")
 # TTL for 6-digit codes (seconds)
 CODE_TTL_SECONDS = int(os.environ.get("PIN_CODE_TTL", 10 * 60))
 
+# Security: lock defaults
+LOCK_THRESHOLD = int(os.environ.get("PIN_LOCK_THRESHOLD", 3))
+LOCK_HOURS = int(os.environ.get("PIN_LOCK_HOURS", 4))
+
 # Ensure pin-related tables exist
 try:
     init_tables()
@@ -125,6 +129,39 @@ def login_required(view):
     return wrapped
 
 
+# ---------------- Helpers: ensure columns for lock/tracking ----------------
+def _ensure_user_pins_columns():
+    """
+    Best-effort: add failed_attempts and locked_until columns to user_pins table if missing.
+    Errors are ignored to avoid crashing production.
+    """
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            # SQLite / Postgres tolerant ALTER attempts inside try/except
+            try:
+                cur.execute("ALTER TABLE user_pins ADD COLUMN failed_attempts INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                cur.execute("ALTER TABLE user_pins ADD COLUMN locked_until TEXT DEFAULT NULL")
+            except Exception:
+                pass
+            try:
+                conn.commit()
+            except Exception:
+                pass
+    except Exception:
+        traceback.print_exc()
+
+
+# ensure schema columns exist (best-effort)
+try:
+    _ensure_user_pins_columns()
+except Exception:
+    pass
+
+
 # ---------------- Dev/testing: request a 6-digit code for account_number --------------
 @bp.route("/request-code", methods=["POST"])
 def request_pin_code():
@@ -168,16 +205,43 @@ def api_pin_status():
     """
     user = g.current_user
     try:
+        # Try to ensure lock columns exist
+        try:
+            _ensure_user_pins_columns()
+        except Exception:
+            pass
+
         with get_conn() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT id FROM user_pins WHERE user_id = ? LIMIT 1", (user["id"],))
+            cur.execute(
+                """
+                SELECT up.id, up.failed_attempts, up.locked_until
+                FROM user_pins up
+                WHERE up.user_id = ?
+                LIMIT 1
+                """,
+                (user["id"],),
+            )
             row = cur.fetchone()
             has_pin = bool(row)
-        # Minimal lock info (expand if you track attempts server-side)
-        return (
-            jsonify({"hasPin": has_pin, "locked": False, "lockedUntil": None, "failedAttempts": 0}),
-            200,
-        )
+            failed = 0
+            locked_until = None
+            if row:
+                failed = _row_get(row, "failed_attempts") if isinstance(row, dict) else (_row_get(row, 1) if len(row) > 1 else 0)
+                locked_until = _row_get(row, "locked_until") if isinstance(row, dict) else (_row_get(row, 2) if len(row) > 2 else None)
+
+        locked = False
+        lockedUntil = None
+        if locked_until:
+            try:
+                dt = datetime.fromisoformat(locked_until) if isinstance(locked_until, str) else locked_until
+                if dt > datetime.utcnow():
+                    locked = True
+                    lockedUntil = dt.isoformat()
+            except Exception:
+                pass
+
+        return jsonify({"hasPin": has_pin, "locked": locked, "lockedUntil": lockedUntil, "failedAttempts": int(failed or 0)}), 200
     except Exception:
         traceback.print_exc()
         return jsonify({"success": False, "message": "Server error"}), 500
@@ -200,17 +264,28 @@ def setup_pin():
     hashed = hash_pin(pin)
 
     try:
+        # ensure columns
+        try:
+            _ensure_user_pins_columns()
+        except Exception:
+            pass
+
         with get_conn() as conn:
             cur = conn.cursor()
             # check if existing
             cur.execute("SELECT id FROM user_pins WHERE user_id = ? LIMIT 1", (user["id"],))
             r = cur.fetchone()
             if r:
-                cur.execute("UPDATE user_pins SET hashed_pin = ?, created_at = ? WHERE user_id = ?", (hashed, now_iso(), user["id"]))
+                # reset failed attempts & locked_until when updating PIN
+                cur.execute("UPDATE user_pins SET hashed_pin = ?, created_at = ?, failed_attempts = 0, locked_until = NULL WHERE user_id = ?", (hashed, now_iso(), user["id"]))
                 event = "PIN_UPDATED"
             else:
-                cur.execute("INSERT INTO user_pins (user_id, hashed_pin, created_at) VALUES (?, ?, ?)", (user["id"], hashed, now_iso()))
+                cur.execute("INSERT INTO user_pins (user_id, hashed_pin, created_at, failed_attempts, locked_until) VALUES (?, ?, ?, ?, ?)", (user["id"], hashed, now_iso(), 0, None))
                 event = "PIN_CREATED"
+            try:
+                conn.commit()
+            except Exception:
+                pass
         # audit
         try:
             with get_conn() as conn2:
@@ -219,6 +294,10 @@ def setup_pin():
                     "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
                     (user["id"], event, "'method':'setup'", now_iso()),
                 )
+                try:
+                    conn2.commit()
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -280,22 +359,36 @@ def pin_associate():
             # delete used code (single use)
             code_id = _row_get(crow, "id") or _row_get(crow, 0)
             cur.execute("DELETE FROM pin_codes WHERE id = ?", (code_id,))
+            try:
+                conn.commit()
+            except Exception:
+                pass
 
         # update user_pins (use separate conn so commit is separate)
+        # ensure columns exist
+        try:
+            _ensure_user_pins_columns()
+        except Exception:
+            pass
+
         hashed = hash_pin(pin)
         with get_conn() as conn2:
             c2 = conn2.cursor()
             c2.execute("SELECT id FROM user_pins WHERE user_id = ? LIMIT 1", (user_id,))
             existing = c2.fetchone()
             if existing:
-                c2.execute("UPDATE user_pins SET hashed_pin = ?, created_at = ? WHERE user_id = ?", (hashed, now_iso(), user_id))
+                c2.execute("UPDATE user_pins SET hashed_pin = ?, created_at = ?, failed_attempts = 0, locked_until = NULL WHERE user_id = ?", (hashed, now_iso(), user_id))
             else:
-                c2.execute("INSERT INTO user_pins (user_id, hashed_pin, created_at) VALUES (?, ?, ?)", (user_id, hashed, now_iso()))
+                c2.execute("INSERT INTO user_pins (user_id, hashed_pin, created_at, failed_attempts, locked_until) VALUES (?, ?, ?, ?, ?)", (user_id, hashed, now_iso(), 0, None))
             # audit
             c2.execute(
                 "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
                 (user_id, "PIN_ASSOCIATE", f"account:{account_number}", now_iso()),
             )
+            try:
+                conn2.commit()
+            except Exception:
+                pass
         return jsonify({"success": True, "message": "PIN attached to account successfully"}), 200
 
     except Exception:
@@ -314,9 +407,6 @@ def verify_pin():
       - LOCK_THRESHOLD attempts allowed (3)
       - lock for LOCK_HOURS hours (4)
     """
-    LOCK_THRESHOLD = 3
-    LOCK_HOURS = 4
-
     try:
         data = request.get_json() or {}
         account_number = str(data.get("account_number", "")).strip()
@@ -324,6 +414,12 @@ def verify_pin():
 
         if not account_number or not pin:
             return jsonify({"success": False, "message": "Missing account number or PIN"}), 400
+
+        # ensure lock columns exist (best-effort)
+        try:
+            _ensure_user_pins_columns()
+        except Exception:
+            pass
 
         # fetch user pin row + metadata
         with get_conn() as conn:
@@ -379,43 +475,6 @@ def verify_pin():
             if not stored_hash:
                 return jsonify({"success": False, "message": "PIN data missing"}), 500
 
-            # If the columns failed_attempts / locked_until didn't exist (None), try to ensure they exist.
-            # This is a best-effort ALTER; ignore errors to avoid breaking runtime.
-            if failed_attempts is None or locked_until is None:
-                try:
-                    with get_conn() as conn2:
-                        c2 = conn2.cursor()
-                        try:
-                            c2.execute("ALTER TABLE user_pins ADD COLUMN failed_attempts INTEGER DEFAULT 0")
-                        except Exception:
-                            pass
-                        try:
-                            c2.execute("ALTER TABLE user_pins ADD COLUMN locked_until TEXT DEFAULT NULL")
-                        except Exception:
-                            pass
-                        # re-read the values after schema change
-                        c2.execute(
-                            """
-                            SELECT up.failed_attempts, up.locked_until
-                            FROM user_pins up
-                            JOIN users u ON u.id = up.user_id
-                            WHERE u.account_number = ?
-                            LIMIT 1
-                            """,
-                            (account_number,),
-                        )
-                        new_row = c2.fetchone()
-                        if new_row:
-                            if isinstance(new_row, dict):
-                                failed_attempts = new_row.get("failed_attempts", 0)
-                                locked_until = new_row.get("locked_until")
-                            else:
-                                failed_attempts = new_row[0] if len(new_row) > 0 else 0
-                                locked_until = new_row[1] if len(new_row) > 1 else None
-                except Exception:
-                    # ignore schema/alter errors
-                    pass
-
             # normalize values
             try:
                 failed_attempts = int(failed_attempts or 0)
@@ -445,11 +504,15 @@ def verify_pin():
             # check PIN
             ok = check_pin(pin, stored_hash)
 
-            # update attempt counters & locked state in same connection
+                 # update attempt counters & locked state in same connection
             if ok:
                 # reset failed attempts / lock
                 try:
                     cur.execute("UPDATE user_pins SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?", (user_id,))
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
                 except Exception:
                     # ignore update failures but continue
                     traceback.print_exc()
@@ -465,6 +528,10 @@ def verify_pin():
                         "UPDATE user_pins SET failed_attempts = ?, locked_until = ? WHERE user_id = ?",
                         (failed_attempts, new_locked_until, user_id),
                     )
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
                 except Exception:
                     traceback.print_exc()
 
@@ -476,6 +543,10 @@ def verify_pin():
                     "INSERT INTO pin_audit (user_id, event_type, meta, created_at) VALUES (?, ?, ?, ?)",
                     (user_id, "PIN_VERIFY_SUCCESS" if ok else "PIN_VERIFY_FAIL", f"account:{account_number}", now_iso()),
                 )
+                try:
+                    conn2.commit()
+                except Exception:
+                    pass
         except Exception:
             # audit failure shouldn't break verification
             traceback.print_exc()
