@@ -62,7 +62,7 @@ except Exception as e:
 
 #---Otp Blueprint Import---
 try:
-    from otp_routes import otp_bp
+    from otp import otp_bp
     app.register_blueprint(otp_bp, url_prefix="/api")
     print("OTP blueprint registered")
 except Exception as e:
