@@ -159,7 +159,7 @@ _ensure_table()
 
 @otp_bp.route("/send-email", methods=["POST"])
 def otp_send_email():
-print(f"[DEBUG] send-email called: method={request.method}, path={request.path}, data={request.get_json()}")
+    print(f"[DEBUG] send-email called: method={request.method}, path={request.path}, data={request.get_json()}")
 
     """
     POST /api/otp/send-email
@@ -226,7 +226,7 @@ print(f"[DEBUG] send-email called: method={request.method}, path={request.path},
 
 @otp_bp.route("/send-sms", methods=["POST"])
 def otp_send_sms():
-print(f"[DEBUG] send-sms called: method={request.method}, path={request.path}, data={request.get_json()}")
+    print(f"[DEBUG] send-sms called: method={request.method}, path={request.path}, data={request.get_json()}")
 
     """
     POST /api/otp/send-sms
