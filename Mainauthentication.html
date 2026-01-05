@@ -71,6 +71,7 @@
     // Lock config
     const LOCK_THRESHOLD = 3;
     const LOCK_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
+    const STATUS_POLL_MS = 8000; // poll server every 8s for cross-browser sync
 
     // Storage helpers
     function getStoredUser() {
@@ -107,16 +108,24 @@
     let lockInfo = null;
     let lockKey = null;
     let countdownInterval = null;
+    let statusPollInterval = null;
 
     function getLockKeyForAccount(accountId){ return `pin_lock_${accountId || 'anonymous'}`; }
     function loadLockInfo(){ try { const raw = localStorage.getItem(lockKey); if (!raw) return { failedAttempts: 0, lockedUntil: null }; const parsed = JSON.parse(raw); return { failedAttempts: parsed.failedAttempts || 0, lockedUntil: parsed.lockedUntil || null }; } catch(e){ return { failedAttempts: 0, lockedUntil: null }; } }
-    function saveLockInfo(info){ try { localStorage.setItem(lockKey, JSON.stringify(info)); } catch(e){ console.warn('saveLockInfo failed', e); } lockInfo = info; }
+    function saveLockInfo(info){ try { localStorage.setItem(lockKey, JSON.stringify(info)); } catch(e){ console.warn('saveLockInfo failed', e); } lockInfo = info; broadcastLockChange(info); }
     function clearLockInfo(){ try { localStorage.removeItem(lockKey); } catch(e){} lockInfo = { failedAttempts:0, lockedUntil: null }; enableKeypad(); updateMessageFromPending(); if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; } }
     function isLocked(){ if (!lockInfo || !lockInfo.lockedUntil) return false; try { return (new Date(lockInfo.lockedUntil) > new Date()); } catch(e){ return false; } }
     function formatRemaining(ms){ if (ms <= 0) return '0s'; const totalSec = Math.floor(ms/1000); const hrs = Math.floor(totalSec / 3600); const mins = Math.floor((totalSec % 3600) / 60); const secs = totalSec % 60; if (hrs > 0) return `${hrs}h ${mins}m`; if (mins > 0) return `${mins}m ${secs}s`; return `${secs}s`; }
     function disableKeypad(){ keypad.querySelectorAll('.key').forEach(k => k.classList.add('disabled')); submitBtn.disabled = true; }
     function enableKeypad(){ keypad.querySelectorAll('.key').forEach(k => k.classList.remove('disabled')); submitBtn.disabled = (current.length !== 4); }
-    function setLockCountdown(){ if (!lockInfo || !lockInfo.lockedUntil) return; if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(()=> { const until = new Date(lockInfo.lockedUntil); const msLeft = until - new Date(); if (msLeft <= 0) { clearInterval(countdownInterval); countdownInterval = null; clearLockInfo(); return; } message.textContent = `Too many failed attempts. Try again in ${formatRemaining(msLeft)}.`; }, 1000); }
+    function setLockCountdown(){ if (!lockInfo || !lockInfo.lockedUntil) return; if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(()=> { const until = new Date(lockInfo.lockedUntil); const msLeft = until - new Date(); if (msLeft <= 0) { clearInterval(countdownInterval); countdownInterval = null; // re-sync with server after countdown
+        fetchStatusAndUpdateUI();
+        return; } message.textContent = `Too many failed attempts. Try again in ${formatRemaining(msLeft)}.`; }, 1000); }
+
+    // BroadcastChannel for cross-tab quick sync (graceful fallback if unsupported)
+    let bc = null;
+    try { bc = new BroadcastChannel('payme_pin_channel'); bc.onmessage = (ev) => { if (ev && ev.data && ev.data.type === 'lock_update') { lockInfo = ev.data.info || lockInfo; applyLockInfoToUI(); } }; } catch(e){ bc = null; }
+    function broadcastLockChange(info){ try { if (bc) bc.postMessage({ type:'lock_update', info }); } catch(e){} }
 
     function refreshDots(){ pinDots.forEach((d,i)=> { const ch = current[i] || ''; d.textContent = ch ? '•' : ''; d.classList.toggle('filled', !!ch); }); submitBtn.disabled = (current.length !== 4) || isLocked(); }
     function showError(msg){ errorEl.style.display='block'; errorEl.textContent = msg; }
@@ -154,6 +163,70 @@
         const left = LOCK_THRESHOLD - lockInfo.failedAttempts;
         showError(`Invalid PIN. ${left} attempt${left>1?'s':''} left before lock.`);
       }
+    }
+
+    // Apply lockInfo to UI (used after server status fetch or BroadcastChannel update)
+    function applyLockInfoToUI(){
+      if (!lockInfo) return;
+      if (lockInfo.lockedUntil && (new Date(lockInfo.lockedUntil) > new Date())) {
+        disableKeypad();
+        message.textContent = `Too many failed attempts. Try again in ${formatRemaining(new Date(lockInfo.lockedUntil) - new Date())}.`;
+        setLockCountdown();
+      } else {
+        // not locked
+        if (lockInfo.failedAttempts && lockInfo.failedAttempts > 0) {
+          const left = Math.max(0, LOCK_THRESHOLD - lockInfo.failedAttempts);
+          if (left > 0) {
+            showError(`Invalid PIN. ${left} attempt${left>1?'s':''} left before lock.`);
+            // keep keypad enabled
+            enableKeypad();
+          } else {
+            // show lock message fallback
+            disableKeypad();
+            message.textContent = 'Too many failed attempts. Try again later.';
+          }
+        } else {
+          clearError();
+          enableKeypad();
+          updateMessageFromPending();
+        }
+      }
+    }
+
+    // Server status sync: GET /api/pin/status -> expects { hasPin, locked, lockedUntil, failedAttempts }
+    async function fetchStatusAndUpdateUI(){
+      try {
+        const res = await fetch(`${API_BASE}/api/pin/status`, { method:'GET', credentials:'include', headers:{ 'Accept':'application/json' } });
+        if (!res.ok) {
+          // If unauthenticated or server error, ignore and keep local state
+          // If 401, server says not logged in; leave UI but show hint
+          if (res.status === 401) {
+            // not logged in; preserve local behaviour
+            return;
+          }
+          return;
+        }
+        const j = await res.json().catch(()=>null);
+        if (!j) return;
+        // Normalize into lockInfo
+        const fi = Number(j.failedAttempts || 0);
+        const locked = !!j.locked;
+        const lockedUntil = j.lockedUntil || null;
+        lockInfo = { failedAttempts: fi, lockedUntil: locked ? lockedUntil : null };
+        // persist locally so other tabs read it
+        try { if (lockKey) localStorage.setItem(lockKey, JSON.stringify(lockInfo)); } catch(e){}
+        broadcastLockChange(lockInfo);
+        applyLockInfoToUI();
+      } catch (err) {
+        // ignore network errors
+        console.warn('Status fetch failed', err);
+      }
+    }
+
+    // Start periodic polling to keep browsers in sync
+    function startStatusPolling(){
+      if (statusPollInterval) clearInterval(statusPollInterval);
+      statusPollInterval = setInterval(fetchStatusAndUpdateUI, STATUS_POLL_MS);
     }
 
     // keypad wiring
@@ -281,7 +354,7 @@
           } catch(e){}
 
           // Broadcast update to other tabs (fast) and fallback to storage event
-          try { const bc = new BroadcastChannel('payme_channel'); bc.postMessage({ type:'balance_update', balance: Number(newBalance), reference: successPayload.txnNo }); bc.close(); }
+          try { const bc2 = new BroadcastChannel('payme_channel'); bc2.postMessage({ type:'balance_update', balance: Number(newBalance), reference: successPayload.txnNo }); bc2.close(); }
           catch(e) { try { localStorage.setItem('payme_balance_update', JSON.stringify({ balance: Number(newBalance), ts: Date.now(), reference: successPayload.txnNo })); } catch(e){} }
         }
 
@@ -364,14 +437,48 @@
           }
 
         } else {
-           // invalid PIN
-          lockInfo = loadLockInfo();
-          incrementFailedAndMaybeLock();
-          current = '';
-          refreshDots();
+          // If server indicates locked -> obey it (authoritative)
+          if (res.status === 403 && j && j.lockedUntil) {
+            lockInfo = lockInfo || {};
+            lockInfo.failedAttempts = LOCK_THRESHOLD;
+            lockInfo.lockedUntil = j.lockedUntil;
+            saveLockInfo(lockInfo);
+            disableKeypad();
+            message.textContent = `Too many failed attempts. Try again in ${formatRemaining(new Date(j.lockedUntil) - new Date())}.`;
+            setLockCountdown();
+            showError(j.message || 'Account locked due to failed attempts.');
+            return;
+          }
+
+          // Invalid PIN (401) -> ask server for authoritative failedAttempts and show remaining attempts
+          if (res.status === 401) {
+            // fetch latest status from server (so other browsers' attempts are known)
+            await fetchStatusAndUpdateUI();
+            lockInfo = lockInfo || loadLockInfo();
+            // If server returned remaining info in body, prefer that
+            const serverFailed = typeof j.failedAttempts !== 'undefined' ? Number(j.failedAttempts) : (lockInfo.failedAttempts || 0);
+            const left = Math.max(0, LOCK_THRESHOLD - serverFailed);
+            if (left > 0) showError(`Invalid PIN. ${left} attempt${left>1?'s':''} left before lock.`);
+            else showError('Invalid PIN.');
+            // update local counters if server told us
+            try {
+              // keep local copy in sync
+              if (!lockKey) lockKey = getLockKeyForAccount(acctId);
+              saveLockInfo({ failedAttempts: serverFailed, lockedUntil: lockInfo.lockedUntil || null });
+            } catch (e){}
+            current = '';
+            refreshDots();
+            return;
+          }
+
+          // other server errors
+          showError(j.message || `Failed to save PIN (HTTP ${res.status})`);
+          console.warn('pin verify error body', j);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Verify & Pay';
           return;
         }
-      } catch(err){
+      } catch (err) {
         console.error('verify error', err);
         showError('Network error while verifying PIN');
         return;
@@ -385,6 +492,11 @@
       const acctId = user ? ((user.account_number || user.accountNumber) || user.phone) : 'anonymous';
       lockKey = getLockKeyForAccount(acctId);
       lockInfo = loadLockInfo();
+
+      // Immediately try to sync with server (authoritative). This makes lock state shared across browsers.
+      fetchStatusAndUpdateUI().catch(()=>{ /* ignore */ });
+      // Start periodic polling for cross-browser sync
+      startStatusPolling();
 
       if (isLocked()) {
         disableKeypad();
@@ -414,7 +526,18 @@
       }
     })();
 
+    // If BroadcastChannel not supported, also listen to storage events (fallback)
+    window.addEventListener('storage', (ev)=>{
+      if (!ev.key || !lockKey) return;
+      if (ev.key === lockKey) {
+        try { lockInfo = JSON.parse(ev.newValue || '{}'); applyLockInfoToUI(); } catch(e){}
+      }
+    });
+
     document.querySelectorAll('.key').forEach(k => { k.setAttribute('tabindex', '0'); });
+
+    // Expose a small debug helper for manual re-sync if needed
+    window._payme_pin_force_sync = fetchStatusAndUpdateUI;
 
   })();
 </script>
