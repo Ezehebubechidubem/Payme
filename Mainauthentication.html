@@ -364,7 +364,24 @@
           }
 
         } else {
-          // invalid PIN
+          // --- NEW: backend-aware lock handling ---
+          if (res.status === 403 && j && j.lockedUntil) {
+            // server says account locked: persist to local lock and show message
+            const lockObj = { failedAttempts: LOCK_THRESHOLD, lockedUntil: j.lockedUntil };
+            saveLockInfo(lockObj);
+            disableKeypad();
+            message.textContent = `Too many failed attempts. Try again in ${formatRemaining(new Date(j.lockedUntil) - new Date())}.`;
+            showError(j.message || 'Account locked due to failed attempts.');
+            return;
+          }
+
+          if (res.status === 403 && j && j.message) {
+            // generic 403 with message
+            showError(j.message);
+            return;
+          }
+
+          // invalid PIN (normal failure)
           lockInfo = loadLockInfo();
           incrementFailedAndMaybeLock();
           current = '';
