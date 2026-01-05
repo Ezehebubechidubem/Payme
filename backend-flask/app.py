@@ -60,10 +60,17 @@ try:
 except Exception as e:
     print("Failed to register betting blueprint:", e)
 
+#---Otp Blueprint Import---
+try:
 
+from otp_routes import otp_bp
+app.register_blueprint(otp_bp, url_prefix="/api")
+    print("OTP blueprint registered")
+except Exception as e:
+print("Failed to register OTP blueprint:", e)
 
 # -------------------------------------------------
-# DB helpers and compatibility for sqlite3 / psycopg2
+# DB hlpers and compatibility for sqlite3 / psycopg2
 # -------------------------------------------------
 DB = os.environ.get("SQLITE_DB_PATH", "payme.db")
 
