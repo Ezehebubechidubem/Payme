@@ -54,13 +54,10 @@
 
 <script>
   (function(){
-    // --- CONFIG --- change API_BASE if needed
     const API_BASE = "https://payme-update.onrender.com";
-    // Use your backend route
-    const SEND_MONEY_ROUTE = API_BASE + "/send_money";  // <-- now matches your backend
-    const BUY_AIRTIME = API_BASE + "/buy_airtime";      // unchanged
+    const SEND_MONEY_ROUTE = API_BASE + "/send_money";
+    const BUY_AIRTIME = API_BASE + "/buy_airtime";
 
-    // DOM
     const keypad = document.getElementById('keypad');
     const pinDots = Array.from(document.querySelectorAll('.dot'));
     const message = document.getElementById('message');
@@ -68,41 +65,30 @@
     const submitBtn = document.getElementById('submitBtn');
     const cancelBtn = document.getElementById('cancelBtn');
 
-    // Lock config
     const LOCK_THRESHOLD = 3;
-    const LOCK_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
+    const LOCK_DURATION_MS = 4 * 60 * 60 * 1000;
 
-    // Storage helpers
     function getStoredUser() {
       const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
       try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
     }
     function getPendingFromSession() { try { const p = sessionStorage.getItem('pending_tx'); return p ? JSON.parse(p) : null; } catch(e){ return null; } }
-    function clearPending() { try { sessionStorage.removeItem('pending_tx'); } catch(e){} }
 
-    function getPendingFromUrl() {
+    let pending = getPendingFromSession() || (function(){
       const params = new URLSearchParams(window.location.search);
-      const phone = params.get('phone') || params.get('recipient') || null;
-      const network = params.get('network') || null;
-      const amount = params.get('amount') || params.get('amt') || null;
-      const receiver_acc = params.get('receiver_acc') || params.get('receiver') || null;
-      if (!phone && !network && !amount && !receiver_acc) return null;
-      return {
-        product: params.get('product') || (network ? 'airtime' : null),
-        phone,
-        recipient: params.get('recipient_name') || params.get('receiver_name') || params.get('recipient') || null,
-        receiver_acc,
-        recipientAccount: receiver_acc,
-        network,
-        amount,
-        created_at: new Date().toISOString()
-      };
-    }
+      if (params.get('amount') || params.get('phone') || params.get('receiver_acc')) {
+        return {
+          product: params.get('product') || (params.get('network') ? 'airtime' : null),
+          amount: params.get('amount') || params.get('amt'),
+          phone: params.get('phone') || params.get('recipient'),
+          receiver_acc: params.get('receiver_acc'),
+          recipient: params.get('recipient'),
+          network: params.get('network')
+        };
+      }
+      return null;
+    })();
 
-    // pending (session first then url)
-    let pending = getPendingFromSession() || getPendingFromUrl();
-
-    // pin state & lock
     let current = '';
     let lockInfo = null;
     let lockKey = null;
@@ -130,8 +116,7 @@
       }
       if (pending.product === 'towallet' || pending.receiver_acc) {
         const recv = pending.receiver_acc || pending.recipient || pending.phone || '-';
-        const bank = pending.receiver_bank_name || pending.receiver_bank || pending.bankName || '';
-        message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recv}${bank ? ' ('+bank+')' : ''}`;
+        message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recv}`;
         return;
       }
       const recipient = pending.recipient || pending.phone || '-';
@@ -139,24 +124,7 @@
       message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recipient} (${network})`;
     }
 
-    function incrementFailedAndMaybeLock(){
-      const now = new Date();
-      lockInfo.failedAttempts = (lockInfo.failedAttempts || 0) + 1;
-      if (lockInfo.failedAttempts >= LOCK_THRESHOLD) {
-        const until = new Date(now.getTime() + LOCK_DURATION_MS);
-        lockInfo.lockedUntil = until.toISOString();
-        saveLockInfo(lockInfo);
-        disableKeypad();
-        message.textContent = `Too many failed attempts. Transactions suspended until ${until.toLocaleString()}`;
-        setLockCountdown();
-      } else {
-        saveLockInfo(lockInfo);
-        const left = LOCK_THRESHOLD - lockInfo.failedAttempts;
-        showError(`Invalid PIN. ${left} attempt${left>1?'s':''} left before lock.`);
-      }
-    }
-
-    // keypad wiring
+    // NOTE: frontend will NOT increase failedAttempts on its own. Server is authoritative.
     keypad.addEventListener('click', ev=>{
       const k = ev.target;
       if (!k.classList.contains('key')) return;
@@ -200,13 +168,10 @@
       return 'airtime.html';
     }
 
-    // --- Execution helpers that match your backend (/send_money) ---
     async function executeTowallet(pending, user) {
       if (!pending) return { ok:false, error:'No pending' };
       if (!user) return { ok:false, error:'No logged-in user' };
 
-      // Construct payload to exactly match backend expectations:
-      // backend expects: sender_phone, receiver_acc, amount
       const senderPhone = (pending.sender_phone || pending.phone || user.phone || '');
       const receiverAccVal = (pending.receiver_acc || pending.recipientAccount || pending.recipient || '');
       const amountVal = Number(pending.amount);
@@ -214,89 +179,27 @@
       if (!receiverAccVal) return { ok:false, error:'Missing receiver_acc in pending transaction.' };
       if (!senderPhone) return { ok:false, error:'Missing sender phone' };
 
-      const txPayload = {
-        sender_phone: String(senderPhone).trim(),
-        receiver_acc: String(receiverAccVal).trim(),
-        amount: amountVal
-      };
-
-      const headers = { 'Content-Type':'application/json', 'Accept':'application/json' };
-      // If you use token auth instead of cookies, add:
-      // headers['Authorization'] = 'Bearer ' + (localStorage.getItem('authToken') || '');
+      const txPayload = { sender_phone: String(senderPhone).trim(), receiver_acc: String(receiverAccVal).trim(), amount: amountVal };
 
       try {
-        const execRes = await fetch(SEND_MONEY_ROUTE, {
-          method: 'POST',
-          credentials: 'include', // keep cookies; adjust if you use token auth
-          headers,
-          body: JSON.stringify(txPayload)
-        });
-
+        const execRes = await fetch(SEND_MONEY_ROUTE, { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(txPayload) });
         const execJson = await execRes.json().catch(()=>null);
-
         if (!execRes.ok) {
-          // backend returned an error, pass message to caller
           const reason = (execJson && (execJson.message || execJson.error)) || `HTTP ${execRes.status}`;
           return { ok:false, error: reason, detail: execJson };
         }
-
-        // backend success shape (per your server) includes 'status': 'success' and we now expect 'sender_new_balance'
         if (!(execJson && execJson.status === 'success')) {
           const reason = (execJson && (execJson.message || execJson.error)) || 'Unknown server response';
           return { ok:false, error: reason, detail: execJson };
         }
-
-        // Prefer sender_new_balance (your patched backend returns this)
-        const newBalance = execJson.sender_new_balance ?? execJson.new_balance ?? execJson.balance ?? null;
-
-        const successPayload = {
-          type: 'success',
-          message: execJson.message || 'Transfer successful',
-          amount: pending.amount,
-          orderAmount: pending.amount,
-          datetime: new Date().toLocaleString(),
-          sender: pending.sender || (user.username || user.name) || 'You',
-          senderAccount: pending.senderAccount || (user.account_number || user.accountNumber) || '-',
-          bankName: pending.receiver_bank_name || pending.receiver_bank || 'PAYME',
-          recipient: pending.recipient || receiverAccVal,
-          recipientAccount: pending.recipientAccount || receiverAccVal,
-          txnNo: execJson.transaction_id || execJson.txn_id || execJson.reference || execJson.transaction_id || '-',
-          statusText: 'Successful',
-          raw: execJson
-        };
-
-        // Save result for the transfer page to show success
-        sessionStorage.setItem('last_tx_success', JSON.stringify(successPayload));
-
-        // Update localStorage and stored user objects with new sender balance if provided
-        if (newBalance !== null && !isNaN(Number(newBalance))) {
-          try { localStorage.setItem('balance', String(newBalance)); } catch(e){}
-          try {
-            const stored = localStorage.getItem('loggedInUser');
-            if (stored) { const u = JSON.parse(stored); u.balance = Number(newBalance); localStorage.setItem('loggedInUser', JSON.stringify(u)); }
-          } catch(e){}
-          try {
-            const stored2 = localStorage.getItem('user');
-            if (stored2) { const u2 = JSON.parse(stored2); u2.balance = Number(newBalance); localStorage.setItem('user', JSON.stringify(u2)); }
-          } catch(e){}
-
-          // Broadcast update to other tabs (fast) and fallback to storage event
-          try { const bc = new BroadcastChannel('payme_channel'); bc.postMessage({ type:'balance_update', balance: Number(newBalance), reference: successPayload.txnNo }); bc.close(); }
-          catch(e) { try { localStorage.setItem('payme_balance_update', JSON.stringify({ balance: Number(newBalance), ts: Date.now(), reference: successPayload.txnNo })); } catch(e){} }
-        }
-
-        // Remove pending so it cannot be reused
         sessionStorage.removeItem('pending_tx');
-
-        return { ok:true, payload: successPayload, raw: execJson };
-
+        return { ok:true, payload: execJson, raw: execJson };
       } catch (err) {
         console.error('executeTowallet error', err);
         return { ok:false, error:'Network error while executing transaction', detail: String(err) };
       }
     }
 
-    // simple airtime fallback (unchanged)
     async function executeAirtime(pending, user) {
       const txPayload = { phone: pending.phone || pending.recipient, network: pending.network, amount: pending.amount, recipient: pending.recipient };
       try {
@@ -306,14 +209,11 @@
           const reason = (execJson && (execJson.message || execJson.error)) || `HTTP ${execRes.status}`;
           return { ok:false, error: reason, detail: execJson };
         }
-        const successPayload = { message: execJson.message || 'Airtime purchased successfully', amount: pending.amount, network: pending.network, recipient: pending.recipient || pending.phone, datetime: new Date().toISOString(), statusText: 'Successful', raw: execJson };
-        sessionStorage.setItem('last_tx_success', JSON.stringify(successPayload));
         sessionStorage.removeItem('pending_tx');
-        return { ok:true, payload: successPayload, raw: execJson };
+        return { ok:true, payload: execJson, raw: execJson };
       } catch (err) { console.error('executeAirtime error', err); return { ok:false, error:'Network error while executing airtime', detail: String(err) }; }
     }
 
-    // Submit flow
     submitBtn.addEventListener('click', async ()=>{
       clearError();
       if (isLocked()) {
@@ -326,12 +226,10 @@
       const user = getStoredUser();
       if (!user || !(user.account_number || user.accountNumber || user.phone)) { showError('You must be logged in. Please log in and try again.'); return; }
 
-      // setup lock info
       const acctId = (user.account_number || user.accountNumber) || user.phone;
       if (!lockKey) lockKey = getLockKeyForAccount(acctId);
       if (!lockInfo) lockInfo = loadLockInfo();
 
-      // Verify PIN with your backend
       const accountNumber = (user.account_number || user.accountNumber || '').toString();
       const payload = { account_number: accountNumber, pin: current };
 
@@ -341,51 +239,43 @@
         const j = await res.json().catch(()=>({ success:false, message: 'Invalid server response' }));
 
         if (res.ok && j.success) {
-          // reset lock info
+          // success -> clear any client lock state
           saveLockInfo({ failedAttempts: 0, lockedUntil: null });
 
-          // execute the right flow
+          // execute transaction
           let result;
-          if (pending.product === 'towallet' || pending.receiver_acc) {
-            result = await executeTowallet(pending, user);
-          } else {
-            result = await executeAirtime(pending, user);
-          }
+          if (pending.product === 'towallet' || pending.receiver_acc) result = await executeTowallet(pending, user);
+          else result = await executeAirtime(pending, user);
 
           if (result.ok) {
-            // redirect back to the page which will show the success modal
             const returnUrl = getReturnUrl();
             window.location.href = returnUrl;
             return;
           } else {
             showError('Transaction failed: ' + (result.error || 'Unknown error'));
             console.error('execution error detail', result.detail || result);
-            // Do not increment PIN lock — PIN was valid
           }
 
         } else {
-          // --- NEW: backend-aware lock handling ---
+          // If server indicates locked -> obey it (authoritative)
           if (res.status === 403 && j && j.lockedUntil) {
-            // server says account locked: persist to local lock and show message
-            const lockObj = { failedAttempts: LOCK_THRESHOLD, lockedUntil: j.lockedUntil };
-            saveLockInfo(lockObj);
+            saveLockInfo({ failedAttempts: LOCK_THRESHOLD, lockedUntil: j.lockedUntil });
             disableKeypad();
             message.textContent = `Too many failed attempts. Try again in ${formatRemaining(new Date(j.lockedUntil) - new Date())}.`;
             showError(j.message || 'Account locked due to failed attempts.');
             return;
           }
 
-          if (res.status === 403 && j && j.message) {
-            // generic 403 with message
-            showError(j.message);
+          // Invalid PIN (401) or other non-403 errors -> show message from server (do NOT increment client-side attempts)
+          if (res.status === 401) {
+            showError(j.message || 'Invalid PIN');
+            current = '';
+            refreshDots();
             return;
           }
 
-          // invalid PIN (normal failure)
-          lockInfo = loadLockInfo();
-          incrementFailedAndMaybeLock();
-          current = '';
-          refreshDots();
+          // any other server error
+          showError(j.message || 'PIN verification failed');
           return;
         }
       } catch(err){
@@ -413,17 +303,7 @@
       }
 
       if (!pending) {
-        const params = new URLSearchParams(window.location.search);
-        const debugList = [];
-        if (!params.get('phone') && !params.get('recipient')) debugList.push('phone/recipient');
-        if (!params.get('network')) debugList.push('network');
-        if (!params.get('amount')) debugList.push('amount');
-        if (!params.get('receiver_acc') && !sessionStorage.getItem('pending_tx')) debugList.push('receiver_acc (for towallet)');
-        if (debugList.length) {
-          message.textContent = 'Missing fields: ' + debugList.join(', ') + '. Please return and retry.';
-        } else {
-          message.textContent = 'No pending transaction found. Go back and try again.';
-        }
+        message.textContent = 'No pending transaction found. Go back and try again.';
         submitBtn.disabled = true;
       } else {
         updateMessageFromPending();
