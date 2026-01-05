@@ -202,7 +202,7 @@ button:hover { background: var(--primary-dark); }
 
             // if server says hasPin === false -> go to create PIN flow
             if (statusRes.ok && statusJson && statusJson.hasPin === false) {
-              showSuccess("Login successful", ()=>window.location.href="create_pin.html");
+              showSuccess("Login successful", ()=>window.location.href="Loginauthentication.html");
               return;
             } else {
               // otherwise proceed to your existing landing (no PIN creation required)
