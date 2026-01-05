@@ -22,6 +22,7 @@
     .note{color:#666;font-size:13px;text-align:center;margin-top:8px}
     .hidden{display:none}
     .key.disabled { opacity:0.6; pointer-events:none; }
+    .small-muted{font-size:12px;color:#888;margin-top:8px;text-align:center}
   </style>
 </head>
 <body>
@@ -38,6 +39,7 @@
 
     <div id="message" class="note">Type your 4-digit PIN</div>
     <div id="error" class="danger" role="alert"></div>
+    <div id="statusHint" class="small-muted" aria-live="polite"></div>
 
     <div class="keypad" id="keypad" aria-label="PIN keypad" style="margin-top:14px">
       <div class="key" role="button" tabindex="0">1</div><div class="key" role="button" tabindex="0">2</div><div class="key" role="button" tabindex="0">3</div>
@@ -54,264 +56,335 @@
 
 <script>
   (function(){
+    // ------------- CONFIG -------------
     const API_BASE = "https://payme-update.onrender.com";
-    const SEND_MONEY_ROUTE = API_BASE + "/send_money";
-    const BUY_AIRTIME = API_BASE + "/buy_airtime";
+    const VERIFY_ROUTE = `${API_BASE}/api/pin/verify`;
+    const STATUS_ROUTE = `${API_BASE}/api/pin/status`;
+    const LOCK_THRESHOLD = 3;                   // must match backend
+    const LOCK_DURATION_HOURS = 4;              // informative only (backend enforces)
+    // localstorage key prefix
+    const LOCK_KEY_PREFIX = 'pin_lock_';
 
+    // ------------- ELEMENTS -------------
     const keypad = document.getElementById('keypad');
     const pinDots = Array.from(document.querySelectorAll('.dot'));
     const message = document.getElementById('message');
     const errorEl = document.getElementById('error');
+    const statusHint = document.getElementById('statusHint');
     const submitBtn = document.getElementById('submitBtn');
     const cancelBtn = document.getElementById('cancelBtn');
 
-    const LOCK_THRESHOLD = 3;
-    const LOCK_DURATION_MS = 4 * 60 * 60 * 1000;
+    // ------------- STATE -------------
+    let current = '';
+    let pending = null;
+    let lockInfo = { failedAttempts: 0, lockedUntil: null };
+    let lockKey = null;
+    let countdownTimer = null;
 
+    // ------------- Helpers -------------
     function getStoredUser() {
       const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
       try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
     }
-    function getPendingFromSession() { try { const p = sessionStorage.getItem('pending_tx'); return p ? JSON.parse(p) : null; } catch(e){ return null; } }
 
-    let pending = getPendingFromSession() || (function(){
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('amount') || params.get('phone') || params.get('receiver_acc')) {
-        return {
-          product: params.get('product') || (params.get('network') ? 'airtime' : null),
-          amount: params.get('amount') || params.get('amt'),
-          phone: params.get('phone') || params.get('recipient'),
-          receiver_acc: params.get('receiver_acc'),
-          recipient: params.get('recipient'),
-          network: params.get('network')
-        };
-      }
-      return null;
-    })();
-
-    let current = '';
-    let lockInfo = null;
-    let lockKey = null;
-    let countdownInterval = null;
-
-    function getLockKeyForAccount(accountId){ return `pin_lock_${accountId || 'anonymous'}`; }
-    function loadLockInfo(){ try { const raw = localStorage.getItem(lockKey); if (!raw) return { failedAttempts: 0, lockedUntil: null }; const parsed = JSON.parse(raw); return { failedAttempts: parsed.failedAttempts || 0, lockedUntil: parsed.lockedUntil || null }; } catch(e){ return { failedAttempts: 0, lockedUntil: null }; } }
-    function saveLockInfo(info){ try { localStorage.setItem(lockKey, JSON.stringify(info)); } catch(e){ console.warn('saveLockInfo failed', e); } lockInfo = info; }
-    function clearLockInfo(){ try { localStorage.removeItem(lockKey); } catch(e){} lockInfo = { failedAttempts:0, lockedUntil: null }; enableKeypad(); updateMessageFromPending(); if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; } }
-    function isLocked(){ if (!lockInfo || !lockInfo.lockedUntil) return false; try { return (new Date(lockInfo.lockedUntil) > new Date()); } catch(e){ return false; } }
-    function formatRemaining(ms){ if (ms <= 0) return '0s'; const totalSec = Math.floor(ms/1000); const hrs = Math.floor(totalSec / 3600); const mins = Math.floor((totalSec % 3600) / 60); const secs = totalSec % 60; if (hrs > 0) return `${hrs}h ${mins}m`; if (mins > 0) return `${mins}m ${secs}s`; return `${secs}s`; }
-    function disableKeypad(){ keypad.querySelectorAll('.key').forEach(k => k.classList.add('disabled')); submitBtn.disabled = true; }
-    function enableKeypad(){ keypad.querySelectorAll('.key').forEach(k => k.classList.remove('disabled')); submitBtn.disabled = (current.length !== 4); }
-    function setLockCountdown(){ if (!lockInfo || !lockInfo.lockedUntil) return; if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(()=> { const until = new Date(lockInfo.lockedUntil); const msLeft = until - new Date(); if (msLeft <= 0) { clearInterval(countdownInterval); countdownInterval = null; clearLockInfo(); return; } message.textContent = `Too many failed attempts. Try again in ${formatRemaining(msLeft)}.`; }, 1000); }
-
-    function refreshDots(){ pinDots.forEach((d,i)=> { const ch = current[i] || ''; d.textContent = ch ? '•' : ''; d.classList.toggle('filled', !!ch); }); submitBtn.disabled = (current.length !== 4) || isLocked(); }
-    function showError(msg){ errorEl.style.display='block'; errorEl.textContent = msg; }
-    function clearError(){ errorEl.style.display='none'; errorEl.textContent=''; }
-
-    function updateMessageFromPending(){
-      if (!pending) {
-        message.textContent = 'No pending transaction — go back and try again.';
-        submitBtn.disabled = true;
-        return;
-      }
-      if (pending.product === 'towallet' || pending.receiver_acc) {
-        const recv = pending.receiver_acc || pending.recipient || pending.phone || '-';
-        message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recv}`;
-        return;
-      }
-      const recipient = pending.recipient || pending.phone || '-';
-      const network = pending.network || '-';
-      message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recipient} (${network})`;
+    function refreshDots(){
+      pinDots.forEach((d,i)=> {
+        const ch = current[i] || '';
+        d.textContent = ch ? '•' : '';
+        d.classList.toggle('filled', !!ch);
+      });
+      submitBtn.disabled = (current.length !== 4) || isLocked();
     }
 
-    // NOTE: frontend will NOT increase failedAttempts on its own. Server is authoritative.
+    function showError(msg){
+      errorEl.style.display='block';
+      errorEl.textContent = msg;
+    }
+    function clearError(){
+      errorEl.style.display='none';
+      errorEl.textContent='';
+    }
+
+    function setStatusHint(text){
+      statusHint.textContent = text || '';
+    }
+
+    function isLockedLocal(){
+      if (!lockInfo || !lockInfo.lockedUntil) return false;
+      try { return (new Date(lockInfo.lockedUntil) > new Date()); } catch(e){ return false; }
+    }
+
+    function isLocked(){ return isLockedLocal(); }
+
+    function disableKeypad(){
+      keypad.querySelectorAll('.key').forEach(k => k.classList.add('disabled'));
+      submitBtn.disabled = true;
+    }
+    function enableKeypad(){
+      keypad.querySelectorAll('.key').forEach(k => k.classList.remove('disabled'));
+      submitBtn.disabled = (current.length !== 4) || isLocked();
+    }
+
+    function saveLocalLock(accountId){
+      if (!accountId) return;
+      try {
+        localStorage.setItem(LOCK_KEY_PREFIX + accountId, JSON.stringify(lockInfo));
+      } catch(e){}
+    }
+    function loadLocalLock(accountId){
+      if (!accountId) return { failedAttempts:0, lockedUntil:null };
+      try {
+        const raw = localStorage.getItem(LOCK_KEY_PREFIX + accountId);
+        if (!raw) return { failedAttempts:0, lockedUntil:null };
+        return JSON.parse(raw);
+      } catch(e){ return { failedAttempts:0, lockedUntil:null }; }
+    }
+    function clearLocalLock(accountId){
+      if (!accountId) return;
+      try { localStorage.removeItem(LOCK_KEY_PREFIX + accountId); } catch(e){}
+      lockInfo = { failedAttempts:0, lockedUntil:null };
+      enableKeypad();
+      setStatusHint('');
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    }
+
+    function startCountdown(untilIso){
+      if (!untilIso) return;
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      countdownTimer = setInterval(()=>{
+        const until = new Date(untilIso);
+        const msLeft = until - new Date();
+        if (msLeft <= 0) {
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+          // attempt to re-check server status (if online)
+          fetchStatusAndUpdateUI();
+          return;
+        }
+        const sec = Math.floor(msLeft/1000)%60;
+        const min = Math.floor(msLeft/60000)%60;
+        const hrs = Math.floor(msLeft/(3600*1000));
+        let display = '';
+        if (hrs>0) display = `${hrs}h ${min}m`;
+        else if (min>0) display = `${min}m ${sec}s`;
+        else display = `${sec}s`;
+        setStatusHint(`Too many failed attempts. Try again in ${display}.`);
+      }, 1000);
+    }
+
+    // ------------- Network helpers -------------
+    async function fetchStatusAndUpdateUI(){
+      // status endpoint requires auth cookie — include credentials
+      const user = getStoredUser();
+      const acct = user ? (user.account_number || user.accountNumber || user.phone) : null;
+      if (!acct) {
+        // no logged-in user info; try to keep UI enabled but warn user
+        setStatusHint('You must be logged in to verify PIN.');
+        return;
+      }
+      lockKey = LOCK_KEY_PREFIX + acct;
+
+      // try load local cached lock first (fast)
+      const local = loadLocalLock(acct);
+      lockInfo = local || { failedAttempts:0, lockedUntil:null };
+      if (isLockedLocal()) {
+        disableKeypad();
+        startCountdown(lockInfo.lockedUntil);
+      }
+
+      // then check server
+      try {
+        const res = await fetch(STATUS_ROUTE, { method:'GET', credentials:'include', headers:{ 'Accept':'application/json' } });
+        if (!res.ok) {
+          // server not reachable or not logged in
+          const txt = await res.text().catch(()=>null);
+          // If 401, user not logged in; otherwise show minimal hint.
+          if (res.status === 401) {
+            setStatusHint('Not authenticated. Please log in to set or use PIN.');
+          } else {
+            setStatusHint('Could not verify PIN status (server).');
+          }
+          return;
+        }
+        const j = await res.json().catch(()=>null);
+        if (!j) return;
+        // Backend returns { hasPin, locked, lockedUntil, failedAttempts }
+        lockInfo.failedAttempts = Number(j.failedAttempts || 0);
+        lockInfo.lockedUntil = j.locked || false ? (j.lockedUntil || null) : (j.lockedUntil || null);
+        saveLocalLock(acct);
+        if (j.locked && lockInfo.lockedUntil) {
+          disableKeypad();
+          startCountdown(lockInfo.lockedUntil);
+        } else {
+          // not locked: update hint about attempts left
+          const left = Math.max(0, LOCK_THRESHOLD - lockInfo.failedAttempts);
+          if (left > 0) setStatusHint(`${left} attempt${left>1?'s':''} left before account lock.`);
+          else setStatusHint('');
+          enableKeypad();
+        }
+      } catch (err) {
+        // network fail: keep local lock state and hint
+        console.warn('status fetch failed', err);
+      }
+    }
+
+    // ------------- Input handling -------------
+    function handleKeyEl(keyEl){
+      if (keyEl.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
+      if (keyEl.id === 'blank') return;
+      if (current.length >= 4) return;
+      current += (keyEl.textContent || '').trim();
+      refreshDots();
+    }
+
     keypad.addEventListener('click', ev=>{
       const k = ev.target;
       if (!k.classList.contains('key')) return;
       if (isLocked()) return;
-      handleKey(k);
+      handleKeyEl(k);
     });
-    keypad.addEventListener('keydown', ev=>{
-      if (ev.key === 'Enter' || ev.key === ' ') {
-        const k = document.activeElement;
-        if (k && k.classList.contains('key')) {
-          ev.preventDefault();
-          if (isLocked()) return;
-          handleKey(k);
-        }
-      }
-    });
-    function handleKey(k){
-      if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
-      if (k.id === 'blank') return;
-      if (current.length >= 4) return;
-      current += (k.textContent || '').trim();
-      refreshDots();
-    }
-
-    cancelBtn.addEventListener('click', ()=> {
-      if (pending && pending.product === 'towallet') window.location.href = 'towallet.html';
-      else window.location.href = 'airtime.html';
+    document.addEventListener('keydown', ev=>{
+      if (ev.key >= '0' && ev.key <= '9') { ev.preventDefault(); if (!isLocked()) { handleKeyEl({ id: null, textContent: ev.key }); } return; }
+      if (ev.key === 'Backspace' || ev.key === 'Delete') { ev.preventDefault(); handleKeyEl({ id:'back' }); return; }
+      if (ev.key === 'Enter') { ev.preventDefault(); if (!submitBtn.disabled) submitBtn.click(); }
     });
 
-    function getReturnUrl() {
-      try {
-        const explicit = sessionStorage.getItem('return_to');
-        if (explicit) return explicit;
-        if (document.referrer && document.referrer !== '') return document.referrer;
-        if (pending && pending.product) {
-          if (pending.product === 'data') return 'data.html';
-          if (pending.product === 'airtime') return 'airtime.html';
-          if (pending.product === 'towallet') return 'towallet.html';
-        }
-      } catch(e){}
-      return 'airtime.html';
-    }
-
-    async function executeTowallet(pending, user) {
-      if (!pending) return { ok:false, error:'No pending' };
-      if (!user) return { ok:false, error:'No logged-in user' };
-
-      const senderPhone = (pending.sender_phone || pending.phone || user.phone || '');
-      const receiverAccVal = (pending.receiver_acc || pending.recipientAccount || pending.recipient || '');
-      const amountVal = Number(pending.amount);
-
-      if (!receiverAccVal) return { ok:false, error:'Missing receiver_acc in pending transaction.' };
-      if (!senderPhone) return { ok:false, error:'Missing sender phone' };
-
-      const txPayload = { sender_phone: String(senderPhone).trim(), receiver_acc: String(receiverAccVal).trim(), amount: amountVal };
-
-      try {
-        const execRes = await fetch(SEND_MONEY_ROUTE, { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(txPayload) });
-        const execJson = await execRes.json().catch(()=>null);
-        if (!execRes.ok) {
-          const reason = (execJson && (execJson.message || execJson.error)) || `HTTP ${execRes.status}`;
-          return { ok:false, error: reason, detail: execJson };
-        }
-        if (!(execJson && execJson.status === 'success')) {
-          const reason = (execJson && (execJson.message || execJson.error)) || 'Unknown server response';
-          return { ok:false, error: reason, detail: execJson };
-        }
-        sessionStorage.removeItem('pending_tx');
-        return { ok:true, payload: execJson, raw: execJson };
-      } catch (err) {
-        console.error('executeTowallet error', err);
-        return { ok:false, error:'Network error while executing transaction', detail: String(err) };
-      }
-    }
-
-    async function executeAirtime(pending, user) {
-      const txPayload = { phone: pending.phone || pending.recipient, network: pending.network, amount: pending.amount, recipient: pending.recipient };
-      try {
-        const execRes = await fetch(BUY_AIRTIME, { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify(txPayload) });
-        const execJson = await execRes.json().catch(()=>null);
-        if (!execRes.ok || !(execJson && (execJson.status === 'success' || execJson.success === true))) {
-          const reason = (execJson && (execJson.message || execJson.error)) || `HTTP ${execRes.status}`;
-          return { ok:false, error: reason, detail: execJson };
-        }
-        sessionStorage.removeItem('pending_tx');
-        return { ok:true, payload: execJson, raw: execJson };
-      } catch (err) { console.error('executeAirtime error', err); return { ok:false, error:'Network error while executing airtime', detail: String(err) }; }
-    }
-
+    // ------------- Verify flow -------------
     submitBtn.addEventListener('click', async ()=>{
       clearError();
       if (isLocked()) {
-        const until = lockInfo && lockInfo.lockedUntil ? new Date(lockInfo.lockedUntil) : null;
-        if (until) showError(`Too many failed attempts. Try again in ${formatRemaining(until - new Date())}.`);
-        else showError('Too many failed attempts. Try later.');
+        showError('Account is locked. Wait until lock expires.');
         return;
       }
-      if (!pending) { showError('No pending transaction found. Go back and try again.'); return; }
+      if (!current || current.length !==4) { showError('Enter 4-digit PIN'); return; }
+
       const user = getStoredUser();
-      if (!user || !(user.account_number || user.accountNumber || user.phone)) { showError('You must be logged in. Please log in and try again.'); return; }
+      const accountNumber = user ? (user.account_number || user.accountNumber || user.phone) : null;
+      if (!accountNumber) { showError('You must be logged in.'); return; }
 
-      const acctId = (user.account_number || user.accountNumber) || user.phone;
-      if (!lockKey) lockKey = getLockKeyForAccount(acctId);
-      if (!lockInfo) lockInfo = loadLockInfo();
-
-      const accountNumber = (user.account_number || user.accountNumber || '').toString();
-      const payload = { account_number: accountNumber, pin: current };
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Verifying...';
 
       try {
-        submitBtn.disabled = true; submitBtn.textContent = 'Verifying...';
-        const res = await fetch(`${API_BASE}/api/pin/verify`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const j = await res.json().catch(()=>({ success:false, message: 'Invalid server response' }));
+        const payload = { account_number: String(accountNumber), pin: String(current) };
+        const res = await fetch(VERIFY_ROUTE, { method:'POST', credentials:'include', headers: { 'Content-Type':'application/json', 'Accept':'application/json' }, body: JSON.stringify(payload) });
+        const j = await res.json().catch(()=>null);
 
-        if (res.ok && j.success) {
-          // success -> clear any client lock state
-          saveLockInfo({ failedAttempts: 0, lockedUntil: null });
-
-          // execute transaction
-          let result;
-          if (pending.product === 'towallet' || pending.receiver_acc) result = await executeTowallet(pending, user);
-          else result = await executeAirtime(pending, user);
-
-          if (result.ok) {
-            const returnUrl = getReturnUrl();
-            window.location.href = returnUrl;
-            return;
-          } else {
-            showError('Transaction failed: ' + (result.error || 'Unknown error'));
-            console.error('execution error detail', result.detail || result);
-          }
-
-        } else {
-          // If server indicates locked -> obey it (authoritative)
-          if (res.status === 403 && j && j.lockedUntil) {
-            saveLockInfo({ failedAttempts: LOCK_THRESHOLD, lockedUntil: j.lockedUntil });
-            disableKeypad();
-            message.textContent = `Too many failed attempts. Try again in ${formatRemaining(new Date(j.lockedUntil) - new Date())}.`;
-            showError(j.message || 'Account locked due to failed attempts.');
-            return;
-          }
-
-          // Invalid PIN (401) or other non-403 errors -> show message from server (do NOT increment client-side attempts)
-          if (res.status === 401) {
-            showError(j.message || 'Invalid PIN');
-            current = '';
-            refreshDots();
-            return;
-          }
-
-          // any other server error
-          showError(j.message || 'PIN verification failed');
+        if (res.ok && j && j.success) {
+          // success: clear local lock and proceed with transaction
+          clearLocalLock(accountNumber);
+          // proceed to execute payment flow (existing logic)
+          // we assume sessionStorage.pending_tx already set by previous page
+          // redirect back to caller page to continue flow
+          window.location.href = sessionStorage.getItem('return_to') || document.referrer || 'airtime.html';
           return;
         }
-      } catch(err){
+
+        // If server says locked (403), use lockedUntil if provided.
+        if (res.status === 403) {
+          const lockedUntil = (j && j.lockedUntil) ? j.lockedUntil : null;
+          lockInfo.failedAttempts = LOCK_THRESHOLD;
+          lockInfo.lockedUntil = lockedUntil || new Date(Date.now() + LOCK_DURATION_HOURS*3600*1000).toISOString();
+          saveLocalLock(accountNumber);
+          disableKeypad();
+          startCountdown(lockInfo.lockedUntil);
+          showError((j && j.message) ? j.message : 'Too many failed attempts — account locked.');
+          return;
+        }
+
+        // For invalid PIN (401) or other non-OK replies:
+        if (res.status === 401 || (j && j.success === false)) {
+          // request fresh status from server to show attempt count
+          await fetchStatusAndUpdateUI();
+          const left = Math.max(0, LOCK_THRESHOLD - (lockInfo.failedAttempts || 0));
+          if (left > 0) {
+            showError(`Invalid PIN — ${left} attempt${left>1?'s':''} left before lock.`);
+          } else {
+            showError('Invalid PIN.');
+          }
+          current = '';
+          refreshDots();
+          return;
+        }
+
+        // Fallback generic error
+        showError((j && j.message) ? j.message : `Verification failed (HTTP ${res.status})`);
+      } catch (err) {
         console.error('verify error', err);
         showError('Network error while verifying PIN');
-        return;
       } finally {
-        submitBtn.disabled = false; submitBtn.textContent = 'Verify & Pay';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Verify & Pay';
       }
     });
 
-    (function init(){
-      const user = getStoredUser();
-      const acctId = user ? ((user.account_number || user.accountNumber) || user.phone) : 'anonymous';
-      lockKey = getLockKeyForAccount(acctId);
-      lockInfo = loadLockInfo();
-
-      if (isLocked()) {
-        disableKeypad();
-        const until = new Date(lockInfo.lockedUntil);
-        message.textContent = `Too many failed attempts. Try again in ${formatRemaining(until - new Date())}.`;
-        setLockCountdown();
-      } else {
-        if (lockInfo.lockedUntil) clearLockInfo();
+    cancelBtn.addEventListener('click', ()=> {
+      // preserve existing behavior (go back)
+      if (sessionStorage.getItem('pending_tx')) {
+        try {
+          const p = JSON.parse(sessionStorage.getItem('pending_tx'));
+          if (p && (p.product === 'towallet')) { window.location.href='towallet.html'; return; }
+        } catch(e){}
       }
+      window.location.href = 'airtime.html';
+    });
 
+    // ------------- Init -------------
+    (function init(){
+      // load pending tx if any (your old logic used this)
+      try {
+        pending = sessionStorage.getItem('pending_tx') ? JSON.parse(sessionStorage.getItem('pending_tx')) : null;
+      } catch(e) { pending = null; }
+
+      const user = getStoredUser();
+      const acctId = user ? ((user.account_number || user.accountNumber) || user.phone) : null;
+      if (acctId) {
+        lockKey = LOCK_KEY_PREFIX + acctId;
+        // load local cached lock
+        lockInfo = loadLocalLock(acctId) || { failedAttempts:0, lockedUntil:null };
+        if (isLockedLocal()) {
+          disableKeypad();
+          startCountdown(lockInfo.lockedUntil);
+        }
+      }
+      // Always try to fetch authoritative status from server (will update lock state across browsers)
+      fetchStatusAndUpdateUI();
+
+      // update initial UI text about pending tx
       if (!pending) {
-        message.textContent = 'No pending transaction found. Go back and try again.';
+        const params = new URLSearchParams(window.location.search);
+        const debugList = [];
+        if (!params.get('phone') && !params.get('recipient')) debugList.push('phone/recipient');
+        if (!params.get('network')) debugList.push('network');
+        if (!params.get('amount')) debugList.push('amount');
+        if (!params.get('receiver_acc') && !sessionStorage.getItem('pending_tx')) debugList.push('receiver_acc (for towallet)');
+        if (debugList.length) {
+          message.textContent = 'Missing fields: ' + debugList.join(', ') + '. Please return and retry.';
+        } else {
+          message.textContent = 'No pending transaction found. Go back and try again.';
+        }
         submitBtn.disabled = true;
       } else {
-        updateMessageFromPending();
+        // show the transaction amount/receiver (reuse your original format)
+        if (pending.product === 'towallet' || pending.receiver_acc) {
+          const recv = pending.receiver_acc || pending.recipient || pending.phone || '-';
+          const bank = pending.receiver_bank_name || pending.receiver_bank || pending.bankName || '';
+          message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recv}${bank ? ' ('+bank+')' : ''}`;
+        } else {
+          const recipient = pending.recipient || pending.phone || '-';
+          const network = pending.network || '-';
+          message.textContent = `Confirm ₦${Number(pending.amount || 0).toLocaleString()} to ${recipient} (${network})`;
+        }
         refreshDots();
       }
+
+      // accessibility: focus first key
+      const firstKey = keypad.querySelector('.key');
+      try { firstKey && firstKey.focus(); } catch(e){}
     })();
 
-    document.querySelectorAll('.key').forEach(k => { k.setAttribute('tabindex', '0'); });
+    // expose for debugging (optional)
+    window._payme_pin_debug = { fetchStatusAndUpdateUI, loadLocalLock, saveLocalLock };
 
   })();
 </script>
