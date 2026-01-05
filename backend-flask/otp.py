@@ -35,6 +35,7 @@ except Exception:
 
 # blueprint (registered in app.py with prefix /api)
 otp_bp = Blueprint("otp_bp", __name__, url_prefix="/otp")
+CORS(otp_bp, supports_credentials=True)
 
 # configuration via env
 OTP_TTL_SECONDS = int(os.environ.get("OTP_TTL_SECONDS", 10 * 60))  # default 10 minutes
