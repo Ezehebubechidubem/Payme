@@ -56,16 +56,14 @@
 
 <script>
   (function(){
-    // ------------- CONFIG -------------
+    // ---------- CONFIG ----------
     const API_BASE = "https://payme-update.onrender.com";
     const VERIFY_ROUTE = `${API_BASE}/api/pin/verify`;
     const STATUS_ROUTE = `${API_BASE}/api/pin/status`;
-    const LOCK_THRESHOLD = 3;                   // must match backend
-    const LOCK_DURATION_HOURS = 4;              // informative only (backend enforces)
-    // localstorage key prefix
-    const LOCK_KEY_PREFIX = 'pin_lock_';
+    const LOCK_THRESHOLD = 3;           // match backend threshold
+    const POLL_INTERVAL_MS = 8000;     // poll server status for cross-browser sync
 
-    // ------------- ELEMENTS -------------
+    // ---------- DOM ----------
     const keypad = document.getElementById('keypad');
     const pinDots = Array.from(document.querySelectorAll('.dot'));
     const message = document.getElementById('message');
@@ -74,14 +72,14 @@
     const submitBtn = document.getElementById('submitBtn');
     const cancelBtn = document.getElementById('cancelBtn');
 
-    // ------------- STATE -------------
+    // ---------- STATE ----------
     let current = '';
     let pending = null;
-    let lockInfo = { failedAttempts: 0, lockedUntil: null };
-    let lockKey = null;
+    let lockInfo = { failedAttempts: 0, lockedUntil: null }; // authoritative if filled by server
+    let pollTimer = null;
     let countdownTimer = null;
 
-    // ------------- Helpers -------------
+    // ---------- helpers ----------
     function getStoredUser() {
       const j = localStorage.getItem("loggedInUser") || localStorage.getItem("user");
       try { return j ? JSON.parse(j) : null; } catch(e){ return null; }
@@ -101,20 +99,14 @@
       errorEl.textContent = msg;
     }
     function clearError(){
-      errorEl.style.display='none';
-      errorEl.textContent='';
+      errorEl.style.display='none'; errorEl.textContent='';
     }
+    function setStatusHint(text){ statusHint.textContent = text || ''; }
 
-    function setStatusHint(text){
-      statusHint.textContent = text || '';
-    }
-
-    function isLockedLocal(){
+    function isLocked(){
       if (!lockInfo || !lockInfo.lockedUntil) return false;
-      try { return (new Date(lockInfo.lockedUntil) > new Date()); } catch(e){ return false; }
+      try { return new Date(lockInfo.lockedUntil) > new Date(); } catch(e){ return false; }
     }
-
-    function isLocked(){ return isLockedLocal(); }
 
     function disableKeypad(){
       keypad.querySelectorAll('.key').forEach(k => k.classList.add('disabled'));
@@ -125,115 +117,85 @@
       submitBtn.disabled = (current.length !== 4) || isLocked();
     }
 
-    function saveLocalLock(accountId){
-      if (!accountId) return;
-      try {
-        localStorage.setItem(LOCK_KEY_PREFIX + accountId, JSON.stringify(lockInfo));
-      } catch(e){}
-    }
-    function loadLocalLock(accountId){
-      if (!accountId) return { failedAttempts:0, lockedUntil:null };
-      try {
-        const raw = localStorage.getItem(LOCK_KEY_PREFIX + accountId);
-        if (!raw) return { failedAttempts:0, lockedUntil:null };
-        return JSON.parse(raw);
-      } catch(e){ return { failedAttempts:0, lockedUntil:null }; }
-    }
-    function clearLocalLock(accountId){
-      if (!accountId) return;
-      try { localStorage.removeItem(LOCK_KEY_PREFIX + accountId); } catch(e){}
-      lockInfo = { failedAttempts:0, lockedUntil:null };
-      enableKeypad();
-      setStatusHint('');
-      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    function formatRemaining(ms){
+      if (ms <= 0) return '0s';
+      const totalSec = Math.floor(ms/1000);
+      const hrs = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      const secs = totalSec % 60;
+      if (hrs > 0) return `${hrs}h ${mins}m`;
+      if (mins > 0) return `${mins}m ${secs}s`;
+      return `${secs}s`;
     }
 
     function startCountdown(untilIso){
+      if (countdownTimer) clearInterval(countdownTimer);
       if (!untilIso) return;
-      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-      countdownTimer = setInterval(()=>{
+      countdownTimer = setInterval(()=> {
         const until = new Date(untilIso);
         const msLeft = until - new Date();
         if (msLeft <= 0) {
           clearInterval(countdownTimer);
           countdownTimer = null;
-          // attempt to re-check server status (if online)
+          // re-check authoritative server state
           fetchStatusAndUpdateUI();
           return;
         }
-        const sec = Math.floor(msLeft/1000)%60;
-        const min = Math.floor(msLeft/60000)%60;
-        const hrs = Math.floor(msLeft/(3600*1000));
-        let display = '';
-        if (hrs>0) display = `${hrs}h ${min}m`;
-        else if (min>0) display = `${min}m ${sec}s`;
-        else display = `${sec}s`;
-        setStatusHint(`Too many failed attempts. Try again in ${display}.`);
+        setStatusHint(`Too many failed attempts. Try again in ${formatRemaining(msLeft)}.`);
       }, 1000);
     }
 
-    // ------------- Network helpers -------------
+    // ---------- server sync ----------
     async function fetchStatusAndUpdateUI(){
-      // status endpoint requires auth cookie — include credentials
-      const user = getStoredUser();
-      const acct = user ? (user.account_number || user.accountNumber || user.phone) : null;
-      if (!acct) {
-        // no logged-in user info; try to keep UI enabled but warn user
-        setStatusHint('You must be logged in to verify PIN.');
-        return;
-      }
-      lockKey = LOCK_KEY_PREFIX + acct;
-
-      // try load local cached lock first (fast)
-      const local = loadLocalLock(acct);
-      lockInfo = local || { failedAttempts:0, lockedUntil:null };
-      if (isLockedLocal()) {
-        disableKeypad();
-        startCountdown(lockInfo.lockedUntil);
-      }
-
-      // then check server
+      // Try to fetch /api/pin/status (server authoritative)
       try {
-        const res = await fetch(STATUS_ROUTE, { method:'GET', credentials:'include', headers:{ 'Accept':'application/json' } });
+        const res = await fetch(STATUS_ROUTE, { method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' } });
         if (!res.ok) {
-          // server not reachable or not logged in
-          const txt = await res.text().catch(()=>null);
-          // If 401, user not logged in; otherwise show minimal hint.
+          // Not logged in or server error
           if (res.status === 401) {
-            setStatusHint('Not authenticated. Please log in to set or use PIN.');
-          } else {
-            setStatusHint('Could not verify PIN status (server).');
+            setStatusHint('Not authenticated — please log in.');
+            // still keep local UI enabled/disabled as-is
+            return;
           }
+          // other server issues - skip
           return;
         }
         const j = await res.json().catch(()=>null);
         if (!j) return;
-        // Backend returns { hasPin, locked, lockedUntil, failedAttempts }
+        // expected: { hasPin, locked: bool, lockedUntil: null|string, failedAttempts: 0 }
         lockInfo.failedAttempts = Number(j.failedAttempts || 0);
-        lockInfo.lockedUntil = j.locked || false ? (j.lockedUntil || null) : (j.lockedUntil || null);
-        saveLocalLock(acct);
+        lockInfo.lockedUntil = j.locked && j.lockedUntil ? j.lockedUntil : (j.lockedUntil || null);
+
         if (j.locked && lockInfo.lockedUntil) {
           disableKeypad();
           startCountdown(lockInfo.lockedUntil);
+          showError(j.message || 'Too many failed attempts. Account locked.');
         } else {
-          // not locked: update hint about attempts left
+          enableKeypad();
           const left = Math.max(0, LOCK_THRESHOLD - lockInfo.failedAttempts);
           if (left > 0) setStatusHint(`${left} attempt${left>1?'s':''} left before account lock.`);
           else setStatusHint('');
-          enableKeypad();
+          clearError();
         }
       } catch (err) {
-        // network fail: keep local lock state and hint
+        // network issue: do nothing; leave local state as-is
         console.warn('status fetch failed', err);
       }
     }
 
-    // ------------- Input handling -------------
-    function handleKeyEl(keyEl){
-      if (keyEl.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
-      if (keyEl.id === 'blank') return;
+    // start periodic polling
+    function startPolling(){
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(fetchStatusAndUpdateUI, POLL_INTERVAL_MS);
+    }
+    function stopPolling(){ if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+
+    // ---------- input handling ----------
+    function handleKeyPress(k){
+      if (k.id === 'back') { current = current.slice(0,-1); clearError(); refreshDots(); return; }
+      if (k.id === 'blank') return;
       if (current.length >= 4) return;
-      current += (keyEl.textContent || '').trim();
+      current += (k.textContent || '').trim();
       refreshDots();
     }
 
@@ -241,22 +203,19 @@
       const k = ev.target;
       if (!k.classList.contains('key')) return;
       if (isLocked()) return;
-      handleKeyEl(k);
+      handleKeyPress(k);
     });
     document.addEventListener('keydown', ev=>{
-      if (ev.key >= '0' && ev.key <= '9') { ev.preventDefault(); if (!isLocked()) { handleKeyEl({ id: null, textContent: ev.key }); } return; }
-      if (ev.key === 'Backspace' || ev.key === 'Delete') { ev.preventDefault(); handleKeyEl({ id:'back' }); return; }
+      if (ev.key >= '0' && ev.key <= '9') { ev.preventDefault(); if (!isLocked()) handleKeyPress({ id:null, textContent: ev.key }); return; }
+      if (ev.key === 'Backspace' || ev.key === 'Delete') { ev.preventDefault(); handleKeyPress({ id:'back' }); return; }
       if (ev.key === 'Enter') { ev.preventDefault(); if (!submitBtn.disabled) submitBtn.click(); }
     });
 
-    // ------------- Verify flow -------------
+    // ---------- verify flow ----------
     submitBtn.addEventListener('click', async ()=>{
       clearError();
-      if (isLocked()) {
-        showError('Account is locked. Wait until lock expires.');
-        return;
-      }
-      if (!current || current.length !==4) { showError('Enter 4-digit PIN'); return; }
+      if (isLocked()) { showError('Account is locked. Please wait until lock expires.'); return; }
+      if (!current || current.length !== 4) { showError('Enter 4-digit PIN'); return; }
 
       const user = getStoredUser();
       const accountNumber = user ? (user.account_number || user.accountNumber || user.phone) : null;
@@ -267,47 +226,41 @@
 
       try {
         const payload = { account_number: String(accountNumber), pin: String(current) };
-        const res = await fetch(VERIFY_ROUTE, { method:'POST', credentials:'include', headers: { 'Content-Type':'application/json', 'Accept':'application/json' }, body: JSON.stringify(payload) });
+        const res = await fetch(VERIFY_ROUTE, { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json', 'Accept':'application/json' }, body: JSON.stringify(payload) });
         const j = await res.json().catch(()=>null);
 
         if (res.ok && j && j.success) {
-          // success: clear local lock and proceed with transaction
-          clearLocalLock(accountNumber);
-          // proceed to execute payment flow (existing logic)
-          // we assume sessionStorage.pending_tx already set by previous page
-          // redirect back to caller page to continue flow
-          window.location.href = sessionStorage.getItem('return_to') || document.referrer || 'airtime.html';
+          // success — clear any UI lock state and proceed with transaction
+          lockInfo.failedAttempts = 0;
+          lockInfo.lockedUntil = null;
+          startPostVerificationSuccess();
           return;
         }
 
-        // If server says locked (403), use lockedUntil if provided.
+        // server-enforced lock
         if (res.status === 403) {
           const lockedUntil = (j && j.lockedUntil) ? j.lockedUntil : null;
           lockInfo.failedAttempts = LOCK_THRESHOLD;
-          lockInfo.lockedUntil = lockedUntil || new Date(Date.now() + LOCK_DURATION_HOURS*3600*1000).toISOString();
-          saveLocalLock(accountNumber);
+          lockInfo.lockedUntil = lockedUntil || new Date(Date.now() + 4 * 3600 * 1000).toISOString();
           disableKeypad();
           startCountdown(lockInfo.lockedUntil);
-          showError((j && j.message) ? j.message : 'Too many failed attempts — account locked.');
+          showError((j && j.message) ? j.message : 'Too many failed attempts. Account locked.');
           return;
         }
 
-        // For invalid PIN (401) or other non-OK replies:
+        // invalid PIN -> fetch status to show remaining attempts
         if (res.status === 401 || (j && j.success === false)) {
-          // request fresh status from server to show attempt count
+          // fetch status to get updated failedAttempts count
           await fetchStatusAndUpdateUI();
-          const left = Math.max(0, LOCK_THRESHOLD - (lockInfo.failedAttempts || 0));
-          if (left > 0) {
-            showError(`Invalid PIN — ${left} attempt${left>1?'s':''} left before lock.`);
-          } else {
-            showError('Invalid PIN.');
-          }
+          const left = Math.max(0, LOCK_THRESHOLD - lockInfo.failedAttempts);
+          if (left > 0) showError(`Invalid PIN — ${left} attempt${left>1?'s':''} left before lock.`);
+          else showError('Invalid PIN.');
           current = '';
           refreshDots();
           return;
         }
 
-        // Fallback generic error
+        // other server error
         showError((j && j.message) ? j.message : `Verification failed (HTTP ${res.status})`);
       } catch (err) {
         console.error('verify error', err);
@@ -318,39 +271,28 @@
       }
     });
 
+    // call after successful verification to continue flow
+    function startPostVerificationSuccess(){
+      clearError();
+      setStatusHint('');
+      // proceed with original behavior: go back to caller page so transaction execution continues
+      // keep existing logic: redirect to referrer or airtime page
+      const returnUrl = sessionStorage.getItem('return_to') || document.referrer || 'airtime.html';
+      // small delay to show success state
+      setTimeout(()=> { window.location.href = returnUrl; }, 250);
+    }
+
     cancelBtn.addEventListener('click', ()=> {
-      // preserve existing behavior (go back)
-      if (sessionStorage.getItem('pending_tx')) {
-        try {
-          const p = JSON.parse(sessionStorage.getItem('pending_tx'));
-          if (p && (p.product === 'towallet')) { window.location.href='towallet.html'; return; }
-        } catch(e){}
-      }
-      window.location.href = 'airtime.html';
+      if (pending && pending.product === 'towallet') window.location.href = 'towallet.html';
+      else window.location.href = 'airtime.html';
     });
 
-    // ------------- Init -------------
+    // ---------- init ----------
     (function init(){
-      // load pending tx if any (your old logic used this)
-      try {
-        pending = sessionStorage.getItem('pending_tx') ? JSON.parse(sessionStorage.getItem('pending_tx')) : null;
-      } catch(e) { pending = null; }
+      // load pending tx if any (keeps original behavior)
+      try { pending = sessionStorage.getItem('pending_tx') ? JSON.parse(sessionStorage.getItem('pending_tx')) : null; } catch(e){ pending = null; }
 
-      const user = getStoredUser();
-      const acctId = user ? ((user.account_number || user.accountNumber) || user.phone) : null;
-      if (acctId) {
-        lockKey = LOCK_KEY_PREFIX + acctId;
-        // load local cached lock
-        lockInfo = loadLocalLock(acctId) || { failedAttempts:0, lockedUntil:null };
-        if (isLockedLocal()) {
-          disableKeypad();
-          startCountdown(lockInfo.lockedUntil);
-        }
-      }
-      // Always try to fetch authoritative status from server (will update lock state across browsers)
-      fetchStatusAndUpdateUI();
-
-      // update initial UI text about pending tx
+      // show transaction details as before (unchanged)
       if (!pending) {
         const params = new URLSearchParams(window.location.search);
         const debugList = [];
@@ -365,7 +307,6 @@
         }
         submitBtn.disabled = true;
       } else {
-        // show the transaction amount/receiver (reuse your original format)
         if (pending.product === 'towallet' || pending.receiver_acc) {
           const recv = pending.receiver_acc || pending.recipient || pending.phone || '-';
           const bank = pending.receiver_bank_name || pending.receiver_bank || pending.bankName || '';
@@ -378,13 +319,17 @@
         refreshDots();
       }
 
-      // accessibility: focus first key
+      // immediately fetch server status (authoritative) and start polling to stay synced across browsers
+      fetchStatusAndUpdateUI();
+      startPolling();
+
+      // focus first key for keyboard users
       const firstKey = keypad.querySelector('.key');
       try { firstKey && firstKey.focus(); } catch(e){}
     })();
 
-    // expose for debugging (optional)
-    window._payme_pin_debug = { fetchStatusAndUpdateUI, loadLocalLock, saveLocalLock };
+    // expose for debug (optional)
+    window._payme_pin_debug = { fetchStatusAndUpdateUI };
 
   })();
 </script>
