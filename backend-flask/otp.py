@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import hashlib
 import binascii
 import hmac
-
+from flask_cors import CORS
 
 from flask import Blueprint, request, jsonify
 
