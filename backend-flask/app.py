@@ -220,7 +220,21 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
+# OTP CODES (Postgres) - store hashed OTPs
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS otp_codes (
+                    id SERIAL PRIMARY KEY,
+                    contact TEXT NOT NULL,
+                    channel TEXT NOT NULL CHECK (channel IN ('email','sms')),
+                    code_hash TEXT NOT NULL,
+                    code_salt TEXT NOT NULL,
+                    reason TEXT,
+                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMPTZ
+                )
+            """)
+            # optional index for lookups
+            # cur.execute("CREATE INDEX IF NOT EXISTS idx_otp_contact_channel_reason ON otp_codes (contact, channel, reason)")
             conn.commit()
 
     else:
@@ -274,6 +288,21 @@ def init_db():
                     created_at TEXT
                 )
             """)
+# OTP CODES (SQLite) - store hashed OTPs
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS otp_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    contact TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    code_hash TEXT NOT NULL,
+                    code_salt TEXT NOT NULL,
+                    reason TEXT,
+                    created_at TEXT,
+                    expires_at TEXT
+                )
+            """)
+            # optional index for lookups
+            # cur.execute("CREATE INDEX IF NOT EXISTS idx_otp_contact_channel_reason ON otp_codes (contact, channel, reason)")
 
             conn.commit()
 # -------------------------------------------------
