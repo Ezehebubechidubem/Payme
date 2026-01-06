@@ -4,6 +4,7 @@
 #   app.register_blueprint(otp_bp, url_prefix="/api")
 #
 # This file follows your project's DB/get_conn pattern and stores OTPs as salted PBKDF2 hashes.
+# It is written to work with both PostgreSQL (psycopg2) and SQLite.
 
 import os
 import random
@@ -14,7 +15,7 @@ import binascii
 import hmac
 
 from flask_cors import CORS
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 
 # try to import your project's DB helpers (get_conn / now_iso)
 try:
@@ -35,11 +36,11 @@ except Exception:
 
 # blueprint (registered in app.py with prefix /api)
 otp_bp = Blueprint("otp_bp", __name__, url_prefix="/otp")
-# enable CORS on this blueprint (app.py already enables CORS globally too)
+# enable CORS on this blueprint (app.py usually enables CORS globally too)
 try:
     CORS(otp_bp, supports_credentials=True)
 except Exception:
-    # In case flask_cors not configured in some envs, don't crash blueprint import
+    # In case flask_cors not available or misconfigured in some envs, don't crash blueprint import
     pass
 
 # configuration via env
@@ -50,8 +51,10 @@ OTP_SALT_BYTES = int(os.environ.get("OTP_SALT_BYTES", 16))
 
 # --- helpers ---
 
+
 def _gen_code():
     return f"{random.randint(0, 999999):06d}"
+
 
 def hash_otp(code: str):
     """
@@ -62,6 +65,7 @@ def hash_otp(code: str):
     salt = os.urandom(OTP_SALT_BYTES)
     dk = hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, OTP_HASH_ITER)
     return binascii.hexlify(salt).decode(), binascii.hexlify(dk).decode()
+
 
 def verify_otp(code: str, salt_hex: str, hash_hex: str) -> bool:
     """
@@ -76,6 +80,7 @@ def verify_otp(code: str, salt_hex: str, hash_hex: str) -> bool:
         return False
     dk = hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, OTP_HASH_ITER)
     return hmac.compare_digest(dk, expected)
+
 
 def _row_get(row, idx_or_key):
     """
@@ -100,28 +105,16 @@ def _row_get(row, idx_or_key):
     except Exception:
         return None
 
-def _conn_looks_like_postgres(conn):
-    """
-    Heuristic: detect psycopg2 connection wrapper by module path.
-    If your project uses PGConnectionContext (in utils) it may still be fine;
-    this function is just a light heuristic — execute_with_params below will try both styles anyway.
-    """
-    try:
-        mod = conn.__class__.__module__
-        return "psycopg2" in (mod or "")
-    except Exception:
-        return False
 
 def execute_with_params(cur, conn, sql, params=()):
     """
     Try cur.execute(sql, params). If it fails due to parameter style, retry with replacing '?'=> '%s'.
-    This keeps your code working with sqlite3 (uses '?') and psycopg2 (uses '%s' or PGCursorWrapper).
+    This keeps the code working with sqlite3 (uses '?') and psycopg2 (uses '%s' or wrapper).
     """
     try:
-        # Primary attempt (works when cursor/driver accepts the query style)
         cur.execute(sql, params)
         return
-    except Exception as e1:
+    except Exception:
         # Try switching placeholder style: '?' -> '%s'
         try:
             alt = sql.replace("?", "%s")
@@ -133,10 +126,12 @@ def execute_with_params(cur, conn, sql, params=()):
                 cur.execute(sql)
                 return
             except Exception:
-                # re-raise the original error to surface the underlying issue in logs
+                # re-raise original exception for logs
                 raise
 
+
 # --- provider hooks (wire these to your Ryan functions) ---
+
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
     """
@@ -151,6 +146,7 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
             return False
     raise NotImplementedError("send_email() not implemented. Wire it to your provider (ryan).")
 
+
 def send_sms(phone: str, message: str) -> bool:
     """
     Wire this to your SMS provider. If you have a 'ryan' module with send_sms, it will be used.
@@ -163,6 +159,7 @@ def send_sms(phone: str, message: str) -> bool:
             traceback.print_exc()
             return False
     raise NotImplementedError("send_sms() not implemented. Wire it to your provider (ryan).")
+
 
 # ensure table exists (best-effort; matches your init_db style)
 def _ensure_table():
@@ -214,12 +211,18 @@ def _ensure_table():
     except Exception:
         traceback.print_exc()
 
+
 _ensure_table()
 
 # --- routes ---
 
-@otp_bp.route("/send-email", methods=["POST"])
+
+@otp_bp.route("/send-email", methods=["POST", "OPTIONS"])
 def otp_send_email():
+    # respond to OPTIONS for preflight quickly
+    if request.method == "OPTIONS":
+        return make_response(jsonify({"ok": True}), 200)
+
     # debug print for logs
     try:
         body_debug = request.get_json(silent=True)
@@ -235,8 +238,9 @@ def otp_send_email():
     """
     try:
         data = request.get_json() or {}
-        email = (data.get("email") or "").strip()
-        reason = (data.get("reason") or "general").strip()
+        # accept both "email" and "contact" keys to be robust
+        email = (data.get("email") or data.get("contact") or "").strip()
+        reason = (data.get("reason") or "registration" or "general").strip()
 
         if not email:
             return jsonify({"success": False, "message": "Missing email"}), 400
@@ -247,6 +251,8 @@ def otp_send_email():
         expires_at = (datetime.utcnow() + timedelta(seconds=OTP_TTL_SECONDS)).isoformat()
 
         # store hashed OTP (delete previous same contact/channel/reason)
+        if not get_conn:
+            return jsonify({"success": False, "message": "Database not configured"}), 500
         try:
             with get_conn() as conn:
                 cur = conn.cursor()
@@ -295,8 +301,12 @@ def otp_send_email():
         return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
 
 
-@otp_bp.route("/send-sms", methods=["POST"])
+@otp_bp.route("/send-sms", methods=["POST", "OPTIONS"])
 def otp_send_sms():
+    # respond to OPTIONS for preflight quickly
+    if request.method == "OPTIONS":
+        return make_response(jsonify({"ok": True}), 200)
+
     # debug print for logs
     try:
         body_debug = request.get_json(silent=True)
@@ -312,8 +322,8 @@ def otp_send_sms():
     """
     try:
         data = request.get_json() or {}
-        phone = (data.get("phone") or "").strip()
-        reason = (data.get("reason") or "general").strip()
+        phone = (data.get("phone") or data.get("contact") or "").strip()
+        reason = (data.get("reason") or "registration" or "general").strip()
 
         if not phone:
             return jsonify({"success": False, "message": "Missing phone"}), 400
@@ -323,6 +333,8 @@ def otp_send_sms():
         created_at = datetime.utcnow().isoformat()
         expires_at = (datetime.utcnow() + timedelta(seconds=OTP_TTL_SECONDS)).isoformat()
 
+        if not get_conn:
+            return jsonify({"success": False, "message": "Database not configured"}), 500
         # store hashed OTP
         try:
             with get_conn() as conn:
@@ -370,8 +382,12 @@ def otp_send_sms():
         return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
 
 
-@otp_bp.route("/verify", methods=["POST"])
+@otp_bp.route("/verify", methods=["POST", "OPTIONS"])
 def otp_verify():
+    # respond to OPTIONS for preflight quickly
+    if request.method == "OPTIONS":
+        return make_response(jsonify({"ok": True}), 200)
+
     """
     POST /api/otp/verify
     Body: { "contact": "...", "channel": "email"|"sms", "code": "123456", "reason": "registration" }
@@ -379,15 +395,19 @@ def otp_verify():
     """
     try:
         data = request.get_json() or {}
-        contact = (data.get("contact") or "").strip()
-        channel = (data.get("channel") or "email").strip()
+        # accept flexible keys for contact input
+        contact = (data.get("contact") or data.get("email") or data.get("phone") or "").strip()
+        channel = (data.get("channel") or ("sms" if data.get("phone") else "email")).strip()
         code = (data.get("code") or "").strip()
-        reason = (data.get("reason") or "general").strip()
+        reason = (data.get("reason") or "registration" or "general").strip()
 
         if not contact or not code:
             return jsonify({"success": False, "message": "Missing contact or code"}), 400
         if channel not in ("email", "sms"):
             return jsonify({"success": False, "message": "Invalid channel"}), 400
+
+        if not get_conn:
+            return jsonify({"success": False, "message": "Database not configured"}), 500
 
         with get_conn() as conn:
             cur = conn.cursor()
@@ -405,13 +425,17 @@ def otp_verify():
             stored_salt = _row_get(row, 2)
             expires_at = _row_get(row, 3)
 
-            # parse expiry
+            # parse expiry (handle both ISO string and native datetime from Postgres)
             try:
-                exp_dt = datetime.fromisoformat(expires_at) if isinstance(expires_at, str) else expires_at
+                if isinstance(expires_at, str):
+                    exp_dt = datetime.fromisoformat(expires_at)
+                else:
+                    # Some DB drivers (Postgres) may already return datetime objects
+                    exp_dt = expires_at
             except Exception:
                 exp_dt = datetime.utcnow() - timedelta(seconds=1)
 
-            if exp_dt < datetime.utcnow():
+            if not exp_dt or exp_dt < datetime.utcnow():
                 try:
                     execute_with_params(cur, conn, "DELETE FROM otp_codes WHERE id = ?", (otp_id,))
                     try:
