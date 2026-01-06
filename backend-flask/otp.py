@@ -12,8 +12,8 @@ from datetime import datetime, timedelta
 import hashlib
 import binascii
 import hmac
-from flask_cors import CORS
 
+from flask_cors import CORS
 from flask import Blueprint, request, jsonify
 
 # try to import your project's DB helpers (get_conn / now_iso)
@@ -35,7 +35,12 @@ except Exception:
 
 # blueprint (registered in app.py with prefix /api)
 otp_bp = Blueprint("otp_bp", __name__, url_prefix="/otp")
-CORS(otp_bp, supports_credentials=True)
+# enable CORS on this blueprint (app.py already enables CORS globally too)
+try:
+    CORS(otp_bp, supports_credentials=True)
+except Exception:
+    # In case flask_cors not configured in some envs, don't crash blueprint import
+    pass
 
 # configuration via env
 OTP_TTL_SECONDS = int(os.environ.get("OTP_TTL_SECONDS", 10 * 60))  # default 10 minutes
@@ -95,6 +100,42 @@ def _row_get(row, idx_or_key):
     except Exception:
         return None
 
+def _conn_looks_like_postgres(conn):
+    """
+    Heuristic: detect psycopg2 connection wrapper by module path.
+    If your project uses PGConnectionContext (in utils) it may still be fine;
+    this function is just a light heuristic — execute_with_params below will try both styles anyway.
+    """
+    try:
+        mod = conn.__class__.__module__
+        return "psycopg2" in (mod or "")
+    except Exception:
+        return False
+
+def execute_with_params(cur, conn, sql, params=()):
+    """
+    Try cur.execute(sql, params). If it fails due to parameter style, retry with replacing '?'=> '%s'.
+    This keeps your code working with sqlite3 (uses '?') and psycopg2 (uses '%s' or PGCursorWrapper).
+    """
+    try:
+        # Primary attempt (works when cursor/driver accepts the query style)
+        cur.execute(sql, params)
+        return
+    except Exception as e1:
+        # Try switching placeholder style: '?' -> '%s'
+        try:
+            alt = sql.replace("?", "%s")
+            cur.execute(alt, params)
+            return
+        except Exception:
+            # Last resort: try without params (some drivers/queries may accept this)
+            try:
+                cur.execute(sql)
+                return
+            except Exception:
+                # re-raise the original error to surface the underlying issue in logs
+                raise
+
 # --- provider hooks (wire these to your Ryan functions) ---
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
@@ -130,27 +171,47 @@ def _ensure_table():
     try:
         with get_conn() as conn:
             cur = conn.cursor()
-            # create table suitable for both Postgres and SQLite patterns used in your project
-            # (Postgres will accept this; SQLite will accept it too with minor differences)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS otp_codes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    contact TEXT NOT NULL,
-                    channel TEXT NOT NULL,
-                    code_hash TEXT NOT NULL,
-                    code_salt TEXT NOT NULL,
-                    reason TEXT,
-                    created_at TEXT,
-                    expires_at TEXT
-                )
-            """)
+            # Try Postgres-style first (SERIAL) then fallback to SQLite AUTOINCREMENT if it errors
             try:
-                conn.commit()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS otp_codes (
+                        id SERIAL PRIMARY KEY,
+                        contact TEXT NOT NULL,
+                        channel TEXT NOT NULL,
+                        code_hash TEXT NOT NULL,
+                        code_salt TEXT NOT NULL,
+                        reason TEXT,
+                        created_at TEXT,
+                        expires_at TEXT
+                    )
+                """)
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
+                return
             except Exception:
-                pass
+                # ignore and try SQLite-style
+                try:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS otp_codes (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            contact TEXT NOT NULL,
+                            channel TEXT NOT NULL,
+                            code_hash TEXT NOT NULL,
+                            code_salt TEXT NOT NULL,
+                            reason TEXT,
+                            created_at TEXT,
+                            expires_at TEXT
+                        )
+                    """)
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
+                except Exception:
+                    traceback.print_exc()
     except Exception:
-        # if DB is Postgres, above SQL will still work; if your app later runs a Postgres CREATE with SERIAL,
-        # make sure init_db() contains the Postgres variant. This is just a safe fallback creation.
         traceback.print_exc()
 
 _ensure_table()
@@ -159,7 +220,12 @@ _ensure_table()
 
 @otp_bp.route("/send-email", methods=["POST"])
 def otp_send_email():
-    print(f"[DEBUG] send-email called: method={request.method}, path={request.path}, data={request.get_json()}")
+    # debug print for logs
+    try:
+        body_debug = request.get_json(silent=True)
+    except Exception:
+        body_debug = None
+    print(f"[DEBUG] send-email called: method={request.method}, path={request.path}, data={body_debug}")
 
     """
     POST /api/otp/send-email
@@ -184,8 +250,13 @@ def otp_send_email():
         try:
             with get_conn() as conn:
                 cur = conn.cursor()
-                cur.execute("DELETE FROM otp_codes WHERE contact = ? AND channel = ? AND reason = ?", (email, "email", reason))
-                cur.execute(
+                execute_with_params(
+                    cur, conn,
+                    "DELETE FROM otp_codes WHERE contact = ? AND channel = ? AND reason = ?",
+                    (email, "email", reason)
+                )
+                execute_with_params(
+                    cur, conn,
                     "INSERT INTO otp_codes (contact, channel, code_hash, code_salt, reason, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (email, "email", hash_hex, salt_hex, reason, created_at, expires_at)
                 )
@@ -226,7 +297,12 @@ def otp_send_email():
 
 @otp_bp.route("/send-sms", methods=["POST"])
 def otp_send_sms():
-    print(f"[DEBUG] send-sms called: method={request.method}, path={request.path}, data={request.get_json()}")
+    # debug print for logs
+    try:
+        body_debug = request.get_json(silent=True)
+    except Exception:
+        body_debug = None
+    print(f"[DEBUG] send-sms called: method={request.method}, path={request.path}, data={body_debug}")
 
     """
     POST /api/otp/send-sms
@@ -251,8 +327,13 @@ def otp_send_sms():
         try:
             with get_conn() as conn:
                 cur = conn.cursor()
-                cur.execute("DELETE FROM otp_codes WHERE contact = ? AND channel = ? AND reason = ?", (phone, "sms", reason))
-                cur.execute(
+                execute_with_params(
+                    cur, conn,
+                    "DELETE FROM otp_codes WHERE contact = ? AND channel = ? AND reason = ?",
+                    (phone, "sms", reason)
+                )
+                execute_with_params(
+                    cur, conn,
                     "INSERT INTO otp_codes (contact, channel, code_hash, code_salt, reason, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (phone, "sms", hash_hex, salt_hex, reason, created_at, expires_at)
                 )
@@ -310,7 +391,8 @@ def otp_verify():
 
         with get_conn() as conn:
             cur = conn.cursor()
-            cur.execute(
+            execute_with_params(
+                cur, conn,
                 "SELECT id, code_hash, code_salt, expires_at FROM otp_codes WHERE contact = ? AND channel = ? AND reason = ? ORDER BY id DESC LIMIT 1",
                 (contact, channel, reason)
             )
@@ -331,7 +413,7 @@ def otp_verify():
 
             if exp_dt < datetime.utcnow():
                 try:
-                    cur.execute("DELETE FROM otp_codes WHERE id = ?", (otp_id,))
+                    execute_with_params(cur, conn, "DELETE FROM otp_codes WHERE id = ?", (otp_id,))
                     try:
                         conn.commit()
                     except Exception:
@@ -345,7 +427,7 @@ def otp_verify():
 
             # success: delete used OTP (single-use)
             try:
-                cur.execute("DELETE FROM otp_codes WHERE id = ?", (otp_id,))
+                execute_with_params(cur, conn, "DELETE FROM otp_codes WHERE id = ?", (otp_id,))
                 try:
                     conn.commit()
                 except Exception:
