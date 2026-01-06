@@ -130,6 +130,21 @@ def execute_with_params(cur, conn, sql, params=()):
                 raise
 
 
+# --- simple error responder (returns exact error; includes traceback when DEV_RETURN_OTP true) ---
+def _err_resp(msg: str, exc: Exception = None, status: int = 500):
+    tb = traceback.format_exc() if exc else None
+    payload = {"success": False, "message": msg}
+    if exc is not None:
+        payload["error"] = str(exc)
+        if DEV_RETURN_OTP:
+            payload["traceback"] = tb
+    # Always log full traceback server-side
+    print("[OTP][ERROR]", msg)
+    if exc:
+        traceback.print_exc()
+    return jsonify(payload), status
+
+
 # --- provider hooks (wire these to your Ryan functions) ---
 
 
@@ -141,9 +156,9 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
     if ryan and hasattr(ryan, "send_email"):
         try:
             return bool(ryan.send_email(to=to_email, subject=subject, body=body))
-        except Exception:
+        except Exception as e:
             traceback.print_exc()
-            return False
+            raise e
     raise NotImplementedError("send_email() not implemented. Wire it to your provider (ryan).")
 
 
@@ -155,9 +170,9 @@ def send_sms(phone: str, message: str) -> bool:
     if ryan and hasattr(ryan, "send_sms"):
         try:
             return bool(ryan.send_sms(to=phone, message=message))
-        except Exception:
+        except Exception as e:
             traceback.print_exc()
-            return False
+            raise e
     raise NotImplementedError("send_sms() not implemented. Wire it to your provider (ryan).")
 
 
@@ -252,7 +267,7 @@ def otp_send_email():
 
         # store hashed OTP (delete previous same contact/channel/reason)
         if not get_conn:
-            return jsonify({"success": False, "message": "Database not configured"}), 500
+            return _err_resp("Database not configured", None, 500)
         try:
             with get_conn() as conn:
                 cur = conn.cursor()
@@ -270,9 +285,8 @@ def otp_send_email():
                     conn.commit()
                 except Exception:
                     pass
-        except Exception:
-            traceback.print_exc()
-            return jsonify({"success": False, "message": "Failed to store OTP"}), 500
+        except Exception as e:
+            return _err_resp("Failed to store OTP", e, 500)
 
         # send via provider
         subject = "Your verification code"
@@ -281,14 +295,13 @@ def otp_send_email():
             ok = send_email(email, subject, body)
             if not ok:
                 raise Exception("email provider returned falsy")
-        except NotImplementedError:
+        except NotImplementedError as e:
             # in dev we can return code even if provider not wired
             if DEV_RETURN_OTP:
                 return jsonify({"success": True, "message": "OTP stored (email provider not wired)", "code": code, "expires_at": expires_at}), 200
-            return jsonify({"success": False, "message": "Email provider not configured"}), 500
-        except Exception:
-            traceback.print_exc()
-            return jsonify({"success": False, "message": "Failed to send email OTP"}), 500
+            return _err_resp("Email provider not configured", e, 500)
+        except Exception as e:
+            return _err_resp("Failed to send email OTP", e, 500)
 
         resp = {"success": True, "message": "Email OTP sent"}
         if DEV_RETURN_OTP:
@@ -297,8 +310,7 @@ def otp_send_email():
         return jsonify(resp), 200
 
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+        return _err_resp("Server error while processing send-email", e, 500)
 
 
 @otp_bp.route("/send-sms", methods=["POST", "OPTIONS"])
@@ -334,7 +346,7 @@ def otp_send_sms():
         expires_at = (datetime.utcnow() + timedelta(seconds=OTP_TTL_SECONDS)).isoformat()
 
         if not get_conn:
-            return jsonify({"success": False, "message": "Database not configured"}), 500
+            return _err_resp("Database not configured", None, 500)
         # store hashed OTP
         try:
             with get_conn() as conn:
@@ -353,9 +365,8 @@ def otp_send_sms():
                     conn.commit()
                 except Exception:
                     pass
-        except Exception:
-            traceback.print_exc()
-            return jsonify({"success": False, "message": "Failed to store OTP"}), 500
+        except Exception as e:
+            return _err_resp("Failed to store OTP", e, 500)
 
         # send via provider
         msg = f"Your verification code is {code}. It expires in {OTP_TTL_SECONDS//60} minutes."
@@ -363,13 +374,12 @@ def otp_send_sms():
             ok = send_sms(phone, msg)
             if not ok:
                 raise Exception("sms provider returned falsy")
-        except NotImplementedError:
+        except NotImplementedError as e:
             if DEV_RETURN_OTP:
                 return jsonify({"success": True, "message": "OTP stored (sms provider not wired)", "code": code, "expires_at": expires_at}), 200
-            return jsonify({"success": False, "message": "SMS provider not configured"}), 500
-        except Exception:
-            traceback.print_exc()
-            return jsonify({"success": False, "message": "Failed to send SMS OTP"}), 500
+            return _err_resp("SMS provider not configured", e, 500)
+        except Exception as e:
+            return _err_resp("Failed to send SMS OTP", e, 500)
 
         resp = {"success": True, "message": "SMS OTP sent"}
         if DEV_RETURN_OTP:
@@ -378,8 +388,7 @@ def otp_send_sms():
         return jsonify(resp), 200
 
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+        return _err_resp("Server error while processing send-sms", e, 500)
 
 
 @otp_bp.route("/verify", methods=["POST", "OPTIONS"])
@@ -407,7 +416,7 @@ def otp_verify():
             return jsonify({"success": False, "message": "Invalid channel"}), 400
 
         if not get_conn:
-            return jsonify({"success": False, "message": "Database not configured"}), 500
+            return _err_resp("Database not configured", None, 500)
 
         with get_conn() as conn:
             cur = conn.cursor()
@@ -462,5 +471,4 @@ def otp_verify():
             return jsonify({"success": True, "message": "OTP verified"}), 200
 
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+        return _err_resp("Server error while processing verify", e, 500)
