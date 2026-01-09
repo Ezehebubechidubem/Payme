@@ -545,7 +545,7 @@ def otp_verify():
                     pass
                 return _err_resp("OTP expired", None, 400)
 
-               if not verify_otp(code, stored_salt, stored_hash):
+            if not verify_otp(code, stored_salt, stored_hash):
                 return _err_resp("Invalid OTP", None, 401)
 
             # delete used OTP
