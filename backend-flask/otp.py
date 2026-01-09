@@ -1,7 +1,6 @@
 # otp.py
-# OTP blueprint for PAYME
-# Works with Postgres (psycopg2) and SQLite. Keeps same routes so app.register_blueprint(otp_bp, url_prefix="/api") -> /api/otp/...
-# Detailed error responses are returned to help debugging (provider errors included).
+# OTP routes: email + sms (email wired to Resend if key present).
+# Works with both PostgreSQL (psycopg2) and SQLite (sqlite3) via utils.get_conn().
 
 import os
 import random
@@ -10,7 +9,9 @@ from datetime import datetime, timedelta
 import hashlib
 import binascii
 import hmac
+import json
 
+import requests  # required for Resend provider path
 from flask_cors import CORS
 from flask import Blueprint, request, jsonify, make_response
 
@@ -24,49 +25,57 @@ except Exception:
     def now_iso():
         return datetime.utcnow().isoformat()
 
-# try to use existing "ryan" provider module if you have it
+# try to use existing "ryan" provider module if you have it (optional)
 ryan = None
 try:
     import ryan  # optional: your existing service wrapper
 except Exception:
     ryan = None
 
-# blueprint (registered in app.py with prefix /api)
 otp_bp = Blueprint("otp_bp", __name__, url_prefix="/otp")
-# enable CORS on this blueprint (app.py may already enable CORS globally)
+# enable CORS on this blueprint (app.py usually enables CORS globally too)
 try:
     CORS(otp_bp, supports_credentials=True)
 except Exception:
     pass
 
-# configuration via env
+# config via env
 OTP_TTL_SECONDS = int(os.environ.get("OTP_TTL_SECONDS", 10 * 60))  # default 10 minutes
 DEV_RETURN_OTP = os.environ.get("DEV_RETURN_OTP", "true").lower() not in ("0", "false", "no")
 OTP_HASH_ITER = int(os.environ.get("OTP_HASH_ITER", 200_000))
 OTP_SALT_BYTES = int(os.environ.get("OTP_SALT_BYTES", 16))
 
+# Resend config (email)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")  # if present, we'll use Resend
+RESEND_FROM = os.environ.get("RESEND_FROM", "noreply@example.com")
+RESEND_TIMEOUT = float(os.environ.get("RESEND_TIMEOUT", 10.0))
+RESEND_ENABLED = bool(RESEND_API_KEY)
 
-# --- small helpers ---
+# helpers ---------------------------------------------------------------------
+
+def _err_resp(msg, exc=None, status=500, include_trace=False):
+    """Return a JSON error response with optional debug info (safe in dev)."""
+    body = {"success": False, "message": msg}
+    if exc and (DEV_RETURN_OTP or include_trace):
+        try:
+            body["error"] = str(exc)
+            tb = traceback.format_exc()
+            body["trace"] = tb
+        except Exception:
+            pass
+    return jsonify(body), status
 
 def _gen_code():
     return f"{random.randint(0, 999999):06d}"
 
-
 def hash_otp(code: str):
-    """
-    Returns (salt_hex, hash_hex) using PBKDF2-HMAC-SHA256.
-    """
     if not isinstance(code, str):
         code = str(code)
     salt = os.urandom(OTP_SALT_BYTES)
     dk = hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, OTP_HASH_ITER)
     return binascii.hexlify(salt).decode(), binascii.hexlify(dk).decode()
 
-
 def verify_otp(code: str, salt_hex: str, hash_hex: str) -> bool:
-    """
-    Verify OTP by recomputing PBKDF2-HMAC-SHA256 and comparing with constant-time compare.
-    """
     if not isinstance(code, str):
         code = str(code)
     try:
@@ -77,11 +86,7 @@ def verify_otp(code: str, salt_hex: str, hash_hex: str) -> bool:
     dk = hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, OTP_HASH_ITER)
     return hmac.compare_digest(dk, expected)
 
-
 def _row_get(row, idx_or_key):
-    """
-    Safe reader for both sqlite3.Row/tuple and psycopg2 RealDictCursor dict-like rows.
-    """
     if row is None:
         return None
     try:
@@ -101,97 +106,99 @@ def _row_get(row, idx_or_key):
     except Exception:
         return None
 
-
 def execute_with_params(cur, conn, sql, params=()):
     """
-    Try cur.execute(sql, params). If it fails due to parameter style, retry with replacing '?'=> '%s'.
-    This keeps the code working with sqlite3 (uses '?') and psycopg2 (uses '%s' or wrapper).
+    Execute with either '?' (sqlite) or '%s' (psycopg2) placeholder styles.
+    Falls back to execute(sql) if param execution fails.
     """
     try:
         cur.execute(sql, params)
         return
     except Exception:
-        # Try switching placeholder style: '?' -> '%s'
         try:
             alt = sql.replace("?", "%s")
             cur.execute(alt, params)
             return
         except Exception:
-            # Last resort: try without params (some drivers/queries may accept this)
             try:
                 cur.execute(sql)
                 return
             except Exception:
-                # re-raise original exception for logs
                 raise
 
+# provider hooks --------------------------------------------------------------
 
-def _err_resp(user_message: str, exc: Exception = None, status: int = 500, provider_error: str = None):
+def send_email_via_resend(to_email: str, subject: str, body_text: str) -> dict:
     """
-    Consistent error response generator that logs full traceback server-side,
-    and returns JSON including the (short) exception message so frontend can display the real error.
-    provider_error param used when 3rd-party provider returns its own error (e.g. 405 from provider).
+    Send email via Resend (https://resend.com). Returns provider response dict on success.
+    Raises Exception on failure.
     """
+    if not RESEND_API_KEY:
+        raise NotImplementedError("Resend API key not configured")
+
+    payload = {
+        "from": RESEND_FROM,
+        "to": [to_email],
+        "subject": subject,
+        "text": body_text
+    }
+    headers = {
+        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    r = requests.post("https://api.resend.com/emails", headers=headers, json=payload, timeout=RESEND_TIMEOUT)
+    # Raise for status so caller can decide how to handle
+    r.raise_for_status()
     try:
-        tb = traceback.format_exc()
+        return r.json()
     except Exception:
-        tb = "traceback unavailable"
-    # server log (full)
-    print(f"[OTP ERROR] {user_message}")
-    if exc is not None:
-        print("Exception:", repr(exc))
-    print(tb)
-    payload = {"success": False, "message": user_message}
-    if exc is not None:
-        # include short exception text for debugging (not the full traceback)
-        try:
-            payload["error"] = str(exc)
-        except Exception:
-            payload["error"] = "exception string unavailable"
-    if provider_error:
-        payload["provider_error"] = provider_error
-    return jsonify(payload), status
-
-
-# --- provider hooks (wire these to your Ryan functions) ---
-
+        return {"status": "ok", "raw_text": r.text}
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
     """
-    Wire this to your email provider. If you have a 'ryan' module with send_email, it will be used.
-    Return True on success, False on failure.
+    Public send_email function used by routes.
+    - If ryan module implements send_email, prefer that.
+    - Else if RESEND_API_KEY available, use Resend.
+    - Else raise NotImplementedError so caller can decide (DEV_RETURN_OTP fallback).
     """
+    # prefer user-supplied 'ryan' module if present
     if ryan and hasattr(ryan, "send_email"):
         try:
             return bool(ryan.send_email(to=to_email, subject=subject, body=body))
         except Exception as e:
-            # bubble exception upward so caller can include provider error text
+            # bubble up to caller
             raise
-    # provider isn't configured: raise so caller can fallback to DEV_RETURN_OTP
-    raise NotImplementedError("send_email() not implemented. Wire it to your provider (ryan).")
 
+    # fallback: Resend
+    if RESEND_API_KEY:
+        send_email_via_resend(to_email, subject, body)
+        return True
+
+    # no provider configured
+    raise NotImplementedError("send_email provider not configured")
 
 def send_sms(phone: str, message: str) -> bool:
     """
-    Wire this to your SMS provider. If you have a 'ryan' module with send_sms, it will be used.
-    Return True on success, False on failure.
+    SMS provider not wired here. Raise NotImplementedError so caller falls back to DEV_RETURN_OTP if desired.
+    Later, implement with a provider (Twilio, Africa's Talking, etc).
     """
     if ryan and hasattr(ryan, "send_sms"):
         try:
             return bool(ryan.send_sms(to=phone, message=message))
         except Exception:
             raise
-    raise NotImplementedError("send_sms() not implemented. Wire it to your provider (ryan).")
+    raise NotImplementedError("send_sms provider not configured")
 
+# DB table ensure -------------------------------------------------------------
 
-# ensure table exists (best-effort; matches your init_db style)
 def _ensure_table():
     if not get_conn:
         return
     try:
         with get_conn() as conn:
             cur = conn.cursor()
-            # Try Postgres-style first (SERIAL) then fallback to SQLite AUTOINCREMENT if it errors
+            # try Postgres SERIAL first
             try:
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS otp_codes (
@@ -211,7 +218,7 @@ def _ensure_table():
                     pass
                 return
             except Exception:
-                # ignore and try SQLite-style
+                # fallback to sqlite-style
                 try:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS otp_codes (
@@ -234,43 +241,40 @@ def _ensure_table():
     except Exception:
         traceback.print_exc()
 
-
 _ensure_table()
 
-
-# --- routes ---
-
+# ROUTES ---------------------------------------------------------------------
 
 @otp_bp.route("/send-email", methods=["POST", "OPTIONS"])
 def otp_send_email():
-    # respond to OPTIONS for preflight quickly (return 204 No Content)
+    # respond to OPTIONS for preflight quickly
     if request.method == "OPTIONS":
-        return make_response(('', 204))
+        return make_response(jsonify({"ok": True}), 200)
 
-    # debug print for logs
     try:
         body_debug = request.get_json(silent=True)
     except Exception:
         body_debug = None
-    print(f"[DEBUG] send-email called: method={request.method}, path={request.path}, data={body_debug}")
+    print(f"[OTP] send-email called: method={request.method}, path={request.path}, data={body_debug}")
 
     try:
         data = request.get_json() or {}
-        # accept both "email" and "contact" keys to be robust
         email = (data.get("email") or data.get("contact") or "").strip()
         reason = (data.get("reason") or "registration").strip()
 
         if not email:
-            return _err_resp("Missing email", None, 400)
+            return jsonify({"success": False, "message": "Missing email"}), 400
 
+        # generate code + hashes
         code = _gen_code()
         salt_hex, hash_hex = hash_otp(code)
         created_at = datetime.utcnow().isoformat()
         expires_at = (datetime.utcnow() + timedelta(seconds=OTP_TTL_SECONDS)).isoformat()
 
-        # store hashed OTP (delete previous same contact/channel/reason)
         if not get_conn:
             return _err_resp("Database not configured", None, 500)
+
+        # store OTP (single most recent per contact/channel/reason)
         try:
             with get_conn() as conn:
                 cur = conn.cursor()
@@ -291,23 +295,31 @@ def otp_send_email():
         except Exception as e:
             return _err_resp("Failed to store OTP", e, 500)
 
-        # send via provider
+        # attempt to send
         subject = "Your verification code"
-        body = f"Your verification code is {code}. It expires in {OTP_TTL_SECONDS//60} minutes."
+        body = f"Your verification code is {code}. It expires in {OTP_TTL_SECONDS // 60} minutes."
+
         try:
             ok = send_email(email, subject, body)
             if not ok:
-                # provider returned falsy - surface that
-                return _err_resp("Email provider returned falsy response", None, 500, provider_error="provider returned falsy")
+                raise Exception("provider returned falsy")
         except NotImplementedError:
-            # in dev we can return code even if provider not wired
+            # provider not configured -> allow dev fallback
             if DEV_RETURN_OTP:
-                return jsonify({"success": True, "message": "OTP stored (email provider not wired)", "code": code, "expires_at": expires_at}), 200
+                return jsonify({"success": True, "message": "OTP stored (no email provider configured)", "code": code, "expires_at": expires_at}), 200
             return _err_resp("Email provider not configured", None, 500)
+        except requests.exceptions.RequestException as re:
+            # provider network/http error
+            if DEV_RETURN_OTP:
+                return jsonify({"success": True, "message": "OTP stored (email provider failing)", "code": code, "expires_at": expires_at, "provider_error": str(re)}), 200
+            return _err_resp("Failed to send email OTP (provider error)", re, 502)
         except Exception as e:
-            # include provider exception text
-            return _err_resp("Failed to send email OTP", e, 500, provider_error=str(e))
+            # other provider error
+            if DEV_RETURN_OTP:
+                return jsonify({"success": True, "message": "OTP stored (email provider failing)", "code": code, "expires_at": expires_at, "provider_error": str(e)}), 200
+            return _err_resp("Failed to send email OTP", e, 500)
 
+        # successful send
         resp = {"success": True, "message": "Email OTP sent"}
         if DEV_RETURN_OTP:
             resp["code"] = code
@@ -322,14 +334,13 @@ def otp_send_email():
 def otp_send_sms():
     # respond to OPTIONS for preflight quickly
     if request.method == "OPTIONS":
-        return make_response(('', 204))
+        return make_response(jsonify({"ok": True}), 200)
 
-    # debug print for logs
     try:
         body_debug = request.get_json(silent=True)
     except Exception:
         body_debug = None
-    print(f"[DEBUG] send-sms called: method={request.method}, path={request.path}, data={body_debug}")
+    print(f"[OTP] send-sms called: method={request.method}, path={request.path}, data={body_debug}")
 
     try:
         data = request.get_json() or {}
@@ -337,7 +348,7 @@ def otp_send_sms():
         reason = (data.get("reason") or "registration").strip()
 
         if not phone:
-            return _err_resp("Missing phone", None, 400)
+            return jsonify({"success": False, "message": "Missing phone"}), 400
 
         code = _gen_code()
         salt_hex, hash_hex = hash_otp(code)
@@ -346,7 +357,7 @@ def otp_send_sms():
 
         if not get_conn:
             return _err_resp("Database not configured", None, 500)
-        # store hashed OTP
+
         try:
             with get_conn() as conn:
                 cur = conn.cursor()
@@ -367,24 +378,31 @@ def otp_send_sms():
         except Exception as e:
             return _err_resp("Failed to store OTP", e, 500)
 
-        # send via provider
-        msg = f"Your verification code is {code}. It expires in {OTP_TTL_SECONDS//60} minutes."
+        # We don't have an SMS provider wired here by default.
+        # If DEV_RETURN_OTP is true, return the code for testing.
         try:
-            ok = send_sms(phone, msg)
+            # If anyone wired ryan.send_sms, it will be used by send_sms()
+            ok = send_sms(phone, f"Your verification code is {code}. It expires in {OTP_TTL_SECONDS // 60} minutes.")
             if not ok:
-                return _err_resp("SMS provider returned falsy response", None, 500, provider_error="provider returned falsy")
-        except NotImplementedError:
+                raise Exception("provider returned falsy")
+            resp = {"success": True, "message": "SMS OTP sent"}
             if DEV_RETURN_OTP:
-                return jsonify({"success": True, "message": "OTP stored (sms provider not wired)", "code": code, "expires_at": expires_at}), 200
+                resp["code"] = code
+                resp["expires_at"] = expires_at
+            return jsonify(resp), 200
+        except NotImplementedError:
+            # provider not configured
+            if DEV_RETURN_OTP:
+                return jsonify({"success": True, "message": "OTP stored (no sms provider configured)", "code": code, "expires_at": expires_at}), 200
             return _err_resp("SMS provider not configured", None, 500)
+        except requests.exceptions.RequestException as re:
+            if DEV_RETURN_OTP:
+                return jsonify({"success": True, "message": "OTP stored (sms provider failing)", "code": code, "expires_at": expires_at, "provider_error": str(re)}), 200
+            return _err_resp("Failed to send SMS OTP (provider error)", re, 502)
         except Exception as e:
-            return _err_resp("Failed to send SMS OTP", e, 500, provider_error=str(e))
-
-        resp = {"success": True, "message": "SMS OTP sent"}
-        if DEV_RETURN_OTP:
-            resp["code"] = code
-            resp["expires_at"] = expires_at
-        return jsonify(resp), 200
+            if DEV_RETURN_OTP:
+                return jsonify({"success": True, "message": "OTP stored (sms provider failing)", "code": code, "expires_at": expires_at, "provider_error": str(e)}), 200
+            return _err_resp("Failed to send SMS OTP", e, 500)
 
     except Exception as e:
         return _err_resp("Server error while processing send-sms", e, 500)
@@ -394,25 +412,19 @@ def otp_send_sms():
 def otp_verify():
     # respond to OPTIONS for preflight quickly
     if request.method == "OPTIONS":
-        return make_response(('', 204))
+        return make_response(jsonify({"ok": True}), 200)
 
-    """
-    POST /api/otp/verify
-    Body: { "contact": "...", "channel": "email"|"sms", "code": "123456", "reason": "registration" }
-    Response: { success: bool, message: str }
-    """
     try:
         data = request.get_json() or {}
-        # accept flexible keys for contact input
         contact = (data.get("contact") or data.get("email") or data.get("phone") or "").strip()
         channel = (data.get("channel") or ("sms" if data.get("phone") else "email")).strip()
         code = (data.get("code") or "").strip()
         reason = (data.get("reason") or "registration").strip()
 
         if not contact or not code:
-            return _err_resp("Missing contact or code", None, 400)
+            return jsonify({"success": False, "message": "Missing contact or code"}), 400
         if channel not in ("email", "sms"):
-            return _err_resp("Invalid channel", None, 400)
+            return jsonify({"success": False, "message": "Invalid channel"}), 400
 
         if not get_conn:
             return _err_resp("Database not configured", None, 500)
@@ -433,12 +445,11 @@ def otp_verify():
             stored_salt = _row_get(row, 2)
             expires_at = _row_get(row, 3)
 
-            # parse expiry (handle both ISO string and native datetime from Postgres)
+            # parse expiry
             try:
                 if isinstance(expires_at, str):
                     exp_dt = datetime.fromisoformat(expires_at)
                 else:
-                    # Some DB drivers (Postgres) may already return datetime objects
                     exp_dt = expires_at
             except Exception:
                 exp_dt = datetime.utcnow() - timedelta(seconds=1)
