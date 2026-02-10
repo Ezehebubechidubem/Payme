@@ -1,89 +1,511 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payme — KYC Verification</title>
-<style>
- :root{--bg:#fff;--text:#000;--green:#10b981;--muted:#6b7280;--card:#f8fafb}
- body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial}
- header{padding:18px;border-bottom:1px solid #f0f2f3}
- .container{display:flex;gap:18px;padding:18px}
- .left{width:360px}
- .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 8px 20px rgba(15,23,42,0.06)}
- .btn{background:var(--green);color:#fff;padding:8px 12px;border-radius:8px;border:0;font-weight:800;cursor:pointer}
- img.preview{width:100%;border-radius:8px;border:1px solid #eee;margin-top:8px}
- input,select,textarea{padding:8px;border-radius:8px;border:1px solid #e6e6e6;width:100%}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WireConnect — KYC</title>
+  <style>
+    :root{--bg:#f6f8fb;--card:#fff;--accent:#0b5cff;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{font-family:Inter,Segoe UI,Roboto,Arial,Helvetica,sans-serif;background:var(--bg);margin:0;color:#111}
+    .wrap{max-width:720px;margin:18px auto;padding:14px}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 8px 28px rgba(2,6,23,0.06)}
+    .logo{display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+    .logo img{width:100%;max-width:320px;height:auto;display:block}
+    label{display:block;margin-top:12px;font-weight:700;color:#111;font-size:15px}
+    .input, .choose-btn { width:100%; padding:12px; border-radius:10px; border:1px solid #e6e9ef; background:#fff; display:block; text-align:left; font-size:14px }
+    .choose-btn{cursor:pointer; display:flex;align-items:center;gap:10px; justify-content:space-between}
+    .choose-btn small{color:var(--muted);font-weight:600}
+    .small{font-size:13px;color:var(--muted);margin-top:6px}
+    .btn{background:var(--accent);color:#fff;padding:10px 12px;border-radius:8px;border:0;cursor:pointer;font-weight:700}
+    .muted{color:var(--muted);font-size:13px}
+    .file-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .thumb{width:120px;height:96px;border-radius:8px;overflow:hidden;border:1px solid #e6eef9;background:#fafafa;display:flex;align-items:center;justify-content:center;position:relative;flex-direction:column;padding:6px}
+    .thumb img, .thumb video{max-width:100%;max-height:100%;display:block}
+    .thumb .label { font-size:12px; color:var(--muted); margin-top:6px; font-weight:700 }
+    .thumb .remove{position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px}
+    .error{color:#b91c1c;font-weight:700;margin-top:8px}
+    .hidden{display:none}
+    footer{margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    @media (max-width:480px){ .thumb{width:96px;height:76px} .logo img{max-width:240px} }
+    /* hide native file inputs; we'll trigger them via labels/buttons */
+    input[type="file"].native { display:none; }
+    /* modal */
+    .modal-backdrop{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.45); z-index:2000; }
+    .modal{ background:#fff; padding:14px; border-radius:10px; width:320px; max-width:90%; text-align:center; box-shadow:0 12px 36px rgba(0,0,0,0.18); }
+    .modal .actions{ display:flex; gap:8px; justify-content:center; margin-top:12px; }
+    .modal button{ padding:8px 12px; border-radius:8px; border:0; cursor:pointer; font-weight:700; }
+    .btn-outline{ background:#fff; border:1px solid #e6eef9; color:#111 }
+
+    /* Debug panel */
+    .debug-toggle { margin-top:12px; display:flex; gap:8px; align-items:center; }
+    .debug-panel { margin-top:12px; background:#0b1220; color:#e6f0ff; padding:12px; border-radius:10px; font-family:monospace; font-size:13px; max-height:260px; overflow:auto; white-space:pre-wrap; display:none; }
+    .debug-controls { display:flex;gap:8px; align-items:center; margin-top:8px; }
+    .pill { background:#e6eef9; color:#0b1220; padding:6px 8px; border-radius:999px; font-weight:700; font-size:12px }
+  </style>
 </head>
 <body>
-<header>
-  <a href="index.html" style="color:#6b7280;text-decoration:none">← Dashboard</a>
-  <h2 style="margin:6px 0">4 — KYC Verification</h2>
-  <div style="color:#6b7280">Review NIN, BVN, government ID and selfie verification.</div>
-</header>
-
-<div class="container">
-  <aside class="left">
+  <div class="wrap">
     <div class="card">
-      <h4 style="margin:0">Filters</h4>
-      <select id="kycStatus" style="margin-top:8px">
-        <option value="">All statuses</option>
-        <option>Pending</option>
-        <option>Approved</option>
-        <option>Rejected</option>
-      </select>
-      <div style="margin-top:8px;display:flex;gap:8px">
-        <button class="btn" onclick="applyKycFilter()">Apply</button>
-        <button style="padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="clearFilter()">Clear</button>
+      <div class="logo">
+        <img src="https://i.postimg.cc/ZRSK3pJx/IMG-20260202-144108.png" alt="WireConnect logo">
       </div>
-    </div>
-  </aside>
 
-  <main style="flex:1">
-    <div class="card">
-      <h3 style="margin-top:0">KYC Requests</h3>
-      <div id="kycList"></div>
+      <!-- ID type -->
+      <label for="id_type">ID type</label>
+      <select id="id_type" class="input" aria-label="ID type">
+        <option value="national_id">National ID</option>
+        <option value="driver_license">Driver's License</option>
+        <option value="passport">Passport</option>
+      </select>
+
+      <!-- ID name -->
+      <label for="id_name">Name on ID</label>
+      <input id="id_name" class="input" type="text" placeholder="Name exactly as on the ID" />
+
+      <label for="id_number">ID number</label>
+      <input id="id_number" class="input" type="text" placeholder="Enter ID number" />
+
+      <!-- native file inputs (kept) -->
+      <label for="id_front_btn">Front picture (ID)</label>
+      <input id="id_front" class="native" type="file" accept="image/*" capture="environment">
+      <label id="id_front_btn" class="choose-btn" data-target="front" tabindex="0">
+        <span>Choose file — front</span>
+        <small>Camera or files</small>
+      </label>
+
+      <label for="id_back_btn">Back picture (ID)</label>
+      <input id="id_back" class="native" type="file" accept="image/*" capture="environment">
+      <label id="id_back_btn" class="choose-btn" data-target="back" tabindex="0">
+        <span>Choose file — back</span>
+        <small>Camera or files</small>
+      </label>
+
+      <div id="id_preview" class="file-row" aria-live="polite"></div>
+
+      <!-- videos -->
+      <label for="videos_input_btn" style="margin-top:12px">Work video (required)</label>
+      <input id="videos_input" class="native" type="file" accept="video/*" capture="camcorder" multiple>
+      <label id="videos_input_btn" class="choose-btn" data-target="videos" tabindex="0">
+        <span>Choose videos (up to 2)</span>
+        <small>Record or files</small>
+      </label>
+      <div class="small">Up to 2 videos. Each ≤ 3 minutes.</div>
+      <div id="videos_preview" class="file-row"></div>
+
+      <div id="validationErrors" class="error hidden" role="alert"></div>
+
+      <footer>
+        <button id="submitBtn" class="btn">Submit</button>
+        <div class="muted">All docs go to admin</div>
+      </footer>
+
+      <div id="status" class="muted" style="margin-top:8px"></div>
+
+      <div class="debug-toggle">
+        <button id="dbgToggleBtn" class="btn-outline">Server debug</button>
+        <div style="margin-left:auto" class="debug-controls">
+          <div class="pill" id="dbgLast">No log</div>
+        </div>
+      </div>
+
+      <div id="debugPanel" class="debug-panel" aria-live="polite"></div>
     </div>
-  </main>
-</div>
+  </div>
+
+  <!-- modal to select camera or files -->
+  <div class="modal-backdrop" id="choiceModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="choiceTitle">
+      <div id="choiceTitle" style="font-weight:800">Choose upload method</div>
+      <div class="muted" style="margin-top:8px">Use camera to take a new photo/video or choose from your files</div>
+      <div class="actions">
+        <button id="cameraBtn" class="btn-outline">Use Camera</button>
+        <button id="filesBtn" class="btn">Upload from files</button>
+      </div>
+      <div style="margin-top:10px"><button id="choiceCancel" class="btn-outline">Cancel</button></div>
+    </div>
+  </div>
+
+  <!-- upload status modal -->
+  <div id="overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); align-items:center; justify-content:center; z-index:2000">
+    <div style="background:#fff;padding:16px;border-radius:10px;max-width:320px;text-align:center">
+      <div id="modalText">Processing...</div>
+      <div style="margin-top:10px"><button id="modalClose" class="btn" style="background:#eef3ff;color:var(--accent)">OK</button></div>
+    </div>
+  </div>
 
 <script>
- const kyc = [
-   {id:'K1001',user:'+234703xxx',status:'Pending',doc:'NIN',image:'',note:'NIN uploaded'},
-   {id:'K1002',user:'+234701xxx',status:'Pending',doc:'BVN',image:'',note:'BVN mismatch'}
- ];
- function renderList(){
-   document.getElementById('kycList').innerHTML = kyc.map(item=>`
-     <div style="border-bottom:1px solid #eee;padding:10px 0;display:flex;justify-content:space-between;align-items:center">
-       <div>
-         <div style="font-weight:800">${item.user} • ${item.doc}</div>
-         <div style="color:#6b7280">${item.note}</div>
-         <div style="margin-top:6px"><strong>Status:</strong> ${item.status}</div>
-       </div>
-       <div style="display:flex;flex-direction:column;gap:8px">
-         <button style="padding:8px 10px;border-radius:8px;border:0;background:var(--green);color:#fff" onclick="approve('${item.id}')">Approve</button>
-         <button style="padding:8px 10px;border-radius:8px;border:1px solid #ddd;background:#fff" onclick="reject('${item.id}')">Reject</button>
-       </div>
-     </div>
-   `).join('');
- }
- function approve(id){
-   const i = kyc.find(x=>x.id===id); if(!i) return;
-   i.status='Approved';
-   renderList();
-   alert(`KYC ${id} approved — send notification to user.`);
- }
- function reject(id){
-   const i = kyc.find(x=>x.id===id); if(!i) return;
-   const reason = prompt('Reason for rejection:') || 'Not specified';
-   i.status='Rejected';
-   i.note += ` • Rejected: ${reason}`;
-   renderList();
-   alert(`KYC ${id} rejected. Reason: ${reason}`);
- }
- function applyKycFilter(){ alert('Filter applied UI-only. Connect backend to filter real data.'); }
- function clearFilter(){ document.getElementById('kycStatus').value=''; renderList(); }
- renderList();
+(function(){
+  const API_BASE = (location.hostname.includes('localhost') ? 'http://localhost:10000' : 'https://wireconnet-1.onrender.com');
+
+  // validate user logged in
+  const me = JSON.parse(localStorage.getItem('wc_user') || 'null');
+  if(!me){ alert('Please login'); window.location.href = 'login.html'; return; }
+
+  // DOM
+  const idTypeEl = document.getElementById('id_type');
+  const idNameEl = document.getElementById('id_name');
+  const idNumberEl = document.getElementById('id_number');
+
+  const idFrontNative = document.getElementById('id_front');
+  const idBackNative = document.getElementById('id_back');
+  const videosNative = document.getElementById('videos_input');
+
+  const idFrontBtn = document.getElementById('id_front_btn');
+  const idBackBtn  = document.getElementById('id_back_btn');
+  const videosBtn  = document.getElementById('videos_input_btn');
+
+  const idPreview = document.getElementById('id_preview');
+  const videosPreview = document.getElementById('videos_preview');
+
+  const submitBtn = document.getElementById('submitBtn');
+  const validationErrors = document.getElementById('validationErrors');
+
+  const choiceModal = document.getElementById('choiceModal');
+  const cameraBtn = document.getElementById('cameraBtn');
+  const filesBtn = document.getElementById('filesBtn');
+  const choiceCancel = document.getElementById('choiceCancel');
+
+  const overlay = document.getElementById('overlay'), modalText = document.getElementById('modalText'), modalClose = document.getElementById('modalClose');
+
+  const dbgToggleBtn = document.getElementById('dbgToggleBtn');
+  const debugPanel = document.getElementById('debugPanel');
+  const dbgLast = document.getElementById('dbgLast');
+
+  // state
+  let idFiles = { front: null, back: null }; // separate keys now
+  let videoFiles = [];
+  let currentTarget = null; // 'front' | 'back' | 'videos'
+  const MAX_VIDEOS = 2;
+  const MAX_VIDEO_SECONDS = 180; // 3 minutes
+  let uploading = false;
+
+  // check KYC lock: disable submission if already pending or approved
+  function checkKycLock(){
+    const status = (me && me.kyc_status) ? String(me.kyc_status).toLowerCase() : null;
+    const locked = (status === 'pending' || status === 'approved' || status === 'approved' || status === 'approved_by_admin');
+    if(locked){
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = 0.6;
+      // disable choose controls
+      [idFrontBtn, idBackBtn, videosBtn].forEach(b => { b.setAttribute('aria-disabled','true'); b.style.pointerEvents='none'; b.style.opacity=0.6; });
+      // show status message
+      document.getElementById('status').textContent = `KYC already submitted (status: ${status}). You cannot submit again unless the admin rejects/declines it.`;
+    } else {
+      document.getElementById('status').textContent = '';
+    }
+  }
+
+  // run lock check now
+  checkKycLock();
+
+  // open/close choice modal
+  function openChoice(target){
+    // if locked, prevent opening
+    const status = (me && me.kyc_status) ? String(me.kyc_status).toLowerCase() : null;
+    if(status === 'pending' || status === 'approved' || status === 'approved_by_admin'){ return; }
+    currentTarget = target;
+    choiceModal.style.display = 'flex';
+  }
+  function closeChoice(){
+    choiceModal.style.display = 'none';
+  }
+  cameraBtn.addEventListener('click', ()=> handleChoiceMode('camera'));
+  filesBtn.addEventListener('click', ()=> handleChoiceMode('files'));
+  choiceCancel.addEventListener('click', ()=> { closeChoice(); currentTarget = null; });
+
+  function showModal(msg){ modalText.textContent = msg; overlay.style.display = 'flex'; }
+  function hideModal(){ overlay.style.display = 'none'; }
+  modalClose.addEventListener('click', hideModal);
+
+  function showValidation(msg){
+    validationErrors.textContent = msg;
+    validationErrors.classList.remove('hidden');
+  }
+  function clearValidation(){
+    validationErrors.textContent = '';
+    validationErrors.classList.add('hidden');
+  }
+
+  // previews
+  function renderIdPreview(){
+    idPreview.innerHTML = '';
+    // ensure fixed placement: front then back
+    const order = [
+      { key: 'front', file: idFiles.front, label: 'Front' },
+      { key: 'back',  file: idFiles.back,  label: 'Back' }
+    ];
+    order.forEach((item) => {
+      if(!item.file) return;
+      const box = document.createElement('div'); box.className = 'thumb';
+      const img = document.createElement('img'); img.src = URL.createObjectURL(item.file); img.alt = item.label;
+      box.appendChild(img);
+      const lbl = document.createElement('div'); lbl.className = 'label'; lbl.innerText = item.label;
+      box.appendChild(lbl);
+      const rm = document.createElement('div'); rm.className = 'remove'; rm.innerText = '×';
+      rm.addEventListener('click', ()=> {
+        URL.revokeObjectURL(img.src);
+        if(item.key === 'front'){ idFiles.front = null; idFrontNative.value = ''; }
+        else { idFiles.back = null; idBackNative.value = ''; }
+        renderIdPreview();
+      });
+      box.appendChild(rm);
+      idPreview.appendChild(box);
+    });
+  }
+
+  function renderVideoPreview(){
+    videosPreview.innerHTML = '';
+    videoFiles.forEach((file, idx) => {
+      const box = document.createElement('div'); box.className = 'thumb';
+      const vid = document.createElement('video'); vid.preload='metadata'; vid.muted=true; vid.playsInline=true; vid.controls=true;
+      vid.src = URL.createObjectURL(file);
+      box.appendChild(vid);
+      const rm = document.createElement('div'); rm.className='remove'; rm.innerText='×';
+      rm.addEventListener('click', ()=> {
+        URL.revokeObjectURL(vid.src);
+        videoFiles.splice(idx,1);
+        renderVideoPreview();
+      });
+      box.appendChild(rm);
+      videosPreview.appendChild(box);
+    });
+  }
+
+  // native change handlers (native inputs supply the File objects)
+  idFrontNative.addEventListener('change', (e)=>{
+    clearValidation();
+    const f = e.target.files && e.target.files[0];
+    if(f && f.type.startsWith('image/')) { idFiles.front = f; renderIdPreview(); }
+    else { idFiles.front = null; idFrontNative.value=''; renderIdPreview(); }
+  });
+
+  idBackNative.addEventListener('change', (e)=>{
+    clearValidation();
+    const f = e.target.files && e.target.files[0];
+    if(f && f.type.startsWith('image/')) { idFiles.back = f; renderIdPreview(); }
+    else { idFiles.back = null; idBackNative.value=''; renderIdPreview(); }
+  });
+
+  videosNative.addEventListener('change', async (e)=>{
+    clearValidation();
+    const files = Array.from(e.target.files || []);
+    for(const f of files){
+      if(videoFiles.length >= MAX_VIDEOS) break;
+      if(!f.type.startsWith('video/')) continue;
+      videoFiles.push(f);
+    }
+    // validate durations
+    const problems = await validateVideoDurations(videoFiles);
+    if(problems.length){
+      showValidation(problems.join('\n'));
+      // remove offending videos
+      videoFiles = videoFiles.filter(v => !problems.some(p => p.includes(v.name)));
+    }
+    videosNative.value = '';
+    renderVideoPreview();
+  });
+
+  // visible buttons open the modal
+  idFrontBtn.addEventListener('click', ()=> openChoice('front'));
+  idBackBtn.addEventListener('click', ()=> openChoice('back'));
+  videosBtn.addEventListener('click', ()=> openChoice('videos'));
+
+  // keyboard support
+  [idFrontBtn, idBackBtn, videosBtn].forEach(btn=>{
+    btn.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btn.click(); } });
+  });
+
+  // handle user selection in modal: either 'camera' or 'files'
+  function handleChoiceMode(mode){
+    closeChoice();
+    clearValidation();
+    if(!currentTarget) return;
+
+    if(currentTarget === 'front' || currentTarget === 'back'){
+      const native = (currentTarget === 'front') ? idFrontNative : idBackNative;
+      if(mode === 'camera') native.setAttribute('capture','environment');
+      else native.removeAttribute('capture');
+      native.click();
+    } else if(currentTarget === 'videos'){
+      if(mode === 'camera') videosNative.setAttribute('capture','camcorder');
+      else videosNative.removeAttribute('capture');
+      videosNative.click();
+    }
+
+    currentTarget = null;
+  }
+
+  // validate video durations (client-side)
+  function validateVideoDurations(files){
+    const checks = files.map(f => new Promise((resolve) => {
+      const url = URL.createObjectURL(f);
+      const v = document.createElement('video'); v.preload='metadata';
+      v.src = url;
+      const onloaded = ()=>{
+        const d = v.duration || 0;
+        URL.revokeObjectURL(url);
+        v.remove();
+        if(d > MAX_VIDEO_SECONDS) resolve(`"${f.name}" is ${Math.round(d)}s — over ${MAX_VIDEO_SECONDS}s`);
+        else resolve(null);
+      };
+      const onerror = ()=> { URL.revokeObjectURL(url); v.remove(); resolve(null); };
+      v.addEventListener('loadedmetadata', onloaded, {once:true});
+      v.addEventListener('error', onerror, {once:true});
+    }));
+    return Promise.all(checks).then(results => results.filter(Boolean));
+  }
+
+  // Debug UI toggle
+  dbgToggleBtn.addEventListener('click', ()=>{
+    if(debugPanel.style.display === 'block'){
+      debugPanel.style.display = 'none';
+    } else {
+      debugPanel.style.display = 'block';
+      dbgLast.innerText = 'Opened: ' + (new Date()).toLocaleTimeString();
+    }
+  });
+
+  function appendDebug(msg){
+    const time = new Date().toISOString();
+    debugPanel.textContent = `--- ${time} ---\n` + String(msg) + `\n\n` + debugPanel.textContent;
+    dbgLast.innerText = 'Last: ' + (new Date()).toLocaleTimeString();
+  }
+
+  // submit
+  submitBtn.addEventListener('click', async ()=>{
+    if(uploading) return;
+    clearValidation();
+
+    // if locked by KYC status, prevent submission
+    const curStatus = (me && me.kyc_status) ? String(me.kyc_status).toLowerCase() : null;
+    if(curStatus === 'pending' || curStatus === 'approved' || curStatus === 'approved_by_admin'){
+      showValidation('KYC already submitted — you cannot submit again unless admin rejects/declines it.');
+      return;
+    }
+
+    const idName = (idNameEl.value || '').trim();
+    const idNumber = (idNumberEl.value || '').trim();
+    const idType = (idTypeEl.value || 'unknown');
+
+    if(!idName){ showValidation('Enter name on ID'); return; }
+    if(!idNumber){ showValidation('Enter ID number'); return; }
+    if(!idFiles.front){ showValidation('Upload front picture of ID'); return; }
+    if(!idFiles.back){ showValidation('Upload back picture of ID'); return; }
+    if(videoFiles.length === 0){ showValidation('Upload at least one work video (required)'); return; }
+    if(videoFiles.length > MAX_VIDEOS){ showValidation('Max 2 videos allowed'); return; }
+
+    const durationProblems = await validateVideoDurations(videoFiles);
+    if(durationProblems.length){ showValidation(durationProblems.join('\n')); return; }
+
+    // Build FormData: canonical way — append image Files as repeated 'id_images' and videos as repeated 'work_videos'
+    const form = new FormData();
+    // primary scalar fields
+    form.append('userId', me.id);
+    // keep user_id for compatibility if the backend expects it
+    form.append('user_id', me.id);
+    form.append('id_type', idType);
+    form.append('id_name', idName);
+    form.append('id_number', idNumber);
+
+    // Append ID images as repeated 'id_images' fields (File objects)
+    const idImageList = [];
+    if(idFiles.front) idImageList.push(idFiles.front);
+    if(idFiles.back) idImageList.push(idFiles.back);
+
+    idImageList.forEach((file) => {
+      if(file instanceof File) form.append('id_images', file, file.name);
+    });
+
+    // Append videos as repeated 'work_videos' fields
+    videoFiles.forEach((f) => {
+      if(f instanceof File) form.append('work_videos', f, f.name);
+    });
+
+    // marker
+    form.append('_multipart', '1');
+
+    // Debug: print summary
+    const entries = [];
+    for(const pair of form.entries()){
+      const key = pair[0];
+      const val = pair[1];
+      if(val instanceof File){
+        entries.push(`${key}: File(${val.name}, ${val.type}, ${Math.round(val.size/1024)}KB)`);
+      } else {
+        entries.push(`${key}: ${String(val)}`);
+      }
+    }
+    appendDebug(`Sending KYC POST ${API_BASE + '/api/kyc/submit'}\nFormData summary:\n${entries.join('\n')}`);
+
+    // prevent double submits
+    uploading = true;
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = 0.7;
+
+    // show UI feedback
+    showModal('Uploading — please wait...');
+    try{
+      const resp = await fetch(API_BASE + '/api/kyc/submit', { method: 'POST', body: form });
+      const rawText = await resp.text().catch(()=>null);
+      let parsed = null;
+      try{ parsed = rawText ? JSON.parse(rawText) : null; } catch(e){ parsed = null; }
+
+      appendDebug(`<= HTTP ${resp.status} ${resp.statusText}\nResponse text: ${rawText || '(empty)'}\nParsed JSON:\n${JSON.stringify(parsed,null,2)}`);
+
+      if(resp.ok && parsed && parsed.success){
+        // update local copy so page shows locked state next time
+        me.kyc_status = 'pending';
+        try{ localStorage.setItem('wc_user', JSON.stringify(me)); }catch(e){}
+
+        showModal('Submitted — awaiting review');
+
+        // hide modal then go back to previous page (history.back). If no referrer, fallback to dashboard.html
+        setTimeout(()=> {
+          hideModal();
+          // use history if possible to return to previous page
+          try {
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              window.location.href = 'dashboard.html';
+            }
+          } catch(ex) {
+            window.location.href = 'dashboard.html';
+          }
+        }, 1000);
+      } else {
+        const msg = (parsed && parsed.message) ? parsed.message : (`HTTP ${resp.status}`);
+        hideModal();
+        showValidation('Submission failed: ' + msg);
+        appendDebug('Submission failed detail: ' + msg);
+      }
+    }catch(err){
+      hideModal();
+      showValidation('Network error while submitting. Try again.');
+      appendDebug('Network ERROR: ' + String(err.stack||err));
+      console.error(err);
+    } finally {
+      uploading = false;
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = 1;
+      // re-run lock check to reflect any change from local copy
+      checkKycLock();
+    }
+  });
+
+  // save geo quietly
+  (function trySaveGeo(){
+    try{
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(pos=>{
+          try{ localStorage.setItem('wc_last_lat', String(pos.coords.latitude)); localStorage.setItem('wc_last_lng', String(pos.coords.longitude)); }catch(e){}
+        }, ()=>{}, { maximumAge: 10000, timeout: 3500 });
+      }
+    }catch(e){}
+  })();
+
+})();
 </script>
 </body>
 </html>
